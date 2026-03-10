@@ -7,6 +7,7 @@ const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
+const DialogDescription = DialogPrimitive.Description;
 
 function DialogOverlay({
   className,
@@ -30,17 +31,38 @@ type DialogContentProps = React.ComponentProps<
   hideCloseButton?: boolean;
 };
 
-function DialogContent({
-  className,
-  children,
-  closeDisabled = false,
-  hideCloseButton = false,
-  ...props
-}: DialogContentProps) {
+function hasDialogDescription(node: React.ReactNode): boolean {
+  return React.Children.toArray(node).some((child) => {
+    if (!React.isValidElement(child)) return false;
+    if (child.type === DialogPrimitive.Description) return true;
+    const childNode = (child.props as { children?: React.ReactNode }).children;
+    return hasDialogDescription(childNode);
+  });
+}
+
+function DialogContent(rawProps: DialogContentProps) {
+  const hasAriaDescribedByProp = Object.prototype.hasOwnProperty.call(
+    rawProps,
+    "aria-describedby",
+  );
+  const {
+    className,
+    children,
+    closeDisabled = false,
+    hideCloseButton = false,
+    "aria-describedby": ariaDescribedBy,
+    ...props
+  } = rawProps;
+  const shouldInjectFallbackDescription =
+    !hasAriaDescribedByProp && !hasDialogDescription(children);
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
+        {...(hasAriaDescribedByProp
+          ? { "aria-describedby": ariaDescribedBy }
+          : {})}
         className={cn(
           "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-background border border-border rounded-xl shadow-xl p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className,
@@ -48,6 +70,11 @@ function DialogContent({
         {...props}
       >
         {children}
+        {shouldInjectFallbackDescription && (
+          <DialogPrimitive.Description className="sr-only">
+            Dialog content
+          </DialogPrimitive.Description>
+        )}
         {!hideCloseButton && (
           <DialogPrimitive.Close
             disabled={closeDisabled}
@@ -102,6 +129,7 @@ export {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 };
