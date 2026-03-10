@@ -64,6 +64,32 @@ export type ImageRow = {
   createdAt: Date;
 };
 
+export type ImageSortBy = "recent" | "oldest" | "favorites" | "name";
+export type ImageBuiltinCategory = "favorites" | "random";
+
+export type ImageListQuery = {
+  page?: number;
+  pageSize?: number;
+  folderIds?: number[];
+  searchQuery?: string;
+  sortBy?: ImageSortBy;
+  onlyRecent?: boolean;
+  recentDays?: number;
+  customCategoryId?: number | null;
+  builtinCategory?: ImageBuiltinCategory | null;
+  randomSeed?: number;
+  resolutionFilters?: Array<{ width: number; height: number }>;
+  modelFilters?: string[];
+};
+
+export type ImageListResult = {
+  rows: ImageRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type SimilarGroup = { id: string; name: string; imageIds: number[] };
 
 export type Category = {
@@ -132,7 +158,12 @@ declare global {
       readMetaFromBuffer: (data: Uint8Array) => Promise<NovelAIMeta | null>;
       readFile: (path: string) => Promise<Buffer>;
       list: () => Promise<ImageRow[]>;
-      scan: (options?: { detectDuplicates?: boolean; orderedFolderIds?: number[] }) => Promise<void>;
+      listPage: (query: ImageListQuery) => Promise<ImageListResult>;
+      listByIds: (ids: number[]) => Promise<ImageRow[]>;
+      scan: (options?: {
+        detectDuplicates?: boolean;
+        orderedFolderIds?: number[];
+      }) => Promise<void>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
       watch: () => Promise<void>;
       listIgnoredDuplicates: () => Promise<string[]>;

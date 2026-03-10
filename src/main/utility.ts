@@ -13,6 +13,8 @@ import {
 } from "./lib/folder";
 import {
   listImages,
+  listImagesPage,
+  listImagesByIds,
   syncAllFolders,
   setImageFavorite,
   backfillPromptTokens,
@@ -116,9 +118,32 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
 
     case "image:list":
       return listImages();
+    case "image:listPage":
+      return listImagesPage(
+        (payload as {
+          page?: number;
+          pageSize?: number;
+          folderIds?: number[];
+          searchQuery?: string;
+          sortBy?: "recent" | "oldest" | "favorites" | "name";
+          onlyRecent?: boolean;
+          recentDays?: number;
+          customCategoryId?: number | null;
+          builtinCategory?: "favorites" | "random" | null;
+          randomSeed?: number;
+          resolutionFilters?: Array<{ width: number; height: number }>;
+          modelFilters?: string[];
+        }) ?? {},
+      );
+    case "image:listByIds": {
+      const { ids } = payload as { ids: number[] };
+      return listImagesByIds(ids);
+    }
     case "image:scan": {
       const { detectDuplicates = false, orderedFolderIds } =
-        (payload as { detectDuplicates?: boolean; orderedFolderIds?: number[] } | undefined) ?? {};
+        (payload as
+          | { detectDuplicates?: boolean; orderedFolderIds?: number[] }
+          | undefined) ?? {};
       scanCancelToken = { cancelled: false };
       try {
         return await syncAllFolders(
@@ -277,11 +302,15 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
 // Seed builtins + deferred prompt backfill on startup
 seedBuiltinCategories()
   .then(() => log.info("Seeded builtin categories"))
-  .catch((error) => log.errorWithStack("Failed to seed builtin categories", error));
+  .catch((error) =>
+    log.errorWithStack("Failed to seed builtin categories", error),
+  );
 setTimeout(() => {
   backfillPromptTokens()
     .then(() => log.info("Backfilled prompt tokens"))
-    .catch((error) => log.errorWithStack("Failed to backfill prompt tokens", error));
+    .catch((error) =>
+      log.errorWithStack("Failed to backfill prompt tokens", error),
+    );
 }, 8000);
 
 process.parentPort.on("message", async (e: Electron.MessageEvent) => {

@@ -8,6 +8,7 @@ import { scanPngFiles, withConcurrency } from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
 import type { NovelAIMeta } from "@/types/nai";
+import type { Prisma } from "../../generated/prisma/client";
 
 export type ImageRow = {
   id: number;
@@ -35,6 +36,37 @@ export type ImageRow = {
   fileSize: number;
   fileModifiedAt: Date;
   createdAt: Date;
+};
+
+export type ImageSortBy = "recent" | "oldest" | "favorites" | "name";
+export type ImageBuiltinCategory = "favorites" | "random";
+
+export type ImageQueryResolutionFilter = {
+  width: number;
+  height: number;
+};
+
+export type ImageListQuery = {
+  page?: number;
+  pageSize?: number;
+  folderIds?: number[];
+  searchQuery?: string;
+  sortBy?: ImageSortBy;
+  onlyRecent?: boolean;
+  recentDays?: number;
+  customCategoryId?: number | null;
+  builtinCategory?: ImageBuiltinCategory | null;
+  randomSeed?: number;
+  resolutionFilters?: ImageQueryResolutionFilter[];
+  modelFilters?: string[];
+};
+
+export type ImageListResult = {
+  rows: ImageRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 export type FolderDuplicateExistingEntry = {
@@ -393,6 +425,279 @@ export async function listImages(): Promise<ImageRow[]> {
   }) as unknown as Promise<ImageRow[]>;
 }
 
+type NormalizedImageListQuery = {
+  page: number;
+  pageSize: number;
+  folderIds: number[];
+  searchQuery: string;
+  sortBy: ImageSortBy;
+  onlyRecent: boolean;
+  recentDays: number;
+  customCategoryId: number | null;
+  builtinCategory: ImageBuiltinCategory | null;
+  randomSeed: number;
+  resolutionFilters: ImageQueryResolutionFilter[];
+  modelFilters: string[];
+};
+
+function normalizePositiveInt(
+  value: number | undefined,
+  fallback: number,
+  max: number,
+): number {
+  if (!Number.isFinite(value)) return fallback;
+  const integer = Math.floor(value!);
+  if (integer < 1) return fallback;
+  return Math.min(integer, max);
+}
+
+function normalizeIntegerArray(values: number[] | undefined): number[] {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(values.filter((value) => Number.isInteger(value))),
+  ) as number[];
+}
+
+function normalizeResolutionFilters(
+  values: ImageQueryResolutionFilter[] | undefined,
+): ImageQueryResolutionFilter[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const normalized: ImageQueryResolutionFilter[] = [];
+  for (const value of values) {
+    const width = Math.floor(value?.width ?? 0);
+    const height = Math.floor(value?.height ?? 0);
+    if (width < 1 || height < 1) continue;
+    const key = `${width}x${height}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push({ width, height });
+  }
+  return normalized;
+}
+
+function normalizeModelFilters(values: string[] | undefined): string[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
+}
+
+function normalizeImageListQuery(
+  query?: ImageListQuery,
+): NormalizedImageListQuery {
+  const normalizedSort = (() => {
+    switch (query?.sortBy) {
+      case "oldest":
+      case "favorites":
+      case "name":
+        return query.sortBy;
+      default:
+        return "recent";
+    }
+  })();
+  return {
+    page: normalizePositiveInt(query?.page, 1, 100000),
+    pageSize: normalizePositiveInt(query?.pageSize, 50, 200),
+    folderIds: normalizeIntegerArray(query?.folderIds),
+    searchQuery: String(query?.searchQuery ?? "").trim(),
+    sortBy: normalizedSort,
+    onlyRecent: query?.onlyRecent === true,
+    recentDays: normalizePositiveInt(query?.recentDays, 7, 3650),
+    customCategoryId: Number.isInteger(query?.customCategoryId)
+      ? (query?.customCategoryId as number)
+      : null,
+    builtinCategory:
+      query?.builtinCategory === "favorites" ||
+      query?.builtinCategory === "random"
+        ? query.builtinCategory
+        : null,
+    randomSeed: Number.isFinite(query?.randomSeed)
+      ? Math.floor(query!.randomSeed!)
+      : 0,
+    resolutionFilters: normalizeResolutionFilters(query?.resolutionFilters),
+    modelFilters: normalizeModelFilters(query?.modelFilters),
+  };
+}
+
+function buildImageWhereInput(
+  query: NormalizedImageListQuery,
+): Prisma.ImageWhereInput {
+  const andConditions: Prisma.ImageWhereInput[] = [];
+
+  andConditions.push({ folderId: { in: query.folderIds } });
+
+  if (query.searchQuery) {
+    andConditions.push({
+      OR: [
+        { promptTokens: { contains: query.searchQuery } },
+        { negativePromptTokens: { contains: query.searchQuery } },
+        { characterPromptTokens: { contains: query.searchQuery } },
+        { prompt: { contains: query.searchQuery } },
+        { negativePrompt: { contains: query.searchQuery } },
+        { characterPrompts: { contains: query.searchQuery } },
+      ],
+    });
+  }
+
+  if (query.resolutionFilters.length > 0) {
+    andConditions.push({
+      OR: query.resolutionFilters.map((filter) => ({
+        width: filter.width,
+        height: filter.height,
+      })),
+    });
+  }
+
+  if (query.modelFilters.length > 0) {
+    andConditions.push({ model: { in: query.modelFilters } });
+  }
+
+  if (query.onlyRecent) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - query.recentDays);
+    andConditions.push({ fileModifiedAt: { gte: cutoff } });
+  }
+
+  if (query.customCategoryId !== null) {
+    andConditions.push({
+      categories: { some: { categoryId: query.customCategoryId } },
+    });
+  }
+
+  if (query.builtinCategory === "favorites") {
+    andConditions.push({ isFavorite: true });
+  }
+
+  return andConditions.length > 0 ? { AND: andConditions } : {};
+}
+
+function buildImageOrderBy(
+  sortBy: ImageSortBy,
+): Prisma.ImageOrderByWithRelationInput[] {
+  switch (sortBy) {
+    case "oldest":
+      return [{ fileModifiedAt: "asc" }, { id: "asc" }];
+    case "favorites":
+      return [
+        { isFavorite: "desc" },
+        { fileModifiedAt: "desc" },
+        { id: "desc" },
+      ];
+    case "name":
+      return [{ path: "asc" }, { id: "asc" }];
+    case "recent":
+    default:
+      return [{ fileModifiedAt: "desc" }, { id: "desc" }];
+  }
+}
+
+function hashStringToUint32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function randomRank(seed: number, row: { id: number; path: string }): number {
+  return hashStringToUint32(`${seed}:${row.id}:${row.path}`);
+}
+
+export async function listImagesPage(
+  query?: ImageListQuery,
+): Promise<ImageListResult> {
+  const normalized = normalizeImageListQuery(query);
+  const offset = (normalized.page - 1) * normalized.pageSize;
+  if (normalized.folderIds.length === 0) {
+    return {
+      rows: [],
+      totalCount: 0,
+      page: normalized.page,
+      pageSize: normalized.pageSize,
+      totalPages: 1,
+    };
+  }
+
+  const db = getDB();
+  const where = buildImageWhereInput(normalized);
+
+  if (normalized.builtinCategory === "random") {
+    const candidates = await db.image.findMany({
+      where,
+      select: { id: true, path: true },
+    });
+    const sorted = [...candidates].sort((a, b) => {
+      const rankA = randomRank(normalized.randomSeed, a);
+      const rankB = randomRank(normalized.randomSeed, b);
+      if (rankA !== rankB) return rankA - rankB;
+      return a.id - b.id;
+    });
+    const totalCount = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / normalized.pageSize));
+    const pageRows = sorted.slice(offset, offset + normalized.pageSize);
+    if (pageRows.length === 0) {
+      return {
+        rows: [],
+        totalCount,
+        page: normalized.page,
+        pageSize: normalized.pageSize,
+        totalPages,
+      };
+    }
+    const ids = pageRows.map((row) => row.id);
+    const rows = (await db.image.findMany({
+      where: { id: { in: ids } },
+    })) as unknown as ImageRow[];
+    const rowMap = new Map(rows.map((row) => [row.id, row]));
+    const orderedRows = ids
+      .map((id) => rowMap.get(id))
+      .filter((row): row is ImageRow => row !== undefined);
+    return {
+      rows: orderedRows,
+      totalCount,
+      page: normalized.page,
+      pageSize: normalized.pageSize,
+      totalPages,
+    };
+  }
+
+  const totalCount = await db.image.count({ where });
+  const rows = (await db.image.findMany({
+    where,
+    orderBy: buildImageOrderBy(normalized.sortBy),
+    skip: offset,
+    take: normalized.pageSize,
+  })) as unknown as ImageRow[];
+  return {
+    rows,
+    totalCount,
+    page: normalized.page,
+    pageSize: normalized.pageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / normalized.pageSize)),
+  };
+}
+
+export async function listImagesByIds(imageIds: number[]): Promise<ImageRow[]> {
+  const ids = normalizeIntegerArray(imageIds);
+  if (ids.length === 0) return [];
+  const rows = (await getDB().image.findMany({
+    where: { id: { in: ids } },
+  })) as unknown as ImageRow[];
+  const rowMap = new Map(rows.map((row) => [row.id, row]));
+  return ids
+    .map((id) => rowMap.get(id))
+    .filter((row): row is ImageRow => row !== undefined);
+}
+
 export async function findFolderDuplicateImages(
   folderPath: string,
   options?: {
@@ -657,7 +962,10 @@ export async function syncAllFolders(
         filePaths: await scanPngFiles(folder.path),
       })),
     );
-    total = folderFiles.reduce((sum, { filePaths }) => sum + filePaths.length, 0);
+    total = folderFiles.reduce(
+      (sum, { filePaths }) => sum + filePaths.length,
+      0,
+    );
     onProgress?.(done, total);
 
     const duplicateIncomingPathSet = new Set<string>();
@@ -812,7 +1120,9 @@ export async function syncAllFolders(
                   folderId: folder.id,
                   prompt: meta?.prompt ?? "",
                   negativePrompt: meta?.negativePrompt ?? "",
-                  characterPrompts: JSON.stringify(meta?.characterPrompts ?? []),
+                  characterPrompts: JSON.stringify(
+                    meta?.characterPrompts ?? [],
+                  ),
                   promptTokens: JSON.stringify(
                     parsePromptTokens(meta?.prompt ?? ""),
                   ),

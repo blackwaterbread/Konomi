@@ -60,6 +60,29 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.handle("image:list", () => bridge.request("image:list"));
+  ipcMain.handle(
+    "image:listPage",
+    (
+      _,
+      query: {
+        page?: number;
+        pageSize?: number;
+        folderIds?: number[];
+        searchQuery?: string;
+        sortBy?: "recent" | "oldest" | "favorites" | "name";
+        onlyRecent?: boolean;
+        recentDays?: number;
+        customCategoryId?: number | null;
+        builtinCategory?: "favorites" | "random" | null;
+        randomSeed?: number;
+        resolutionFilters?: Array<{ width: number; height: number }>;
+        modelFilters?: string[];
+      },
+    ) => bridge.request("image:listPage", query),
+  );
+  ipcMain.handle("image:listByIds", (_, ids: number[]) =>
+    bridge.request("image:listByIds", { ids }),
+  );
   ipcMain.handle("image:scan", (_, options?: { detectDuplicates?: boolean }) =>
     bridge.request("image:scan", options ?? {}),
   );

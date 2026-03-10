@@ -6,8 +6,25 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.invoke("image:readMetaFromBuffer", data),
   readFile: (path: string) => ipcRenderer.invoke("image:readFile", path),
   list: () => ipcRenderer.invoke("image:list"),
-  scan: (options?: { detectDuplicates?: boolean; orderedFolderIds?: number[] }) =>
-    ipcRenderer.invoke("image:scan", options),
+  listPage: (query: {
+    page?: number;
+    pageSize?: number;
+    folderIds?: number[];
+    searchQuery?: string;
+    sortBy?: "recent" | "oldest" | "favorites" | "name";
+    onlyRecent?: boolean;
+    recentDays?: number;
+    customCategoryId?: number | null;
+    builtinCategory?: "favorites" | "random" | null;
+    randomSeed?: number;
+    resolutionFilters?: Array<{ width: number; height: number }>;
+    modelFilters?: string[];
+  }) => ipcRenderer.invoke("image:listPage", query),
+  listByIds: (ids: number[]) => ipcRenderer.invoke("image:listByIds", ids),
+  scan: (options?: {
+    detectDuplicates?: boolean;
+    orderedFolderIds?: number[];
+  }) => ipcRenderer.invoke("image:scan", options),
   setFavorite: (id: number, isFavorite: boolean) =>
     ipcRenderer.invoke("image:setFavorite", id, isFavorite),
   watch: () => ipcRenderer.invoke("image:watch"),

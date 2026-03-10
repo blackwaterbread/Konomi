@@ -1,4 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef, startTransition, useDeferredValue } from "react";
+﻿import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  startTransition,
+} from "react";
 import { Toaster, toast } from "sonner";
 import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
@@ -20,7 +27,12 @@ import { useSettings } from "@/hooks/useSettings";
 import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import type { ImageData } from "@/components/image-card";
 import type { PromptToken } from "@/lib/token";
-import type { ImageRow, Category, SimilarGroup } from "@preload/index.d";
+import type {
+  ImageRow,
+  Category,
+  SimilarGroup,
+  ImageListQuery,
+} from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
 
@@ -76,26 +88,6 @@ function rowToImageData(row: ImageRow): ImageData {
   };
 }
 
-function fileNameFromPath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
-  const idx = normalized.lastIndexOf("/");
-  return idx >= 0 ? normalized.slice(idx + 1) : normalized;
-}
-
-function hashStringToUint32(input: string): number {
-  // FNV-1a 32-bit hash for deterministic ordering.
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function randomRank(seed: number, key: string): number {
-  return hashStringToUint32(`${seed}:${key}`);
-}
-
 function readCategoryOrder(): number[] {
   try {
     const raw = localStorage.getItem(CATEGORY_ORDER_STORAGE_KEY);
@@ -142,6 +134,13 @@ function applyCategoryOrder(
   return [...builtin, ...normalizedCustom];
 }
 
+function getBuiltinCategoryKind(
+  category: Category | undefined,
+): "favorites" | "random" | null {
+  if (!category?.isBuiltin) return null;
+  return category.order === 1 ? "random" : "favorites";
+}
+
 export default function App() {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { outputFolder, setOutputFolder, resetOutputFolder } =
@@ -159,9 +158,13 @@ export default function App() {
   );
   const [activeView, setActiveView] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
-  const [sortBy, setSortBy] = useState("recent");
+  const [sortBy, setSortBy] = useState<
+    "recent" | "oldest" | "favorites" | "name"
+  >("recent");
   const [images, setImages] = useState<ImageData[]>([]);
-  const deferredImages = useDeferredValue(images);
+  const [totalImageCount, setTotalImageCount] = useState(0);
+  const [galleryPage, setGalleryPage] = useState(1);
+  const [galleryTotalPages, setGalleryTotalPages] = useState(1);
   const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<
@@ -257,9 +260,6 @@ export default function App() {
   const [randomSeed, setRandomSeed] = useState(() =>
     Math.floor(Math.random() * 0x7fffffff),
   );
-  const [categoryImageIds, setCategoryImageIds] = useState<Set<number> | null>(
-    null,
-  );
   const [categoryDialogImage, setCategoryDialogImage] =
     useState<ImageData | null>(null);
   const [bulkCategoryDialogImages, setBulkCategoryDialogImages] = useState<
@@ -277,15 +277,18 @@ export default function App() {
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [pendingGeneratorImport, setPendingGeneratorImport] =
     useState<ImageData | null>(null);
+  const [similarImages, setSimilarImages] = useState<ImageData[]>([]);
 
-  const pendingRowsRef = useRef<ImageRow[]>([]);
-  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const listRequestSeqRef = useRef(0);
+  const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
   const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scanPromiseRef = useRef<Promise<void> | null>(null);
   const scanningRef = useRef(false);
   const analyzingRef = useRef(false);
   const rollbackRequestSeqRef = useRef(0);
-  const cancelledFolderIdsRef = useRef<Set<number>>(new Set());
   const similarityThresholdRef = useRef(settings.similarityThreshold);
   const mountedRef = useRef(false);
 
@@ -310,21 +313,107 @@ export default function App() {
     return undefined;
   }, [settings.theme]);
 
-  const flushPendingBatch = useCallback(() => {
-    if (batchTimerRef.current) {
-      clearTimeout(batchTimerRef.current);
-      batchTimerRef.current = null;
-    }
-    const pending = pendingRowsRef.current.splice(0);
-    if (pending.length === 0) return;
-    startTransition(() => {
-      setImages((prev) => {
-        const map = new Map(prev.map((img) => [img.id, img]));
-        pending.forEach((row) => map.set(String(row.id), rowToImageData(row)));
-        return Array.from(map.values());
+  const selectedFolderIdList = useMemo(
+    () => [...selectedFolderIds].sort((a, b) => a - b),
+    [selectedFolderIds],
+  );
+  const selectedCategory = useMemo(
+    () => categories.find((cat) => cat.id === selectedCategoryId),
+    [categories, selectedCategoryId],
+  );
+  const resolutionFilters = useMemo(
+    () =>
+      advancedFilters
+        .filter(
+          (f): f is Extract<AdvancedFilter, { type: "resolution" }> =>
+            f.type === "resolution",
+        )
+        .map((f) => ({ width: f.width, height: f.height })),
+    [advancedFilters],
+  );
+  const modelFilters = useMemo(
+    () =>
+      advancedFilters
+        .filter(
+          (f): f is Extract<AdvancedFilter, { type: "model" }> =>
+            f.type === "model",
+        )
+        .map((f) => f.value),
+    [advancedFilters],
+  );
+  const listBaseQuery = useMemo<Omit<ImageListQuery, "page">>(
+    () => ({
+      pageSize: settings.pageSize,
+      folderIds: selectedFolderIdList,
+      searchQuery,
+      sortBy,
+      onlyRecent: activeView === "recent",
+      recentDays: settings.recentDays,
+      customCategoryId:
+        selectedCategory && !selectedCategory.isBuiltin
+          ? selectedCategory.id
+          : null,
+      builtinCategory: getBuiltinCategoryKind(selectedCategory),
+      randomSeed,
+      resolutionFilters,
+      modelFilters,
+    }),
+    [
+      settings.pageSize,
+      selectedFolderIdList,
+      searchQuery,
+      sortBy,
+      activeView,
+      settings.recentDays,
+      selectedCategory,
+      randomSeed,
+      resolutionFilters,
+      modelFilters,
+    ],
+  );
+
+  useEffect(() => {
+    setGalleryPage(1);
+  }, [listBaseQuery]);
+
+  const loadImagesPage = useCallback(async () => {
+    const requestId = ++listRequestSeqRef.current;
+    try {
+      const result = await window.image.listPage({
+        ...listBaseQuery,
+        page: galleryPage,
       });
-    });
+      if (requestId !== listRequestSeqRef.current) return;
+      startTransition(() => {
+        setImages(result.rows.map(rowToImageData));
+        setTotalImageCount(result.totalCount);
+        setGalleryTotalPages(result.totalPages);
+      });
+      if (galleryPage > result.totalPages) {
+        setGalleryPage(result.totalPages);
+      }
+    } catch (e: unknown) {
+      if (requestId !== listRequestSeqRef.current) return;
+      toast.error(
+        `???筌왖 筌뤴뫖以?嚥≪뮆諭???쎈솭: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }, [galleryPage, listBaseQuery]);
+
+  const schedulePageRefresh = useCallback((delay = 120) => {
+    if (pageRefreshTimerRef.current) clearTimeout(pageRefreshTimerRef.current);
+    pageRefreshTimerRef.current = setTimeout(() => {
+      void loadImagesPageRef.current();
+    }, delay);
   }, []);
+
+  useEffect(() => {
+    loadImagesPageRef.current = loadImagesPage;
+  }, [loadImagesPage]);
+
+  useEffect(() => {
+    void loadImagesPage();
+  }, [loadImagesPage]);
 
   const scheduleAnalysis = useCallback((delay = 3000) => {
     if (analyzeTimerRef.current) clearTimeout(analyzeTimerRef.current);
@@ -355,7 +444,7 @@ export default function App() {
           error: e instanceof Error ? e.message : String(e),
         });
         toast.error(
-          `이미지 분석 실패: ${e instanceof Error ? e.message : String(e)}`,
+          `?대?吏 遺꾩꽍 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
         );
       } finally {
         analyzingRef.current = false;
@@ -392,8 +481,7 @@ export default function App() {
         .scan({ ...options, orderedFolderIds })
         .then(() => {
           log.info("Scan completed", { elapsedMs: Date.now() - startedAt });
-          flushPendingBatch();
-          cancelledFolderIdsRef.current.clear();
+          schedulePageRefresh(0);
         })
         .catch((e: unknown) => {
           log.error("Scan failed", {
@@ -401,7 +489,7 @@ export default function App() {
             error: e instanceof Error ? e.message : String(e),
           });
           toast.error(
-            `스캔 실패: ${e instanceof Error ? e.message : String(e)}`,
+            `?ㅼ틪 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
           );
         })
         .finally(() => {
@@ -415,7 +503,7 @@ export default function App() {
       scanPromiseRef.current = scanPromise;
       return scanPromise;
     },
-    [flushPendingBatch],
+    [schedulePageRefresh],
   );
 
   // Auto-analyze when threshold changes (skip initial mount)
@@ -428,23 +516,10 @@ export default function App() {
     mountedRef.current = true;
     log.info("App mounted: loading initial data and starting watchers");
 
-    window.image
-      .list()
-      .then((rows) => setImages(rows.map(rowToImageData)))
-      .catch((e: unknown) =>
-        toast.error(
-          `이미지 목록 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
-        ),
-      );
-
     const offBatch = window.image.onBatch((rows) => {
-      const filtered = rows.filter(
-        (r) => !cancelledFolderIdsRef.current.has(r.folderId),
-      );
-      pendingRowsRef.current.push(...filtered);
-      if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
-      batchTimerRef.current = setTimeout(flushPendingBatch, 150);
-      if (!scanningRef.current && filtered.length > 0) scheduleAnalysis();
+      if (rows.length === 0) return;
+      schedulePageRefresh(150);
+      if (!scanningRef.current) scheduleAnalysis();
     });
 
     const offHashProgress = window.image.onHashProgress((data) => {
@@ -471,8 +546,8 @@ export default function App() {
     );
 
     const offRemoved = window.image.onRemoved((ids) => {
-      const idStrSet = new Set(ids.map(String));
-      setImages((prev) => prev.filter((img) => !idStrSet.has(img.id)));
+      if (ids.length === 0) return;
+      schedulePageRefresh(60);
       scheduleAnalysis();
     });
 
@@ -481,7 +556,7 @@ export default function App() {
       .then((loaded) => setCategories(applyCategoryOrder(loaded)))
       .catch((e: unknown) =>
         toast.error(
-          `카테고리 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
+          `移댄뀒怨좊━ 濡쒕뱶 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
 
@@ -489,32 +564,36 @@ export default function App() {
     try {
       window.image.watch();
     } catch {
-      /* 감시 시작 실패 시 조용히 무시 */
+      /* 媛먯떆 ?쒖옉 ?ㅽ뙣 ??議곗슜??臾댁떆 */
     }
 
     return () => {
       log.info("App unmount cleanup");
+      if (pageRefreshTimerRef.current) {
+        clearTimeout(pageRefreshTimerRef.current);
+        pageRefreshTimerRef.current = null;
+      }
       offBatch();
       offRemoved();
       offHashProgress();
       offScanProgress();
       offScanFolder();
     };
-  }, []);
+  }, [runScan, scheduleAnalysis, schedulePageRefresh]);
 
   useEffect(() => {
     if (selectedImage) {
       const updated = images.find((img) => img.id === selectedImage.id);
       if (updated) setSelectedImage(updated);
     }
-  }, [images]);
+  }, [images, selectedImage]);
 
   const availableResolutions = useMemo(() => {
     const freq = new Map<
       string,
       { width: number; height: number; count: number }
     >();
-    for (const img of deferredImages) {
+    for (const img of images) {
       if (img.width && img.height) {
         const key = `${img.width}x${img.height}`;
         const entry = freq.get(key);
@@ -525,126 +604,18 @@ export default function App() {
     return Array.from(freq.values())
       .sort((a, b) => b.count - a.count)
       .map(({ width, height }) => ({ width, height }));
-  }, [deferredImages]);
+  }, [images]);
 
   const availableModels = useMemo(() => {
     const freq = new Map<string, number>();
-    for (const img of deferredImages) {
+    for (const img of images) {
       if (img.model != null)
         freq.set(img.model, (freq.get(img.model) ?? 0) + 1);
     }
     return Array.from(freq.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([m]) => m);
-  }, [deferredImages]);
-
-  const filteredImages = useMemo(() => {
-    let result = [...deferredImages];
-
-    result = result.filter((img) => selectedFolderIds.has(img.folderId));
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (img) =>
-          img.tokens.some((t) => t.text.toLowerCase().includes(query)) ||
-          img.negativeTokens.some((t) =>
-            t.text.toLowerCase().includes(query),
-          ) ||
-          img.characterTokens.some((t) => t.text.toLowerCase().includes(query)),
-      );
-    }
-
-    if (advancedFilters.length > 0) {
-      const resFilters = advancedFilters.filter(
-        (f): f is Extract<AdvancedFilter, { type: "resolution" }> =>
-          f.type === "resolution",
-      );
-      const modelFilters = advancedFilters.filter(
-        (f): f is Extract<AdvancedFilter, { type: "model" }> =>
-          f.type === "model",
-      );
-      if (resFilters.length > 0) {
-        result = result.filter((img) =>
-          resFilters.some(
-            (f) => img.width === f.width && img.height === f.height,
-          ),
-        );
-      }
-      if (modelFilters.length > 0) {
-        result = result.filter((img) =>
-          modelFilters.some((f) => img.model === f.value),
-        );
-      }
-    }
-
-    if (selectedCategoryId !== null) {
-      const cat = categories.find((c) => c.id === selectedCategoryId);
-      if (cat?.isBuiltin && cat.name === "랜덤 픽") {
-        return [...result]
-          .sort((a, b) => {
-            const rankA = randomRank(randomSeed, `${a.id}:${a.path}`);
-            const rankB = randomRank(randomSeed, `${b.id}:${b.path}`);
-            if (rankA !== rankB) return rankA - rankB;
-            return a.id.localeCompare(b.id);
-          })
-          .slice(0, settings.pageSize);
-      } else if (cat?.isBuiltin) {
-        result = result.filter((img) => img.isFavorite);
-      } else if (categoryImageIds !== null) {
-        result = result.filter((img) => categoryImageIds.has(parseInt(img.id)));
-      }
-    }
-
-    if (activeView === "recent") {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - settings.recentDays);
-      result = result.filter((img) => new Date(img.fileModifiedAt) >= cutoff);
-    }
-
-    switch (sortBy) {
-      case "recent":
-        result.sort(
-          (a, b) =>
-            new Date(b.fileModifiedAt).getTime() -
-            new Date(a.fileModifiedAt).getTime(),
-        );
-        break;
-      case "oldest":
-        result.sort(
-          (a, b) =>
-            new Date(a.fileModifiedAt).getTime() -
-            new Date(b.fileModifiedAt).getTime(),
-        );
-        break;
-      case "favorites":
-        result.sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
-        break;
-      case "name":
-        result.sort((a, b) =>
-          fileNameFromPath(a.path).localeCompare(
-            fileNameFromPath(b.path),
-            undefined,
-            { sensitivity: "base" },
-          ),
-        );
-        break;
-    }
-
-    return result;
-  }, [
-    deferredImages,
-    searchQuery,
-    selectedFolderIds,
-    activeView,
-    sortBy,
-    settings,
-    selectedCategoryId,
-    categories,
-    categoryImageIds,
-    advancedFilters,
-    randomSeed,
-  ]);
+  }, [images]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -668,10 +639,7 @@ export default function App() {
       setSelectedFolderIds((prev) => new Set([...prev, folderId]));
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
-      window.image
-        .list()
-        .then((rows) => setImages(rows.map(rowToImageData)))
-        .catch(() => {});
+      schedulePageRefresh(0);
       runScan().then(() => {
         setRollbackFolderIds((prev) => {
           const s = new Set(prev);
@@ -681,16 +649,12 @@ export default function App() {
         scheduleAnalysis(0);
       });
     },
-    [runScan, scheduleAnalysis],
+    [runScan, scheduleAnalysis, schedulePageRefresh],
   );
 
   const handleFolderCancelled = useCallback(
     (id: number) => {
       log.info("Folder add rollback/cancelled", { folderId: id });
-      cancelledFolderIdsRef.current.add(id);
-      pendingRowsRef.current = pendingRowsRef.current.filter(
-        (r) => r.folderId !== id,
-      );
       setSelectedFolderIds((prev) => {
         const s = new Set(prev);
         s.delete(id);
@@ -706,15 +670,10 @@ export default function App() {
         s.delete(id);
         return s;
       });
-      window.image
-        .list()
-        .then((rows) => {
-          setImages(rows.map(rowToImageData));
-          scheduleAnalysis(500);
-        })
-        .catch(() => {});
+      schedulePageRefresh(0);
+      scheduleAnalysis(500);
     },
-    [scheduleAnalysis],
+    [scheduleAnalysis, schedulePageRefresh],
   );
 
   const handleFolderRemoved = useCallback(
@@ -735,42 +694,17 @@ export default function App() {
         s.delete(id);
         return s;
       });
-      window.image
-        .list()
-        .then((rows) => {
-          setImages(rows.map(rowToImageData));
-          scheduleAnalysis(500);
-        })
-        .catch(() => {});
+      schedulePageRefresh(0);
+      scheduleAnalysis(500);
       runScan();
     },
-    [runScan, scheduleAnalysis],
+    [runScan, scheduleAnalysis, schedulePageRefresh],
   );
 
-  const handleCategorySelect = useCallback(
-    (id: number | null) => {
-      log.debug("Category selected", { categoryId: id });
-      setSelectedCategoryId(id);
-      if (id === null) {
-        setCategoryImageIds(null);
-        return;
-      }
-      const cat = categories.find((c) => c.id === id);
-      if (cat?.isBuiltin) {
-        setCategoryImageIds(null);
-      } else {
-        window.category
-          .imageIds(id)
-          .then((ids) => setCategoryImageIds(new Set(ids)))
-          .catch((e: unknown) =>
-            toast.error(
-              `카테고리 이미지 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
-            ),
-          );
-      }
-    },
-    [categories],
-  );
+  const handleCategorySelect = useCallback((id: number | null) => {
+    log.debug("Category selected", { categoryId: id });
+    setSelectedCategoryId(id);
+  }, []);
 
   const handleCategoryCreate = useCallback((name: string) => {
     log.info("Creating category", { name });
@@ -781,7 +715,7 @@ export default function App() {
       )
       .catch((e: unknown) =>
         toast.error(
-          `카테고리 생성 실패: ${e instanceof Error ? e.message : String(e)}`,
+          `移댄뀒怨좊━ ?앹꽦 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
   }, []);
@@ -795,7 +729,7 @@ export default function App() {
       )
       .catch((e: unknown) =>
         toast.error(
-          `카테고리 이름 변경 실패: ${e instanceof Error ? e.message : String(e)}`,
+          `移댄뀒怨좊━ ?대쫫 蹂寃??ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
   }, []);
@@ -814,18 +748,16 @@ export default function App() {
           setCategories((prev) =>
             applyCategoryOrder(prev.filter((c) => c.id !== id)),
           );
-          setSelectedCategoryId((prev) => (prev === id ? null : prev));
-          setCategoryImageIds((prev) =>
-            selectedCategoryId === id ? null : prev,
-          );
+          if (selectedCategoryId === id) setSelectedCategoryId(null);
+          schedulePageRefresh(0);
         })
         .catch((e: unknown) =>
           toast.error(
-            `카테고리 삭제 실패: ${e instanceof Error ? e.message : String(e)}`,
+            `移댄뀒怨좊━ ??젣 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
           ),
         );
     },
-    [selectedCategoryId],
+    [schedulePageRefresh, selectedCategoryId],
   );
 
   const handleCategoryAddByPrompt = useCallback(
@@ -834,46 +766,46 @@ export default function App() {
       window.category
         .addByPrompt(id, query)
         .then(() => {
-          if (selectedCategoryId === id) {
-            window.category
-              .imageIds(id)
-              .then((ids) => setCategoryImageIds(new Set(ids)));
-          }
+          if (selectedCategoryId === id) schedulePageRefresh(0);
         })
         .catch((e: unknown) =>
           toast.error(
-            `이미지 추가 실패: ${e instanceof Error ? e.message : String(e)}`,
+            `?대?吏 異붽? ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
           ),
         );
     },
-    [selectedCategoryId],
+    [schedulePageRefresh, selectedCategoryId],
   );
 
-  const handleToggleFavorite = useCallback((id: string) => {
-    log.debug("Toggling favorite", { imageId: id });
-    setImages((prev) => {
-      const img = prev.find((i) => i.id === id);
-      if (!img) return prev;
-      window.image
-        .setFavorite(parseInt(id), !img.isFavorite)
-        .catch((e: unknown) => {
-          toast.error(
-            `즐겨찾기 설정 실패: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        });
-      return prev.map((i) =>
-        i.id === id ? { ...i, isFavorite: !i.isFavorite } : i,
+  const handleToggleFavorite = useCallback(
+    (id: string) => {
+      log.debug("Toggling favorite", { imageId: id });
+      setImages((prev) => {
+        const img = prev.find((i) => i.id === id);
+        if (!img) return prev;
+        window.image
+          .setFavorite(parseInt(id), !img.isFavorite)
+          .then(() => schedulePageRefresh(0))
+          .catch((e: unknown) => {
+            toast.error(
+              `利먭꺼李얘린 ?ㅼ젙 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          });
+        return prev.map((i) =>
+          i.id === id ? { ...i, isFavorite: !i.isFavorite } : i,
+        );
+      });
+      setSelectedImage((prev) =>
+        prev?.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev,
       );
-    });
-    setSelectedImage((prev) =>
-      prev?.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev,
-    );
-  }, []);
+    },
+    [schedulePageRefresh],
+  );
 
   const handleCopyPrompt = useCallback((prompt: string) => {
     navigator.clipboard
       .writeText(prompt)
-      .catch(() => toast.error("클립보드 복사 실패"));
+      .catch(() => toast.error("?대┰蹂대뱶 蹂듭궗 ?ㅽ뙣"));
   }, []);
 
   const handleReveal = useCallback((path: string) => {
@@ -891,12 +823,17 @@ export default function App() {
     if (img) {
       window.image.delete(img.path).catch((e: unknown) => {
         toast.error(
-          `이미지 삭제 실패: ${e instanceof Error ? e.message : String(e)}`,
+          `?대?吏 ??젣 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
         );
       });
+      if (selectedImage?.id === deleteConfirmId) {
+        setSelectedImage(null);
+        setIsDetailOpen(false);
+      }
+      schedulePageRefresh(60);
     }
     setDeleteConfirmId(null);
-  }, [deleteConfirmId, images]);
+  }, [deleteConfirmId, images, schedulePageRefresh, selectedImage?.id]);
 
   const handleCancelScan = useCallback(() => {
     setScanCancelConfirmOpen(true);
@@ -915,6 +852,7 @@ export default function App() {
     const rollbackTargetFolderIds = Array.from(rollbackFolderIds);
     await window.image.cancelScan().catch(() => {});
     await waitForScanToStop();
+    schedulePageRefresh(0);
 
     if (rollbackTargetFolderIds.length > 0) {
       rollbackRequestSeqRef.current += 1;
@@ -928,7 +866,7 @@ export default function App() {
         return next;
       });
     }
-  }, [rollbackFolderIds, waitForScanToStop]);
+  }, [rollbackFolderIds, schedulePageRefresh, waitForScanToStop]);
 
   const handleSendToGenerator = useCallback((image: ImageData) => {
     setPendingGeneratorImport(image);
@@ -954,43 +892,51 @@ export default function App() {
   const handleCategoryDialogClose = useCallback(() => {
     setCategoryDialogImage(null);
     setBulkCategoryDialogImages(null);
-    if (selectedCategoryId !== null) {
-      const cat = categories.find((c) => c.id === selectedCategoryId);
-      if (!cat?.isBuiltin) {
-        window.category
-          .imageIds(selectedCategoryId)
-          .then((ids) => setCategoryImageIds(new Set(ids)))
-          .catch(() => {});
-      }
-    }
-  }, [selectedCategoryId, categories]);
+    schedulePageRefresh(0);
+  }, [schedulePageRefresh]);
 
-  const similarImages = useMemo(() => {
-    if (!selectedImage) return [];
-    const imageId = parseInt(selectedImage.id);
+  useEffect(() => {
+    if (!selectedImage) {
+      setSimilarImages([]);
+      return;
+    }
+    const imageId = parseInt(selectedImage.id, 10);
     const group = similarGroups.find((g) => g.imageIds.includes(imageId));
-    if (!group) return [];
-    return group.imageIds
-      .map((id) => images.find((img) => img.id === String(id)))
-      .filter(Boolean) as ImageData[];
-  }, [selectedImage, similarGroups, images]);
+    if (!group || group.imageIds.length === 0) {
+      setSimilarImages([]);
+      return;
+    }
+    let cancelled = false;
+    window.image
+      .listByIds(group.imageIds)
+      .then((rows) => {
+        if (cancelled) return;
+        setSimilarImages(rows.map(rowToImageData));
+      })
+      .catch(() => {
+        if (!cancelled) setSimilarImages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedImage, similarGroups]);
 
   const selectedIndex = useMemo(
     () =>
       selectedImage
-        ? filteredImages.findIndex((img) => img.id === selectedImage.id)
+        ? images.findIndex((img) => img.id === selectedImage.id)
         : -1,
-    [filteredImages, selectedImage],
+    [images, selectedImage],
   );
 
   const handlePrev = useCallback(() => {
-    if (selectedIndex > 0) setSelectedImage(filteredImages[selectedIndex - 1]);
-  }, [filteredImages, selectedIndex]);
+    if (selectedIndex > 0) setSelectedImage(images[selectedIndex - 1]);
+  }, [images, selectedIndex]);
 
   const handleNext = useCallback(() => {
-    if (selectedIndex < filteredImages.length - 1)
-      setSelectedImage(filteredImages[selectedIndex + 1]);
-  }, [filteredImages, selectedIndex]);
+    if (selectedIndex < images.length - 1)
+      setSelectedImage(images[selectedIndex + 1]);
+  }, [images, selectedIndex]);
 
   const handleImageClick = useCallback((image: ImageData) => {
     setSelectedImage(image);
@@ -1018,7 +964,7 @@ export default function App() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* GenerationView - 항상 마운트, CSS로만 숨김 */}
+        {/* GenerationView - ??긽 留덉슫?? CSS濡쒕쭔 ?④? */}
         <div
           className={
             activePanel === "generator"
@@ -1033,7 +979,7 @@ export default function App() {
           />
         </div>
 
-        {/* 갤러리 영역 - 항상 마운트, CSS로만 숨김 */}
+        {/* 媛ㅻ윭由??곸뿭 - ??긽 留덉슫?? CSS濡쒕쭔 ?④? */}
         <div
           className={
             activePanel !== "generator"
@@ -1087,14 +1033,14 @@ export default function App() {
                   scheduleAnalysis(0);
                 } catch (e: unknown) {
                   toast.error(
-                    `해시 초기화 실패: ${e instanceof Error ? e.message : String(e)}`,
+                    `?댁떆 珥덇린???ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
                   );
                 }
               }}
               isAnalyzing={isAnalyzing}
             />
           )}
-          {/* ImageGallery - 항상 마운트, 설정 화면일 때만 숨김 */}
+          {/* ImageGallery - ??긽 留덉슫?? ?ㅼ젙 ?붾㈃???뚮쭔 ?④? */}
           <div
             className={
               activePanel === "settings"
@@ -1103,7 +1049,7 @@ export default function App() {
             }
           >
             <ImageGallery
-              images={filteredImages}
+              images={images}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               sortBy={sortBy}
@@ -1116,8 +1062,11 @@ export default function App() {
               onChangeCategory={handleChangeCategory}
               onBulkChangeCategory={handleBulkChangeCategory}
               onSendToGenerator={handleSendToGenerator}
-              totalCount={filteredImages.length}
+              totalCount={totalImageCount}
               pageSize={settings.pageSize}
+              page={galleryPage}
+              totalPages={galleryTotalPages}
+              onPageChange={setGalleryPage}
             />
           </div>
         </div>
@@ -1138,17 +1087,17 @@ export default function App() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>스캔 취소</DialogTitle>
+            <DialogTitle>?ㅼ틪 痍⑥냼</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            진행 중인 폴더 스캔을 취소할까요?
+            吏꾪뻾 以묒씤 ?대뜑 ?ㅼ틪??痍⑥냼?좉퉴??
           </p>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">계속 스캔</Button>
+              <Button variant="ghost">怨꾩냽 ?ㅼ틪</Button>
             </DialogClose>
             <Button variant="destructive" onClick={confirmCancelScan}>
-              취소
+              痍⑥냼
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1162,17 +1111,17 @@ export default function App() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>이미지 삭제</DialogTitle>
+            <DialogTitle>?대?吏 ??젣</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            정말로 이 이미지를 삭제할까요? 파일이 휴지통으로 이동됩니다.
+            ?뺣쭚濡????대?吏瑜???젣?좉퉴?? ?뚯씪???댁??듭쑝濡??대룞?⑸땲??
           </p>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">취소</Button>
+              <Button variant="ghost">痍⑥냼</Button>
             </DialogClose>
             <Button variant="destructive" onClick={handleConfirmDelete}>
-              삭제
+              ??젣
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1184,11 +1133,9 @@ export default function App() {
         onClose={() => setIsDetailOpen(false)}
         onToggleFavorite={handleToggleFavorite}
         onCopyPrompt={handleCopyPrompt}
-        prevImage={selectedIndex > 0 ? filteredImages[selectedIndex - 1] : null}
+        prevImage={selectedIndex > 0 ? images[selectedIndex - 1] : null}
         nextImage={
-          selectedIndex < filteredImages.length - 1
-            ? filteredImages[selectedIndex + 1]
-            : null
+          selectedIndex < images.length - 1 ? images[selectedIndex + 1] : null
         }
         onPrev={handlePrev}
         onNext={handleNext}

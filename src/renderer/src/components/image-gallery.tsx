@@ -25,8 +25,8 @@ interface ImageGalleryProps {
   images: ImageData[];
   viewMode: "grid" | "compact" | "list";
   onViewModeChange: (mode: "grid" | "compact" | "list") => void;
-  sortBy: string;
-  onSortChange: (sort: string) => void;
+  sortBy: "recent" | "oldest" | "favorites" | "name";
+  onSortChange: (sort: "recent" | "oldest" | "favorites" | "name") => void;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
   onImageClick: (image: ImageData) => void;
@@ -37,6 +37,9 @@ interface ImageGalleryProps {
   onSendToGenerator?: (image: ImageData) => void;
   totalCount: number;
   pageSize?: number;
+  page?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
 }
 
 export const ImageGallery = memo(function ImageGallery({
@@ -55,22 +58,33 @@ export const ImageGallery = memo(function ImageGallery({
   onSendToGenerator,
   totalCount,
   pageSize = 50,
+  page,
+  totalPages,
+  onPageChange,
 }: ImageGalleryProps) {
-  const [page, setPage] = useState(1);
+  const [internalPage, setInternalPage] = useState(1);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const controlledPagination =
+    typeof page === "number" &&
+    typeof totalPages === "number" &&
+    typeof onPageChange === "function";
+  const currentPage = controlledPagination ? page : internalPage;
+  const computedTotalPages = controlledPagination
+    ? Math.max(1, totalPages)
+    : Math.max(1, Math.ceil(images.length / pageSize));
 
   useEffect(() => {
-    setPage(1);
-  }, [images]);
+    if (!controlledPagination) setInternalPage(1);
+  }, [images, controlledPagination]);
 
   useEffect(() => {
     const viewport = scrollRef.current?.querySelector(
       "[data-radix-scroll-area-viewport]",
     );
     if (viewport) viewport.scrollTop = 0;
-  }, [page]);
+  }, [currentPage]);
 
   useEffect(() => {
     const imageIdSet = new Set(images.map((img) => img.id));
@@ -91,16 +105,25 @@ export const ImageGallery = memo(function ImageGallery({
     }
   }, [selectionMode]);
 
-  const totalPages = Math.max(1, Math.ceil(images.length / pageSize));
-
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (currentPage <= computedTotalPages) return;
+    if (controlledPagination) onPageChange?.(computedTotalPages);
+    else setInternalPage(computedTotalPages);
+  }, [computedTotalPages, controlledPagination, currentPage, onPageChange]);
 
   const paged = useMemo(
-    () => images.slice((page - 1) * pageSize, page * pageSize),
-    [images, page, pageSize],
+    () =>
+      controlledPagination
+        ? images
+        : images.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [images, controlledPagination, currentPage, pageSize],
   );
+
+  const updatePage = (nextPage: number) => {
+    const clamped = Math.max(1, Math.min(computedTotalPages, nextPage));
+    if (controlledPagination) onPageChange?.(clamped);
+    else setInternalPage(clamped);
+  };
 
   const selectedCount = selectedIds.size;
   const allFilteredSelected =
@@ -146,7 +169,6 @@ export const ImageGallery = memo(function ImageGallery({
 
   return (
     <div className="relative flex-1 flex flex-col">
-
       <div className="flex flex-col gap-3 p-4 border-b border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
@@ -321,27 +343,27 @@ export const ImageGallery = memo(function ImageGallery({
         </div>
       )}
 
-      {totalPages > 1 && (
+      {computedTotalPages > 1 && (
         <div className="flex items-center justify-center gap-3 p-4 border-t border-border">
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            disabled={page === 1}
-            onClick={() => setPage((p) => p - 1)}
+            disabled={currentPage === 1}
+            onClick={() => updatePage(currentPage - 1)}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm text-muted-foreground">
-            <span className="text-foreground font-medium">{page}</span> /{" "}
-            {totalPages}
+            <span className="text-foreground font-medium">{currentPage}</span> /{" "}
+            {computedTotalPages}
           </span>
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            disabled={page === totalPages}
-            onClick={() => setPage((p) => p + 1)}
+            disabled={currentPage === computedTotalPages}
+            onClick={() => updatePage(currentPage + 1)}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
