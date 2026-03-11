@@ -3,6 +3,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Info,
   X,
   Loader2,
   ImagePlus,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AdvancedSearchModal } from "@/components/advanced-search-modal";
+import { AppInfoDialog } from "@/components/app-info-dialog";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { filterLabel, filterKey } from "@/lib/advanced-filter";
 
@@ -68,6 +70,7 @@ export function Header({
     hashProgress ??
     (hasSearchStatsProgress ? searchStatsProgress : null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
 
   const commitSearch = () => onSearchChange(inputValue);
@@ -278,6 +281,19 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>설정</TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setAboutOpen(true)}
+                >
+                  <Info className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>프로그램 정보</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </TooltipProvider>
@@ -290,6 +306,7 @@ export function Header({
         availableResolutions={availableResolutions}
         availableModels={availableModels}
       />
+      <AppInfoDialog open={aboutOpen} onOpenChange={setAboutOpen} />
     </header>
   );
 }

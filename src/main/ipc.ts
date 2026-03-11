@@ -1,10 +1,20 @@
-import { ipcMain, dialog, shell } from "electron";
+import { app, ipcMain, dialog, shell } from "electron";
 import { unlink, readFile } from "fs/promises";
 import { readImageMeta, readNaiMetaFromBuffer } from "./lib/nai";
 import { readWebuiMetaFromBuffer } from "./lib/webui";
 import { bridge } from "./bridge";
 
 export function registerIpcHandlers(): void {
+  ipcMain.handle("app:getInfo", () => ({
+    appName: app.getName(),
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron ?? "unknown",
+    chromeVersion: process.versions.chrome ?? "unknown",
+    nodeVersion: process.versions.node ?? "unknown",
+    platform: process.platform,
+    arch: process.arch,
+  }));
+
   // ── File/system handlers (must stay in main process) ───────────────────────
   ipcMain.handle("readNaiMeta", (_, filePath: string) =>
     readImageMeta(filePath),

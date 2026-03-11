@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+contextBridge.exposeInMainWorld("appInfo", {
+  get: () => ipcRenderer.invoke("app:getInfo"),
+});
+
 contextBridge.exposeInMainWorld("image", {
   readNaiMeta: (path: string) => ipcRenderer.invoke("readNaiMeta", path),
   readMetaFromBuffer: (data: Uint8Array) =>

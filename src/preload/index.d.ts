@@ -146,8 +146,21 @@ export type GenerateParams = {
   preciseRef?: { imageData: Uint8Array; fidelity: number };
 };
 
+export type AppInfo = {
+  appName: string;
+  appVersion: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+};
+
 declare global {
   interface Window {
+    appInfo: {
+      get: () => Promise<AppInfo>;
+    };
     promptBuilder: {
       listGroups: () => Promise<PromptGroup[]>;
       createGroup: (name: string, type: string) => Promise<PromptGroup>;
