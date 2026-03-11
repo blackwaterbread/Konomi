@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import type { NaiConfig, GenerateParams } from "@preload/index.d";
 import type { NovelAIMeta } from "@/types/nai";
 import type { ImageData } from "@/components/image-card";
+import { PromptInput } from "@/components/prompt-input";
 
 type DropItem =
   | { kind: "file"; file: File; name: string }
@@ -86,8 +87,6 @@ const SAMPLERS = [
 
 const NOISE_SCHEDULES = ["karras", "exponential", "polyexponential", "native"];
 
-const TEXTAREA_CLS =
-  "w-full bg-secondary/60 border border-border/60 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors resize-y";
 const INPUT_CLS =
   "w-full bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors";
 
@@ -877,20 +876,20 @@ export function GenerationView({
                   Negative Prompt
                 </button>
               </div>
-              <textarea
+              <PromptInput
                 value={promptInputMode === "prompt" ? prompt : negativePrompt}
-                onChange={(e) =>
+                onChange={(nextValue) =>
                   promptInputMode === "prompt"
-                    ? setPrompt(e.target.value)
-                    : setNegativePrompt(e.target.value)
+                    ? setPrompt(nextValue)
+                    : setNegativePrompt(nextValue)
                 }
                 placeholder={
                   promptInputMode === "prompt"
                     ? "1girl, beautiful, masterpiece, ..."
                     : "nsfw, lowres, bad anatomy, ..."
                 }
-                rows={8}
-                className={TEXTAREA_CLS}
+                minHeight={180}
+                maxHeight={460}
               />
             </div>
 
@@ -998,19 +997,19 @@ export function GenerationView({
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <textarea
+                      <PromptInput
                         value={
                           character.inputMode === "prompt"
                             ? character.prompt
                             : character.negativePrompt
                         }
-                        onChange={(e) =>
+                        onChange={(nextValue) =>
                           setCharacterPrompts((prev) =>
                             prev.map((item, idx) => {
                               if (idx !== i) return item;
                               return item.inputMode === "prompt"
-                                ? { ...item, prompt: e.target.value }
-                                : { ...item, negativePrompt: e.target.value };
+                                ? { ...item, prompt: nextValue }
+                                : { ...item, negativePrompt: nextValue };
                             }),
                           )
                         }
@@ -1019,8 +1018,9 @@ export function GenerationView({
                             ? `캐릭터 ${i + 1} 프롬프트`
                             : `캐릭터 ${i + 1} 네거티브 프롬프트`
                         }
-                        rows={4}
-                        className={cn(TEXTAREA_CLS, "min-w-0")}
+                        minHeight={110}
+                        maxHeight={300}
+                        className="min-w-0"
                       />
                     </div>
                   ))}

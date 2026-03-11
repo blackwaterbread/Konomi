@@ -1,31 +1,29 @@
 import { useEffect, useRef, useState, type ClipboardEvent } from "react";
-import { Copy } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import type { PromptToken } from "@/lib/token";
-import { parseRawToken, tokenToRawString } from "@/lib/token";
+import { tokenToRawString } from "@/lib/token";
 import { TokenChip } from "./token-chip";
 
 interface TokenContainerProps {
   tokens: PromptToken[];
   isEditable?: boolean;
+  isDndEnabled?: boolean;
   onTokensChange?: (tokens: PromptToken[]) => void;
 }
 
 export function TokenContainer({
   tokens,
   isEditable = false,
+  isDndEnabled = false,
   onTokensChange,
 }: TokenContainerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [localTokens, setLocalTokens] = useState<PromptToken[]>(tokens);
-  const isControlled = typeof onTokensChange === "function";
-
-  useEffect(() => {
-    setLocalTokens(tokens);
-  }, [tokens]);
-
-  const activeTokens = isControlled ? tokens : localTokens;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   useEffect(() => {
     if (!copiedKey) return;
@@ -33,12 +31,8 @@ export function TokenContainer({
     return () => window.clearTimeout(timeout);
   }, [copiedKey]);
 
-  const pushTokens = (next: PromptToken[]) => {
-    if (!isControlled) setLocalTokens(next);
-    onTokensChange?.(next);
-  };
-
   const handleCopy = async (key: string, token: PromptToken) => {
+    if (isEditable) return;
     const raw = tokenToRawString(token);
     try {
       await navigator.clipboard.writeText(raw);
@@ -56,6 +50,25 @@ export function TokenContainer({
   const handleChipCopy = (key: string, token: PromptToken) => {
     if (hasSelection()) return;
     void handleCopy(key, token);
+  };
+
+  const handleChipChange = (index: number, nextToken: PromptToken) => {
+    if (!onTokensChange) return;
+    onTokensChange(tokens.map((token, i) => (i === index ? nextToken : token)));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!isDndEnabled || !onTokensChange) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeIndex = Number(String(active.id).replace("token-", ""));
+    const overIndex = Number(String(over.id).replace("token-", ""));
+    if (!Number.isFinite(activeIndex) || !Number.isFinite(overIndex)) return;
+    if (activeIndex < 0 || overIndex < 0) return;
+    if (activeIndex >= tokens.length || overIndex >= tokens.length) return;
+
+    onTokensChange(arrayMove(tokens, activeIndex, overIndex));
   };
 
   const handleCopySelectedRaw = (e: ClipboardEvent<HTMLDivElement>) => {
@@ -86,88 +99,49 @@ export function TokenContainer({
     e.clipboardData.setData("text", text);
   };
 
-  if (isEditable) {
+  if (tokens.length === 0) {
+    return <span className="text-xs text-muted-foreground/70">None</span>;
+  }
+
+  const chips = tokens.map((token, i) => {
+    const key = `view-${i}`;
+    const raw = tokenToRawString(token);
     return (
-      <div className="space-y-1.5">
-        {activeTokens.map((token, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-1.5 py-1"
-          >
-            <input
-              value={tokenToRawString(token)}
-              onChange={(e) =>
-                pushTokens(
-                  activeTokens.map((x, idx) =>
-                    idx === i ? parseRawToken(e.target.value) : x,
-                  ),
-                )
-              }
-              placeholder="tag"
-              className="flex-1 min-w-0 bg-transparent text-xs text-white/80 outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => handleCopy(`editable-${i}`, token)}
-              className={cn(
-                "h-6 px-1.5 text-[10px] rounded border transition-colors cursor-text",
-                copiedKey === `editable-${i}`
-                  ? "border-emerald-400/40 text-emerald-300 bg-emerald-500/10"
-                  : "border-white/15 text-white/50 hover:text-white/80 hover:border-white/30",
-              )}
-            >
-              <span className="flex items-center gap-1">
-                <span>Copy</span>
-                {copiedKey === `editable-${i}` ? (
-                  <Copy className="h-3 w-3 text-emerald-300" />
-                ) : null}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                pushTokens(activeTokens.filter((_, idx) => idx !== i))
-              }
-              className="h-6 px-1.5 text-[10px] rounded border border-rose-500/20 text-rose-300/70 hover:text-rose-200 hover:bg-rose-500/10 transition-colors"
-            >
-              Del
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => pushTokens([...activeTokens, parseRawToken("")])}
-          className="h-6 px-2 text-[10px] rounded border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors"
-        >
-          + Add Tag
-        </button>
-      </div>
+      <TokenChip
+        key={key}
+        token={token}
+        raw={raw}
+        isEditable={isEditable}
+        copied={copiedKey === key}
+        onCopy={() => handleChipCopy(key, token)}
+        onChange={(nextToken) => handleChipChange(i, nextToken)}
+        isSortable={isDndEnabled}
+        sortableId={key}
+        sortableDisabled={!isDndEnabled}
+      />
     );
-  }
+  });
 
-  if (activeTokens.length === 0) {
-    return <span className="text-xs text-white/30">None</span>;
-  }
-
-  return (
+  const content = (
     <div
       ref={containerRef}
       onCopy={handleCopySelectedRaw}
       className="flex flex-wrap gap-1"
     >
-      {activeTokens.map((token, i) => {
-        const key = `view-${i}`;
-        const raw = tokenToRawString(token);
-        return (
-          <TokenChip
-            key={i}
-            token={token}
-            raw={raw}
-            copied={copiedKey === key}
-            onCopy={() => handleChipCopy(key, token)}
-          />
-        );
-      })}
+      {chips}
     </div>
+  );
+
+  if (!isDndEnabled) return content;
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <SortableContext
+        items={tokens.map((_, i) => `view-${i}`)}
+        strategy={rectSortingStrategy}
+      >
+        {content}
+      </SortableContext>
+    </DndContext>
   );
 }
