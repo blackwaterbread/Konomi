@@ -1,4 +1,4 @@
-﻿import {
+import {
   useState,
   useMemo,
   useCallback,
@@ -409,7 +409,7 @@ export default function App() {
     } catch (e: unknown) {
       if (requestId !== listRequestSeqRef.current) return;
       toast.error(
-        `???筌왖 筌뤴뫖以?嚥≪뮆諭???쎈솭: ${e instanceof Error ? e.message : String(e)}`,
+        `이미지 목록 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }, [galleryPage, listBaseQuery]);
@@ -485,7 +485,7 @@ export default function App() {
           error: e instanceof Error ? e.message : String(e),
         });
         toast.error(
-          `?대?吏 遺꾩꽍 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+          `이미지 분석 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
       } finally {
         analyzingRef.current = false;
@@ -531,7 +531,7 @@ export default function App() {
             error: e instanceof Error ? e.message : String(e),
           });
           toast.error(
-            `?ㅼ틪 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+            `스캔 실패: ${e instanceof Error ? e.message : String(e)}`,
           );
         })
         .finally(() => {
@@ -615,7 +615,7 @@ export default function App() {
       .then((loaded) => setCategories(applyCategoryOrder(loaded)))
       .catch((e: unknown) =>
         toast.error(
-          `移댄뀒怨좊━ 濡쒕뱶 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+          `카테고리 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
 
@@ -624,7 +624,7 @@ export default function App() {
     try {
       window.image.watch();
     } catch {
-      /* 媛먯떆 ?쒖옉 ?ㅽ뙣 ??議곗슜??臾댁떆 */
+      /* 감시 시작 실패는 조용히 무시 */
     }
 
     return () => {
@@ -761,7 +761,7 @@ export default function App() {
       )
       .catch((e: unknown) =>
         toast.error(
-          `移댄뀒怨좊━ ?앹꽦 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+          `카테고리 생성 실패: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
   }, []);
@@ -775,7 +775,7 @@ export default function App() {
       )
       .catch((e: unknown) =>
         toast.error(
-          `移댄뀒怨좊━ ?대쫫 蹂寃??ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+          `카테고리 이름 변경 실패: ${e instanceof Error ? e.message : String(e)}`,
         ),
       );
   }, []);
@@ -799,7 +799,7 @@ export default function App() {
         })
         .catch((e: unknown) =>
           toast.error(
-            `移댄뀒怨좊━ ??젣 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+            `카테고리 삭제 실패: ${e instanceof Error ? e.message : String(e)}`,
           ),
         );
     },
@@ -816,7 +816,7 @@ export default function App() {
         })
         .catch((e: unknown) =>
           toast.error(
-            `?대?吏 異붽? ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+            `이미지 추가 실패: ${e instanceof Error ? e.message : String(e)}`,
           ),
         );
     },
@@ -834,7 +834,7 @@ export default function App() {
           .then(() => schedulePageRefresh(0))
           .catch((e: unknown) => {
             toast.error(
-              `利먭꺼李얘린 ?ㅼ젙 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+              `즐겨찾기 설정 실패: ${e instanceof Error ? e.message : String(e)}`,
             );
           });
         return prev.map((i) =>
@@ -851,7 +851,7 @@ export default function App() {
   const handleCopyPrompt = useCallback((prompt: string) => {
     navigator.clipboard
       .writeText(prompt)
-      .catch(() => toast.error("?대┰蹂대뱶 蹂듭궗 ?ㅽ뙣"));
+      .catch(() => toast.error("클립보드 복사 실패"));
   }, []);
 
   const handleReveal = useCallback((path: string) => {
@@ -869,7 +869,7 @@ export default function App() {
     if (img) {
       window.image.delete(img.path).catch((e: unknown) => {
         toast.error(
-          `?대?吏 ??젣 ?ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+          `이미지 삭제 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
       });
       if (selectedImage?.id === deleteConfirmId) {
@@ -1011,7 +1011,7 @@ export default function App() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* GenerationView - ??긽 留덉슫?? CSS濡쒕쭔 ?④? */}
+        {/* GenerationView - 항상 마운트하고 CSS로만 표시 전환 */}
         <div
           className={
             activePanel === "generator"
@@ -1026,7 +1026,7 @@ export default function App() {
           />
         </div>
 
-        {/* 媛ㅻ윭由??곸뿭 - ??긽 留덉슫?? CSS濡쒕쭔 ?④? */}
+        {/* 갤러리 영역 - 항상 마운트하고 CSS로만 표시 전환 */}
         <div
           className={
             activePanel !== "generator"
@@ -1080,14 +1080,14 @@ export default function App() {
                   scheduleAnalysis(0);
                 } catch (e: unknown) {
                   toast.error(
-                    `?댁떆 珥덇린???ㅽ뙣: ${e instanceof Error ? e.message : String(e)}`,
+                    `해시 초기화 실패: ${e instanceof Error ? e.message : String(e)}`,
                   );
                 }
               }}
               isAnalyzing={isAnalyzing}
             />
           )}
-          {/* ImageGallery - ??긽 留덉슫?? ?ㅼ젙 ?붾㈃???뚮쭔 ?④? */}
+          {/* ImageGallery - 항상 마운트하고 설정 화면에서만 숨김 */}
           <div
             className={
               activePanel === "settings"
@@ -1134,17 +1134,17 @@ export default function App() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>?ㅼ틪 痍⑥냼</DialogTitle>
+            <DialogTitle>스캔 취소</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            吏꾪뻾 以묒씤 ?대뜑 ?ㅼ틪??痍⑥냼?좉퉴??
+            진행 중인 폴더 스캔을 취소할까요?
           </p>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">怨꾩냽 ?ㅼ틪</Button>
+              <Button variant="ghost">계속 스캔</Button>
             </DialogClose>
             <Button variant="destructive" onClick={confirmCancelScan}>
-              痍⑥냼
+              취소
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1158,17 +1158,17 @@ export default function App() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>?대?吏 ??젣</DialogTitle>
+            <DialogTitle>이미지 삭제</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ?뺣쭚濡????대?吏瑜???젣?좉퉴?? ?뚯씪???댁??듭쑝濡??대룞?⑸땲??
+            정말로 이 이미지를 삭제할까요? 파일은 휴지통으로 이동됩니다.
           </p>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">痍⑥냼</Button>
+              <Button variant="ghost">취소</Button>
             </DialogClose>
             <Button variant="destructive" onClick={handleConfirmDelete}>
-              ??젣
+              삭제
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -185,7 +185,7 @@ export function AdvancedSearchModal({
                       onClick={() => toggleFilter(f)}
                       className={chipClass(isActive(f))}
                     >
-                      {m || "(모델 없음)"}
+                      {m || "(모든 모델)"}
                     </button>
                   );
                 })}

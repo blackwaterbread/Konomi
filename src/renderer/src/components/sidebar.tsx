@@ -1,4 +1,4 @@
-﻿import {
+import {
   Folder,
   Clock,
   Plus,
