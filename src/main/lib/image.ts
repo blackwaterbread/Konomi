@@ -804,19 +804,18 @@ export async function listImagesPage(
       if (rankA !== rankB) return rankA - rankB;
       return a.id - b.id;
     });
-    const totalCount = sorted.length;
-    const totalPages = Math.max(1, Math.ceil(totalCount / normalized.pageSize));
-    const pageRows = sorted.slice(offset, offset + normalized.pageSize);
-    if (pageRows.length === 0) {
+    const sampledRows = sorted.slice(0, normalized.pageSize);
+    const sampledCount = sampledRows.length;
+    if (sampledCount === 0) {
       return {
         rows: [],
-        totalCount,
+        totalCount: 0,
         page: normalized.page,
         pageSize: normalized.pageSize,
-        totalPages,
+        totalPages: 1,
       };
     }
-    const ids = pageRows.map((row) => row.id);
+    const ids = sampledRows.map((row) => row.id);
     const rows = (await db.image.findMany({
       where: { id: { in: ids } },
     })) as unknown as ImageRow[];
@@ -826,10 +825,10 @@ export async function listImagesPage(
       .filter((row): row is ImageRow => row !== undefined);
     return {
       rows: orderedRows,
-      totalCount,
+      totalCount: sampledCount,
       page: normalized.page,
       pageSize: normalized.pageSize,
-      totalPages,
+      totalPages: 1,
     };
   }
 
