@@ -150,8 +150,26 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:computeHashes", () =>
     bridge.request("image:computeHashes"),
   );
-  ipcMain.handle("image:similarGroups", (_, threshold: number) =>
-    bridge.request("image:similarGroups", { threshold }),
+  ipcMain.handle(
+    "image:similarGroups",
+    (_, threshold: number, jaccardThreshold?: number) =>
+      bridge.request("image:similarGroups", { threshold, jaccardThreshold }),
+  );
+  ipcMain.handle(
+    "image:similarReasons",
+    (
+      _,
+      imageId: number,
+      candidateImageIds: number[],
+      threshold: number,
+      jaccardThreshold?: number,
+    ) =>
+      bridge.request("image:similarReasons", {
+        imageId,
+        candidateImageIds,
+        threshold,
+        jaccardThreshold,
+      }),
   );
   ipcMain.handle("image:resetHashes", () =>
     bridge.request("image:resetHashes"),

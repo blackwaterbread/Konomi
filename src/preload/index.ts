@@ -96,8 +96,21 @@ contextBridge.exposeInMainWorld("image", {
   delete: (path: string) => ipcRenderer.invoke("image:delete", path),
   computeHashes: () => ipcRenderer.invoke("image:computeHashes"),
   resetHashes: () => ipcRenderer.invoke("image:resetHashes"),
-  similarGroups: (threshold: number) =>
-    ipcRenderer.invoke("image:similarGroups", threshold),
+  similarGroups: (threshold: number, jaccardThreshold?: number) =>
+    ipcRenderer.invoke("image:similarGroups", threshold, jaccardThreshold),
+  similarReasons: (
+    imageId: number,
+    candidateImageIds: number[],
+    threshold: number,
+    jaccardThreshold?: number,
+  ) =>
+    ipcRenderer.invoke(
+      "image:similarReasons",
+      imageId,
+      candidateImageIds,
+      threshold,
+      jaccardThreshold,
+    ),
   onHashProgress: (cb: (data: { done: number; total: number }) => void) => {
     const handler = (
       _: Electron.IpcRendererEvent,
@@ -105,6 +118,17 @@ contextBridge.exposeInMainWorld("image", {
     ) => cb(data);
     ipcRenderer.on("image:hashProgress", handler);
     return () => ipcRenderer.removeListener("image:hashProgress", handler);
+  },
+  onSimilarityProgress: (
+    cb: (data: { done: number; total: number }) => void,
+  ) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { done: number; total: number },
+    ) => cb(data);
+    ipcRenderer.on("image:similarityProgress", handler);
+    return () =>
+      ipcRenderer.removeListener("image:similarityProgress", handler);
   },
   onScanProgress: (cb: (data: { done: number; total: number }) => void) => {
     const handler = (

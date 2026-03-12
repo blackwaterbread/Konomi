@@ -13,6 +13,10 @@ import {
   type ImageSearchStatSource,
   type ImageRow,
 } from "./image";
+import {
+  deleteSimilarityCacheForImageIds,
+  refreshSimilarityCacheForImageIds,
+} from "./phash";
 
 const DEBOUNCE_MS = 500;
 
@@ -136,6 +140,7 @@ class FolderWatcher {
         await db.image.deleteMany({
           where: { id: { in: chunk.map((row) => row.id) } },
         });
+        await deleteSimilarityCacheForImageIds(chunk.map((row) => row.id));
         await decrementImageSearchStatsForRows(chunk, emitSearchStatsProgress);
       }
       if (!this.sender.isDestroyed()) {
@@ -167,6 +172,7 @@ class FolderWatcher {
       const existing = await db.image.findUnique({ where: { path: filePath } });
       if (existing && !this.sender.isDestroyed()) {
         await db.image.delete({ where: { path: filePath } });
+        await deleteSimilarityCacheForImageIds([existing.id]);
         await applyImageSearchStatsMutation(
           existing,
           null,
@@ -244,6 +250,7 @@ class FolderWatcher {
         image as ImageSearchStatSource,
         emitSearchStatsProgress,
       );
+      await refreshSimilarityCacheForImageIds([image.id]);
 
       if (!this.sender.isDestroyed()) {
         this.sender.send("image:batch", [image as ImageRow]);

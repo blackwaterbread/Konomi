@@ -7,6 +7,7 @@ const NOISY_EVENTS = new Set([
   "image:batch",
   "image:scanProgress",
   "image:hashProgress",
+  "image:similarityProgress",
   "image:scanFolder",
   "image:searchStatsProgress",
 ]);

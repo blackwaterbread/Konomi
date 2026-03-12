@@ -23,7 +23,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useSettings } from "@/hooks/useSettings";
+import { useSettings, type Settings } from "@/hooks/useSettings";
 import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import type { ImageData } from "@/components/image-card";
 import type { PromptToken } from "@/lib/token";
@@ -31,6 +31,7 @@ import type {
   ImageRow,
   Category,
   SimilarGroup,
+  SimilarityReason,
   ImageListQuery,
 } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
@@ -39,6 +40,23 @@ import { dispatchSearchInputAppendTag } from "@/lib/search-input-event";
 
 const log = createLogger("renderer/App");
 const CATEGORY_ORDER_STORAGE_KEY = "konomi-category-order";
+const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
+  "similarityThreshold",
+  "useAdvancedSimilarityThresholds",
+  "visualSimilarityThreshold",
+  "promptSimilarityThreshold",
+]);
+
+function isSimilaritySettingsPatch(patch: Partial<Settings>): boolean {
+  return (Object.keys(patch) as Array<keyof Settings>).some((key) =>
+    SIMILARITY_SETTING_KEYS.has(key),
+  );
+}
+
+function includesSimilaritySettingsReset(keys?: (keyof Settings)[]): boolean {
+  if (!keys || keys.length === 0) return true;
+  return keys.some((key) => SIMILARITY_SETTING_KEYS.has(key));
+}
 
 function parseTokens(json: string | undefined): PromptToken[] {
   try {
@@ -257,6 +275,10 @@ export default function App() {
     done: number;
     total: number;
   } | null>(null);
+  const [similarityProgress, setSimilarityProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [similarGroups, setSimilarGroups] = useState<SimilarGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
@@ -287,6 +309,9 @@ export default function App() {
   const [pendingGeneratorImport, setPendingGeneratorImport] =
     useState<ImageData | null>(null);
   const [similarImages, setSimilarImages] = useState<ImageData[]>([]);
+  const [similarReasons, setSimilarReasons] = useState<
+    Record<string, SimilarityReason>
+  >({});
   const [appendPromptTagRequest, setAppendPromptTagRequest] = useState<{
     id: number;
     tag: string;
@@ -309,12 +334,45 @@ export default function App() {
   const analyzingRef = useRef(false);
   const rollbackRequestSeqRef = useRef(0);
   const appendPromptTagRequestSeqRef = useRef(0);
-  const similarityThresholdRef = useRef(settings.similarityThreshold);
-  const mountedRef = useRef(false);
+  const visualThresholdRef = useRef(settings.similarityThreshold);
+  const promptThresholdRef = useRef<number | undefined>(undefined);
+  const pendingSimilarityRecalcRef = useRef(false);
+  const analysisPromiseRef = useRef<Promise<boolean> | null>(null);
+  const suspendAutoAnalysisRef = useRef(false);
 
   useEffect(() => {
-    similarityThresholdRef.current = settings.similarityThreshold;
-  }, [settings.similarityThreshold]);
+    visualThresholdRef.current = settings.useAdvancedSimilarityThresholds
+      ? settings.visualSimilarityThreshold
+      : settings.similarityThreshold;
+    promptThresholdRef.current = settings.useAdvancedSimilarityThresholds
+      ? settings.promptSimilarityThreshold
+      : undefined;
+  }, [
+    settings.similarityThreshold,
+    settings.useAdvancedSimilarityThresholds,
+    settings.visualSimilarityThreshold,
+    settings.promptSimilarityThreshold,
+  ]);
+
+  const handleSettingsUpdate = useCallback(
+    (patch: Partial<Settings>) => {
+      updateSettings(patch);
+      if (isSimilaritySettingsPatch(patch)) {
+        pendingSimilarityRecalcRef.current = true;
+      }
+    },
+    [updateSettings],
+  );
+
+  const handleSettingsReset = useCallback(
+    (keys?: (keyof Settings)[]) => {
+      resetSettings(keys);
+      if (includesSimilaritySettingsReset(keys)) {
+        pendingSimilarityRecalcRef.current = true;
+      }
+    },
+    [resetSettings],
+  );
 
   useEffect(() => {
     const theme = settings.theme ?? "dark";
@@ -462,29 +520,31 @@ export default function App() {
     [loadSearchPresetStats],
   );
 
-  const scheduleAnalysis = useCallback((delay = 3000) => {
-    if (analyzeTimerRef.current) clearTimeout(analyzeTimerRef.current);
-    analyzeTimerRef.current = setTimeout(async () => {
-      if (scanningRef.current) {
-        log.debug("Analysis delayed because scan is running");
-        scheduleAnalysis(1000);
-        return;
-      }
+  const runAnalysisNow = useCallback((): Promise<boolean> => {
+    if (analysisPromiseRef.current) return analysisPromiseRef.current;
+
+    const run = (async (): Promise<boolean> => {
+      if (scanningRef.current) return false;
+
       const startedAt = Date.now();
-      log.info("Analysis started", { delayMs: delay });
+      log.info("Analysis started");
       analyzingRef.current = true;
       setIsAnalyzing(true);
       setHashProgress(null);
+      setSimilarityProgress(null);
       try {
         await window.image.computeHashes();
         const groups = await window.image.similarGroups(
-          similarityThresholdRef.current,
+          visualThresholdRef.current,
+          promptThresholdRef.current,
         );
         setSimilarGroups(groups);
+        pendingSimilarityRecalcRef.current = false;
         log.info("Analysis completed", {
           elapsedMs: Date.now() - startedAt,
           groups: groups.length,
         });
+        return true;
       } catch (e: unknown) {
         log.error("Analysis failed", {
           elapsedMs: Date.now() - startedAt,
@@ -493,13 +553,66 @@ export default function App() {
         toast.error(
           `이미지 분석 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
+        return false;
       } finally {
         analyzingRef.current = false;
         setHashProgress(null);
+        setSimilarityProgress(null);
         setIsAnalyzing(false);
+        analysisPromiseRef.current = null;
       }
-    }, delay);
+    })();
+
+    analysisPromiseRef.current = run;
+    return run;
   }, []);
+
+  const scheduleAnalysis = useCallback(
+    (delay = 3000) => {
+      if (suspendAutoAnalysisRef.current) return;
+      if (analyzeTimerRef.current) clearTimeout(analyzeTimerRef.current);
+      analyzeTimerRef.current = setTimeout(async () => {
+        if (suspendAutoAnalysisRef.current) return;
+        if (scanningRef.current) {
+          log.debug("Analysis delayed because scan is running");
+          scheduleAnalysis(1000);
+          return;
+        }
+        await runAnalysisNow();
+      }, delay);
+    },
+    [runAnalysisNow],
+  );
+
+  const handlePanelChange = useCallback(
+    async (nextPanel: "gallery" | "generator" | "settings") => {
+      if (nextPanel === activePanel) return;
+
+      const leavingSettings =
+        activePanel === "settings" && nextPanel !== "settings";
+      if (!leavingSettings || !pendingSimilarityRecalcRef.current) {
+        setActivePanel(nextPanel);
+        return;
+      }
+
+      if (scanningRef.current) {
+        toast.error(
+          "스캔이 진행 중입니다. 유사도 재계산을 위해 스캔 완료 후 다시 시도해 주세요.",
+        );
+        return;
+      }
+
+      if (analyzeTimerRef.current) {
+        clearTimeout(analyzeTimerRef.current);
+        analyzeTimerRef.current = null;
+      }
+
+      const ok = await runAnalysisNow();
+      if (!ok) return;
+      setActivePanel(nextPanel);
+    },
+    [activePanel, runAnalysisNow],
+  );
 
   const runScan = useCallback(
     (options?: { detectDuplicates?: boolean }) => {
@@ -554,14 +667,7 @@ export default function App() {
     [loadSearchPresetStats, schedulePageRefresh],
   );
 
-  // Auto-analyze when threshold changes (skip initial mount)
   useEffect(() => {
-    if (!mountedRef.current) return;
-    scheduleAnalysis(500);
-  }, [settings.similarityThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    mountedRef.current = true;
     log.info("App mounted: loading initial data and starting watchers");
 
     const offBatch = window.image.onBatch((rows) => {
@@ -575,6 +681,11 @@ export default function App() {
 
     const offHashProgress = window.image.onHashProgress((data) => {
       if (analyzingRef.current) startTransition(() => setHashProgress(data));
+    });
+    const offSimilarityProgress = window.image.onSimilarityProgress((data) => {
+      if (analyzingRef.current) {
+        startTransition(() => setSimilarityProgress(data));
+      }
     });
     const offScanProgress = window.image.onScanProgress((data) => {
       if (scanningRef.current) startTransition(() => setScanProgress(data));
@@ -652,6 +763,7 @@ export default function App() {
       offBatch();
       offRemoved();
       offHashProgress();
+      offSimilarityProgress();
       offScanProgress();
       offSearchStatsProgress();
       offScanFolder();
@@ -872,16 +984,19 @@ export default function App() {
     });
   }, []);
 
-  const handleAddTagToGenerator = useCallback((tag: string) => {
-    const normalizedTag = tag.trim();
-    if (!normalizedTag) return;
-    appendPromptTagRequestSeqRef.current += 1;
-    setAppendPromptTagRequest({
-      id: appendPromptTagRequestSeqRef.current,
-      tag: normalizedTag,
-    });
-    setActivePanel("generator");
-  }, []);
+  const handleAddTagToGenerator = useCallback(
+    (tag: string) => {
+      const normalizedTag = tag.trim();
+      if (!normalizedTag) return;
+      appendPromptTagRequestSeqRef.current += 1;
+      setAppendPromptTagRequest({
+        id: appendPromptTagRequestSeqRef.current,
+        tag: normalizedTag,
+      });
+      void handlePanelChange("generator");
+    },
+    [handlePanelChange],
+  );
 
   const handleReveal = useCallback((path: string) => {
     window.image.revealInExplorer(path);
@@ -943,10 +1058,13 @@ export default function App() {
     }
   }, [rollbackFolderIds, schedulePageRefresh, waitForScanToStop]);
 
-  const handleSendToGenerator = useCallback((image: ImageData) => {
-    setPendingGeneratorImport(image);
-    setActivePanel("generator");
-  }, []);
+  const handleSendToGenerator = useCallback(
+    (image: ImageData) => {
+      setPendingGeneratorImport(image);
+      void handlePanelChange("generator");
+    },
+    [handlePanelChange],
+  );
 
   const handleChangeCategory = useCallback((image: ImageData) => {
     setBulkCategoryDialogImages(null);
@@ -973,23 +1091,41 @@ export default function App() {
   useEffect(() => {
     if (!selectedImage) {
       setSimilarImages([]);
+      setSimilarReasons({});
       return;
     }
     const imageId = parseInt(selectedImage.id, 10);
     const group = similarGroups.find((g) => g.imageIds.includes(imageId));
     if (!group || group.imageIds.length === 0) {
       setSimilarImages([]);
+      setSimilarReasons({});
       return;
     }
     let cancelled = false;
-    window.image
-      .listByIds(group.imageIds)
-      .then((rows) => {
+    const candidateIds = group.imageIds.filter((id) => id !== imageId);
+    Promise.all([
+      window.image.listByIds(group.imageIds),
+      window.image.similarReasons(
+        imageId,
+        candidateIds,
+        visualThresholdRef.current,
+        promptThresholdRef.current,
+      ),
+    ])
+      .then(([rows, reasons]) => {
         if (cancelled) return;
         setSimilarImages(rows.map(rowToImageData));
+        setSimilarReasons(
+          Object.fromEntries(
+            reasons.map((item) => [String(item.imageId), item.reason]),
+          ),
+        );
       })
       .catch(() => {
-        if (!cancelled) setSimilarImages([]);
+        if (!cancelled) {
+          setSimilarImages([]);
+          setSimilarReasons({});
+        }
       });
     return () => {
       cancelled = true;
@@ -1025,10 +1161,11 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         activePanel={activePanel}
-        onPanelChange={setActivePanel}
+        onPanelChange={(panel) => void handlePanelChange(panel)}
         scanning={scanning}
         isAnalyzing={isAnalyzing}
         hashProgress={hashProgress}
+        similarityProgress={similarityProgress}
         scanProgress={scanProgress}
         searchStatsProgress={searchStatsProgress}
         scanningFolderNames={scanningFolderNames}
@@ -1098,20 +1235,34 @@ export default function App() {
           {activePanel === "settings" && (
             <SettingsView
               settings={settings}
-              onUpdate={updateSettings}
-              onReset={resetSettings}
-              onClose={() => setActivePanel("gallery")}
+              onUpdate={handleSettingsUpdate}
+              onReset={handleSettingsReset}
+              onClose={() => void handlePanelChange("gallery")}
               outputFolder={outputFolder}
               onOutputFolderChange={setOutputFolder}
               onResetOutputFolder={resetOutputFolder}
               onResetHashes={async () => {
                 try {
+                  if (scanningRef.current) {
+                    toast.error(
+                      "스캔이 진행 중입니다. 스캔 완료 후 해시 재계산을 실행해 주세요.",
+                    );
+                    return;
+                  }
+                  suspendAutoAnalysisRef.current = true;
+                  pendingSimilarityRecalcRef.current = false;
+                  if (analyzeTimerRef.current) {
+                    clearTimeout(analyzeTimerRef.current);
+                    analyzeTimerRef.current = null;
+                  }
                   await window.image.resetHashes();
-                  scheduleAnalysis(0);
+                  await runAnalysisNow();
                 } catch (e: unknown) {
                   toast.error(
                     `해시 초기화 실패: ${e instanceof Error ? e.message : String(e)}`,
                   );
+                } finally {
+                  suspendAutoAnalysisRef.current = false;
                 }
               }}
               isAnalyzing={isAnalyzing}
@@ -1221,6 +1372,7 @@ export default function App() {
         onPrev={handlePrev}
         onNext={handleNext}
         similarImages={similarImages}
+        similarReasons={similarReasons}
         onSimilarImageClick={setSelectedImage}
         similarPageSize={settings.similarPageSize}
       />

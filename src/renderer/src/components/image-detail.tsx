@@ -17,13 +17,17 @@ import { parsePromptTokens } from "@/lib/token";
 import type { ImageData } from "./image-card";
 import { TokenContainer } from "./token-container";
 
+type SimilarityReason = "visual" | "prompt" | "both";
+
 function SimilarThumb({
   img,
   isCurrent,
+  reason,
   onClick,
 }: {
   img: ImageData;
   isCurrent: boolean;
+  reason?: SimilarityReason;
   onClick: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -51,6 +55,20 @@ function SimilarThumb({
         )}
         onLoad={() => setLoaded(true)}
       />
+      {!isCurrent && reason && (
+        <span
+          className={cn(
+            "absolute left-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+            reason === "both"
+              ? "bg-amber-500/90 text-black"
+              : reason === "visual"
+                ? "bg-sky-500/90 text-white"
+                : "bg-emerald-500/90 text-white",
+          )}
+        >
+          {reason === "both" ? "B" : reason === "visual" ? "V" : "P"}
+        </span>
+      )}
     </button>
   );
 }
@@ -68,6 +86,7 @@ interface ImageDetailProps {
   onPrev: () => void;
   onNext: () => void;
   similarImages?: ImageData[];
+  similarReasons?: Record<string, SimilarityReason>;
   onSimilarImageClick?: (image: ImageData) => void;
   similarPageSize?: number;
 }
@@ -85,6 +104,7 @@ export function ImageDetail({
   onPrev,
   onNext,
   similarImages,
+  similarReasons,
   onSimilarImageClick,
   similarPageSize = 10,
 }: ImageDetailProps) {
@@ -257,6 +277,7 @@ export function ImageDetail({
                     key={img.id}
                     img={img}
                     isCurrent={img.id === image.id}
+                    reason={similarReasons?.[img.id]}
                     onClick={() =>
                       img.id !== image.id && onSimilarImageClick?.(img)
                     }

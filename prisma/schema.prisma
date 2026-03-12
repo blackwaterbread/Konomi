@@ -75,6 +75,25 @@ model ImageSearchStat {
   @@id([kind, key])
 }
 
+model ImageSimilarityCache {
+  imageAId      Int
+  imageBId      Int
+  phashDistance Int?
+  textScore     Float    @default(0)
+  updatedAt     DateTime @default(now())
+
+  @@id([imageAId, imageBId])
+  @@index([imageAId])
+  @@index([imageBId])
+  @@index([phashDistance])
+  @@index([textScore])
+}
+
+model ImageSimilarityCacheMeta {
+  id       Int      @id
+  primedAt DateTime?
+}
+
 model Image {
   id             Int      @id @default(autoincrement())
   path           String   @unique

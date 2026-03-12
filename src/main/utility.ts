@@ -40,6 +40,7 @@ import {
 import {
   computeAllHashes,
   getSimilarGroups,
+  getSimilarityReasons,
   resetAllHashes,
 } from "./lib/phash";
 import {
@@ -63,6 +64,7 @@ import type { CancelToken } from "./lib/scanner";
 import { createLogger } from "./lib/logger";
 
 let scanCancelToken: CancelToken | null = null;
+let computeHashesInFlight: Promise<number> | null = null;
 const log = createLogger("main/utility");
 
 // Abstract EventSender wrapping parentPort push messages
@@ -241,12 +243,42 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
 
     case "image:computeHashes":
-      return computeAllHashes((done, total) =>
-        utilitySender.send("image:hashProgress", { done, total }),
-      );
+      if (computeHashesInFlight) {
+        log.debug("Deduplicating image:computeHashes request");
+        return computeHashesInFlight;
+      }
+      computeHashesInFlight = computeAllHashes(
+        (done, total) =>
+          utilitySender.send("image:hashProgress", { done, total }),
+        (done, total) =>
+          utilitySender.send("image:similarityProgress", { done, total }),
+      ).finally(() => {
+        computeHashesInFlight = null;
+      });
+      return computeHashesInFlight;
     case "image:similarGroups": {
-      const { threshold } = payload as { threshold: number };
-      return getSimilarGroups(threshold);
+      const { threshold, jaccardThreshold } = payload as {
+        threshold: number;
+        jaccardThreshold?: number;
+      };
+      return getSimilarGroups(threshold, jaccardThreshold, (done, total) =>
+        utilitySender.send("image:similarityProgress", { done, total }),
+      );
+    }
+    case "image:similarReasons": {
+      const { imageId, candidateImageIds, threshold, jaccardThreshold } =
+        payload as {
+          imageId: number;
+          candidateImageIds: number[];
+          threshold: number;
+          jaccardThreshold?: number;
+        };
+      return getSimilarityReasons(
+        imageId,
+        candidateImageIds,
+        threshold,
+        jaccardThreshold,
+      );
     }
     case "image:resetHashes":
       return resetAllHashes();

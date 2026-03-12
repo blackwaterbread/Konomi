@@ -7,6 +7,10 @@ import { getFolders } from "./folder";
 import { scanPngFiles, withConcurrency } from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
+import {
+  deleteSimilarityCacheForImageIds,
+  refreshSimilarityCacheForImageIds,
+} from "./phash";
 import type { NovelAIMeta } from "@/types/nai";
 import type { Prisma } from "../../generated/prisma/client";
 
@@ -871,7 +875,9 @@ function normalizeExcludedTagKeys(values: string[] | undefined): string[] {
   const seen = new Set<string>();
   const normalized: string[] = [];
   for (const value of values) {
-    const trimmed = String(value ?? "").trim().toLowerCase();
+    const trimmed = String(value ?? "")
+      .trim()
+      .toLowerCase();
     if (!trimmed) continue;
     if (seen.has(trimmed)) continue;
     seen.add(trimmed);
@@ -910,7 +916,10 @@ async function readImageSearchPresetStatsFromTable(): Promise<ImageSearchPresetS
           (row.width ?? 0) > 0 &&
           (row.height ?? 0) > 0,
       )
-      .map((row) => ({ width: row.width as number, height: row.height as number })),
+      .map((row) => ({
+        width: row.width as number,
+        height: row.height as number,
+      })),
     availableModels: modelRows.map((row) => row.model ?? ""),
   };
 }
@@ -1019,7 +1028,9 @@ export async function suggestImageSearchTags(
   query: ImageTagSuggestQuery,
 ): Promise<ImageTagSuggestion[]> {
   await ensureImageSearchStatTable();
-  const prefix = String(query?.prefix ?? "").trim().toLowerCase();
+  const prefix = String(query?.prefix ?? "")
+    .trim()
+    .toLowerCase();
   if (!prefix) return [];
   const containsEnabled = prefix.length >= MIN_TAG_CONTAINS_QUERY_LENGTH;
 
@@ -1105,15 +1116,18 @@ export function scheduleImageSearchPresetStatsRebuild(
   onProgress?: SearchStatsProgressCallback,
 ): void {
   if (imageSearchStatRefreshTimer) clearTimeout(imageSearchStatRefreshTimer);
-  imageSearchStatRefreshTimer = setTimeout(() => {
-    imageSearchStatRefreshTimer = null;
-    void rebuildImageSearchPresetStats(onProgress).catch((error) => {
-      console.warn(
-        "[image.scheduleImageSearchPresetStatsRebuild] failed",
-        error,
-      );
-    });
-  }, Math.max(0, delayMs));
+  imageSearchStatRefreshTimer = setTimeout(
+    () => {
+      imageSearchStatRefreshTimer = null;
+      void rebuildImageSearchPresetStats(onProgress).catch((error) => {
+        console.warn(
+          "[image.scheduleImageSearchPresetStatsRebuild] failed",
+          error,
+        );
+      });
+    },
+    Math.max(0, delayMs),
+  );
 }
 
 // ── Public API ────────────────────────────────────────────────
@@ -1259,7 +1273,7 @@ function normalizeImageListQuery(
       : null,
     builtinCategory:
       query?.builtinCategory === "favorites" ||
-        query?.builtinCategory === "random"
+      query?.builtinCategory === "random"
         ? query.builtinCategory
         : null,
     randomSeed: Number.isFinite(query?.randomSeed)
@@ -1640,6 +1654,9 @@ export async function resolveFolderDuplicates(
     deletedExistingRows,
     onSearchStatsProgress,
   );
+  if (removedImageIds.length > 0) {
+    await deleteSimilarityCacheForImageIds(removedImageIds);
+  }
 
   return {
     removedImageIds,
@@ -1656,6 +1673,7 @@ export async function setImageFavorite(
 
 export async function backfillPromptTokens(): Promise<void> {
   const db = getDB();
+  const touchedImageIds: number[] = [];
   // Re-process images that are in old string[] format (new format always contains '"text"')
   const images = await db.image.findMany({
     where: { NOT: { promptTokens: { contains: '"text"' } } },
@@ -1696,12 +1714,16 @@ export async function backfillPromptTokens(): Promise<void> {
         characterPromptTokens: nextCharacterPromptTokens,
       },
     });
+    touchedImageIds.push(img.id);
     await applyImageSearchStatsMutation(img, {
       ...img,
       promptTokens: nextPromptTokens,
       negativePromptTokens: nextNegativePromptTokens,
       characterPromptTokens: nextCharacterPromptTokens,
     });
+  }
+  if (touchedImageIds.length > 0) {
+    await refreshSimilarityCacheForImageIds(touchedImageIds);
   }
 }
 
@@ -1722,6 +1744,8 @@ export async function syncAllFolders(
   let success = false;
   let lastProgressAt = 0;
   const detectDuplicates = Boolean(onDuplicateGroup);
+  const deletedSimilarityIds = new Set<number>();
+  const upsertedSimilarityIds = new Set<number>();
   console.info(
     `[image.syncAllFolders] start detectDuplicates=${detectDuplicates}`,
   );
@@ -1731,14 +1755,14 @@ export async function syncAllFolders(
     const folders =
       orderedFolderIds && orderedFolderIds.length > 0
         ? (() => {
-          const folderMap = new Map(rawFolders.map((f) => [f.id, f]));
-          const ordered = orderedFolderIds
-            .map((id) => folderMap.get(id))
-            .filter((f): f is (typeof rawFolders)[0] => f !== undefined);
-          const orderedSet = new Set(orderedFolderIds);
-          const remaining = rawFolders.filter((f) => !orderedSet.has(f.id));
-          return [...ordered, ...remaining];
-        })()
+            const folderMap = new Map(rawFolders.map((f) => [f.id, f]));
+            const ordered = orderedFolderIds
+              .map((id) => folderMap.get(id))
+              .filter((f): f is (typeof rawFolders)[0] => f !== undefined);
+            const orderedSet = new Set(orderedFolderIds);
+            const remaining = rawFolders.filter((f) => !orderedSet.has(f.id));
+            return [...ordered, ...remaining];
+          })()
         : rawFolders;
     folderCount = folders.length;
     const db = getDB();
@@ -1844,6 +1868,7 @@ export async function syncAllFolders(
             // SQLite bind parameter limits require chunked deletes for large sets.
             for (let i = 0; i < staleRows.length; i += 400) {
               const chunk = staleRows.slice(i, i + 400);
+              chunk.forEach((row) => deletedSimilarityIds.add(row.id));
               await db.image.deleteMany({
                 where: { id: { in: chunk.map((row) => row.id) } },
               });
@@ -1899,9 +1924,7 @@ export async function syncAllFolders(
               where: { path: { in: batchPaths } },
               select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
             })) as Array<{ path: string } & ImageSearchStatSource>;
-            const beforeMap = new Map(
-              beforeRows.map((row) => [row.path, row]),
-            );
+            const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
             const images = await db.$transaction(
               batch.map((data) =>
                 db.image.upsert({
@@ -1911,6 +1934,9 @@ export async function syncAllFolders(
                 }),
               ),
             );
+            for (const image of images) {
+              upsertedSimilarityIds.add(image.id);
+            }
             await applyImageSearchStatsMutations(
               batch.map((row) => ({
                 before: beforeMap.get(row.path) ?? null,
@@ -1992,6 +2018,12 @@ export async function syncAllFolders(
         }
       }),
     );
+    if (deletedSimilarityIds.size > 0) {
+      await deleteSimilarityCacheForImageIds([...deletedSimilarityIds]);
+    }
+    if (upsertedSimilarityIds.size > 0) {
+      await refreshSimilarityCacheForImageIds([...upsertedSimilarityIds]);
+    }
     success = true;
   } finally {
     const elapsedMs = Date.now() - startedAt;

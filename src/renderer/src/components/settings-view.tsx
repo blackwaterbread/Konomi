@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Settings } from "@/hooks/useSettings";
+import { DEFAULTS, type Settings } from "@/hooks/useSettings";
 import { THEMES } from "@/lib/themes";
 
 interface SettingsViewProps {
@@ -85,6 +85,48 @@ function OptionGroup<T extends number>({
   );
 }
 
+const similarityQualityLabel = (value: number): string =>
+  (
+    ({
+      16: "최하",
+      15: "낮음",
+      14: "하",
+      13: "중하",
+      12: "중간",
+      11: "중상",
+      10: "상",
+      9: "매우 높음",
+      8: "최상",
+    }) as Record<number, string>
+  )[value] ?? String(value);
+
+const jaccardLabel = (value: number): string => {
+  if (value >= 0.68) return "매우 엄격";
+  if (value >= 0.64) return "엄격";
+  if (value >= 0.58) return "중간";
+  if (value >= 0.54) return "느슨";
+  return "매우 느슨";
+};
+
+const SIMILARITY_MIN = 8;
+const SIMILARITY_MAX = 16;
+const SIMILARITY_SPAN = SIMILARITY_MAX - SIMILARITY_MIN;
+const TEXT_LINK_THRESHOLD_STRICT = 0.64;
+const TEXT_LINK_THRESHOLD_LOOSE = 0.54;
+const JACCARD_MIN = 0.5;
+const JACCARD_MAX = 0.7;
+
+function derivePromptThreshold(similarityThreshold: number): number {
+  const looseness = Math.min(
+    1,
+    Math.max(0, (similarityThreshold - SIMILARITY_MIN) / SIMILARITY_SPAN),
+  );
+  const threshold =
+    TEXT_LINK_THRESHOLD_STRICT +
+    (TEXT_LINK_THRESHOLD_LOOSE - TEXT_LINK_THRESHOLD_STRICT) * looseness;
+  return Number(threshold.toFixed(2));
+}
+
 export function SettingsView({
   settings,
   onUpdate,
@@ -101,6 +143,50 @@ export function SettingsView({
   const [ignoredLoading, setIgnoredLoading] = useState(false);
   const [ignoredClearing, setIgnoredClearing] = useState(false);
   const [ignoredError, setIgnoredError] = useState<string | null>(null);
+  const visualSliderValue = Number(
+    (
+      SIMILARITY_MAX -
+      (settings.visualSimilarityThreshold - SIMILARITY_MIN)
+    ).toFixed(0),
+  );
+
+  const sliderToSimilarityThreshold = (sliderValue: number): number =>
+    SIMILARITY_MIN + (SIMILARITY_SPAN - (sliderValue - SIMILARITY_MIN));
+
+  const handleBaseSimilarityChange = (nextSimilarity: number): void => {
+    if (settings.useAdvancedSimilarityThresholds) {
+      onUpdate({ similarityThreshold: nextSimilarity });
+      return;
+    }
+
+    onUpdate({
+      similarityThreshold: nextSimilarity,
+      visualSimilarityThreshold: nextSimilarity,
+      promptSimilarityThreshold: derivePromptThreshold(nextSimilarity),
+    });
+  };
+
+  const handleSimilarityModeChange = (useAdvanced: boolean): void => {
+    if (!useAdvanced) {
+      onUpdate({ useAdvancedSimilarityThresholds: false });
+      return;
+    }
+
+    const shouldBootstrapFromBasic =
+      settings.visualSimilarityThreshold === DEFAULTS.visualSimilarityThreshold &&
+      settings.promptSimilarityThreshold === DEFAULTS.promptSimilarityThreshold;
+
+    if (!shouldBootstrapFromBasic) {
+      onUpdate({ useAdvancedSimilarityThresholds: true });
+      return;
+    }
+
+    onUpdate({
+      useAdvancedSimilarityThresholds: true,
+      visualSimilarityThreshold: settings.similarityThreshold,
+      promptSimilarityThreshold: derivePromptThreshold(settings.similarityThreshold),
+    });
+  };
 
   const loadIgnoredDuplicates = async () => {
     setIgnoredLoading(true);
@@ -265,22 +351,177 @@ export function SettingsView({
         <Separator className="bg-border" />
 
         <div className="space-y-2">
-          <SectionHeader onReset={() => onReset(["similarityThreshold"])}>
-            유사 이미지 판별 정확도
+          <SectionHeader
+            onReset={() =>
+              onReset([
+                "similarityThreshold",
+                "useAdvancedSimilarityThresholds",
+                "visualSimilarityThreshold",
+                "promptSimilarityThreshold",
+              ])
+            }
+          >
+            유사 이미지 설정
           </SectionHeader>
           <p className="text-xs text-muted-foreground select-none">
-            값이 높을수록 비슷한 이미지끼리만 묶입니다.
+            유사 이미지로 판단하는 강도를 설정합니다.
           </p>
-          <OptionGroup
-            value={settings.similarityThreshold}
-            // 18 이상부터는 거의 모든 이미지가 유사하다고 나옴. 8은 너무 엄격해서 거의 묶이는 게 없음. 10~16 사이가 적당해 보임.
-            options={[16, 14, 12, 10, 8] as number[]}
-            label={(v) =>
-              ({ 16: "최하", 14: "하", 12: "중간", 10: "상", 8: "최상" })[v] ??
-              String(v)
-            }
-            onChange={(v) => onUpdate({ similarityThreshold: v })}
-          />
+          <div className="rounded-md border border-border/60 p-3 space-y-3">
+            <div className="space-y-2">
+              <div
+                className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                role="radiogroup"
+                aria-label="유사도 설정 모드"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!settings.useAdvancedSimilarityThresholds}
+                  onClick={() => handleSimilarityModeChange(false)}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-left transition-colors",
+                    !settings.useAdvancedSimilarityThresholds
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                      : "border-border bg-secondary/20 hover:border-foreground/30 hover:bg-secondary/40",
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-block h-2.5 w-2.5 rounded-full",
+                        !settings.useAdvancedSimilarityThresholds
+                          ? "bg-primary"
+                          : "bg-border",
+                      )}
+                    />
+                    <p className="text-sm font-medium text-foreground">기본 모드</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    대부분의 사용자에게 적합
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.useAdvancedSimilarityThresholds}
+                  onClick={() => handleSimilarityModeChange(true)}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-left transition-colors",
+                    settings.useAdvancedSimilarityThresholds
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                      : "border-border bg-secondary/20 hover:border-foreground/30 hover:bg-secondary/40",
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-block h-2.5 w-2.5 rounded-full",
+                        settings.useAdvancedSimilarityThresholds
+                          ? "bg-primary"
+                          : "bg-border",
+                      )}
+                    />
+                    <p className="text-sm font-medium text-foreground">고급 모드</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Visual/Prompt 기준 개별 조정
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border/50 bg-secondary/20 px-3 py-2 text-xs text-muted-foreground">
+              {settings.useAdvancedSimilarityThresholds
+                ? `현재 적용: Visual ${settings.visualSimilarityThreshold} (${similarityQualityLabel(settings.visualSimilarityThreshold)}) · Prompt ${settings.promptSimilarityThreshold.toFixed(2)} (${jaccardLabel(settings.promptSimilarityThreshold)})`
+                : `현재 적용: Visual ${settings.similarityThreshold} (${similarityQualityLabel(settings.similarityThreshold)}) · Prompt ${derivePromptThreshold(settings.similarityThreshold).toFixed(2)}`}
+            </div>
+
+            {!settings.useAdvancedSimilarityThresholds ? (
+              <div className="space-y-3 border-t border-border/50 pt-3">
+                {/* <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>기본 유사도: {settings.similarityThreshold}</span>
+                  <span>
+                    {similarityQualityLabel(settings.similarityThreshold)}
+                  </span>
+                </div> */}
+                <OptionGroup
+                  value={settings.similarityThreshold}
+                  options={[16, 14, 12, 10, 8] as number[]}
+                  label={(v) => `${similarityQualityLabel(v)}`}
+                  onChange={(v) => handleBaseSimilarityChange(v)}
+                />
+                {/* <p className="text-[11px] text-muted-foreground/80">
+                  대부분의 사용자에게 적합합니다.
+                </p> */}
+              </div>
+            ) : (
+              <div className="space-y-4 border-t border-border/50 pt-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {`Visual (Perceptual Hash): ${settings.visualSimilarityThreshold}`}
+                    </span>
+                    <span>
+                      {similarityQualityLabel(
+                        settings.visualSimilarityThreshold,
+                      )}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={SIMILARITY_MIN}
+                    max={SIMILARITY_MAX}
+                    step={1}
+                    value={visualSliderValue}
+                    onChange={(e) =>
+                      onUpdate({
+                        visualSimilarityThreshold: sliderToSimilarityThreshold(
+                          Number(e.target.value),
+                        ),
+                      })
+                    }
+                    className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-primary bg-secondary"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground/80">
+                    <span>느슨 (16)</span>
+                    <span>엄격 (8)</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      Prompt (Jaccard):{" "}
+                      {settings.promptSimilarityThreshold.toFixed(2)}
+                    </span>
+                    <span>
+                      {jaccardLabel(settings.promptSimilarityThreshold)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={JACCARD_MIN}
+                    max={JACCARD_MAX}
+                    step={0.01}
+                    value={settings.promptSimilarityThreshold}
+                    onChange={(e) =>
+                      onUpdate({
+                        promptSimilarityThreshold: Number(
+                          Number(e.target.value).toFixed(2),
+                        ),
+                      })
+                    }
+                    className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-primary bg-secondary"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground/80">
+                    <span>느슨 (0.50)</span>
+                    <span>엄격 (0.70)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <Separator className="bg-border" />

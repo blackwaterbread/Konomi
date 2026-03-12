@@ -107,6 +107,11 @@ export type ImageTagSuggestion = {
 };
 
 export type SimilarGroup = { id: string; name: string; imageIds: number[] };
+export type SimilarityReason = "visual" | "prompt" | "both";
+export type SimilarityReasonItem = {
+  imageId: number;
+  reason: SimilarityReason;
+};
 
 export type Category = {
   id: number;
@@ -188,7 +193,9 @@ declare global {
       readFile: (path: string) => Promise<Buffer>;
       list: () => Promise<ImageRow[]>;
       getSearchPresetStats: () => Promise<ImageSearchPresetStats>;
-      suggestTags: (query: ImageTagSuggestQuery) => Promise<ImageTagSuggestion[]>;
+      suggestTags: (
+        query: ImageTagSuggestQuery,
+      ) => Promise<ImageTagSuggestion[]>;
       listPage: (query: ImageListQuery) => Promise<ImageListResult>;
       listByIds: (ids: number[]) => Promise<ImageRow[]>;
       scan: (options?: {
@@ -208,8 +215,20 @@ declare global {
       delete: (path: string) => Promise<void>;
       computeHashes: () => Promise<number>;
       resetHashes: () => Promise<void>;
-      similarGroups: (threshold: number) => Promise<SimilarGroup[]>;
+      similarGroups: (
+        threshold: number,
+        jaccardThreshold?: number,
+      ) => Promise<SimilarGroup[]>;
+      similarReasons: (
+        imageId: number,
+        candidateImageIds: number[],
+        threshold: number,
+        jaccardThreshold?: number,
+      ) => Promise<SimilarityReasonItem[]>;
       onHashProgress: (
+        cb: (data: { done: number; total: number }) => void,
+      ) => () => void;
+      onSimilarityProgress: (
         cb: (data: { done: number; total: number }) => void,
       ) => () => void;
       onScanProgress: (
