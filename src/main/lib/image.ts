@@ -74,6 +74,17 @@ export type ImageSearchPresetStats = {
   availableModels: string[];
 };
 
+export type ImageTagSuggestQuery = {
+  prefix: string;
+  limit?: number;
+  exclude?: string[];
+};
+
+export type ImageTagSuggestion = {
+  tag: string;
+  count: number;
+};
+
 export type FolderDuplicateExistingEntry = {
   imageId: number;
   path: string;
@@ -352,15 +363,9 @@ async function ensureIgnoredDuplicatePathsLoaded(): Promise<void> {
 
   const db = getDB();
   ignoredDuplicatePathsLoading = (async () => {
-    await db.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS IgnoredDuplicatePath (
-        path TEXT PRIMARY KEY,
-        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-    );
-    const rows = (await db.$queryRawUnsafe(
-      "SELECT path FROM IgnoredDuplicatePath",
-    )) as Array<{ path: string }>;
+    const rows = await db.ignoredDuplicatePath.findMany({
+      select: { path: true },
+    });
     rows.forEach((row) => ignoredDuplicatePaths.add(row.path));
     ignoredDuplicatePathsLoaded = true;
   })();
@@ -424,25 +429,14 @@ export async function clearIgnoredDuplicatePaths(): Promise<number> {
 
 let imageSearchStatTableReady = false;
 let imageSearchStatRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let imageSearchTagStatsBackfillAttempted = false;
 
 async function ensureImageSearchStatTable(): Promise<void> {
   if (imageSearchStatTableReady) return;
   const db = getDB();
-  await db.$executeRawUnsafe(
-    `CREATE TABLE IF NOT EXISTS ImageSearchStat (
-      kind TEXT NOT NULL,
-      key TEXT NOT NULL,
-      width INTEGER,
-      height INTEGER,
-      model TEXT,
-      count INTEGER NOT NULL DEFAULT 0,
-      updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (kind, key)
-    )`,
-  );
-  await db.$executeRawUnsafe(
-    "CREATE INDEX IF NOT EXISTS ImageSearchStat_kind_count_key_idx ON ImageSearchStat(kind, count, key)",
-  );
+  await db.imageSearchStat.findFirst({
+    select: { kind: true, key: true },
+  });
   imageSearchStatTableReady = true;
 }
 
@@ -457,7 +451,441 @@ type SearchStatModelRow = {
   count: number;
 };
 
+type SearchStatTokenSourceRow = {
+  promptTokens: string;
+  negativePromptTokens: string;
+  characterPromptTokens: string;
+};
+
+type SearchStatTagRow = {
+  key: string;
+  model: string | null;
+  count: number;
+};
+
 type SearchStatsProgressCallback = (done: number, total: number) => void;
+
+const MAX_TAG_SUGGEST_LIMIT = 24;
+const TOKEN_TEXT_FIELDS = [
+  "promptTokens",
+  "negativePromptTokens",
+  "characterPromptTokens",
+] as const;
+
+export type ImageSearchStatSource = Pick<
+  ImageRow,
+  | "width"
+  | "height"
+  | "model"
+  | "promptTokens"
+  | "negativePromptTokens"
+  | "characterPromptTokens"
+>;
+
+const IMAGE_SEARCH_STAT_SOURCE_SELECT = {
+  width: true,
+  height: true,
+  model: true,
+  promptTokens: true,
+  negativePromptTokens: true,
+  characterPromptTokens: true,
+} as const satisfies Prisma.ImageSelect;
+
+type ImageSearchStatMutation = {
+  before: ImageSearchStatSource | null;
+  after: ImageSearchStatSource | null;
+};
+
+type ImageSearchStatDelta = {
+  kind: "resolution" | "model" | "tag";
+  key: string;
+  width: number | null;
+  height: number | null;
+  model: string | null;
+  delta: number;
+};
+
+const MAX_TAG_SUGGEST_QUERY_ROWS = 160;
+const MIN_TAG_CONTAINS_QUERY_LENGTH = 3;
+
+function splitTopLevelTagParts(raw: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let angleDepth = 0;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "{") braceDepth++;
+    else if (ch === "}" && braceDepth > 0) braceDepth--;
+    else if (ch === "[") bracketDepth++;
+    else if (ch === "]" && bracketDepth > 0) bracketDepth--;
+    else if (ch === "(") parenDepth++;
+    else if (ch === ")" && parenDepth > 0) parenDepth--;
+    else if (ch === "<") angleDepth++;
+    else if (ch === ">" && angleDepth > 0) angleDepth--;
+
+    if (
+      ch === "," &&
+      braceDepth === 0 &&
+      bracketDepth === 0 &&
+      parenDepth === 0 &&
+      angleDepth === 0
+    ) {
+      parts.push(raw.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(raw.slice(start));
+  return parts;
+}
+
+function unwrapExplicitWeightTagBlock(raw: string): string {
+  const text = raw.trim();
+  const match = text.match(/^[-+]?(?:\d+(?:\.\d+)?|\.\d+)::([\s\S]*?)::$/);
+  if (!match) return text;
+  return match[1].trim();
+}
+
+function normalizeTagSuggestionCandidates(value: string): string[] {
+  const base = unwrapExplicitWeightTagBlock(value);
+  const parts = splitTopLevelTagParts(base);
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const part of parts) {
+    const tag = normalizeTagSuggestionText(part);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(tag);
+  }
+  return normalized;
+}
+
+function hasEnclosingPair(text: string, open: string, close: string): boolean {
+  if (text.length < 2) return false;
+  if (!text.startsWith(open) || !text.endsWith(close)) return false;
+
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === open) {
+      depth++;
+      continue;
+    }
+    if (ch !== close) continue;
+    depth--;
+    if (depth < 0) return false;
+    if (depth === 0 && i < text.length - 1) return false;
+  }
+  return depth === 0;
+}
+
+function normalizeTagSegment(value: string): string {
+  let text = value.trim();
+  if (!text) return "";
+
+  // Remove repeated keyword-style wrappers: {{{tag}}}, [[tag]], etc.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    if (hasEnclosingPair(text, "{", "}")) {
+      text = text.slice(1, -1).trim();
+      changed = true;
+      continue;
+    }
+    if (hasEnclosingPair(text, "[", "]")) {
+      text = text.slice(1, -1).trim();
+      changed = true;
+      continue;
+    }
+  }
+
+  // Defensive trim for partially malformed bracket wrappers.
+  return text
+    .replace(/^(?:\{|\}|\[|\])+/, "")
+    .replace(/(?:\{|\}|\[|\])+$/, "")
+    .trim();
+}
+
+function extractTokenTexts(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const texts: string[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const text = (item as { text?: unknown }).text;
+      if (typeof text !== "string") continue;
+      const normalized = normalizeTagSuggestionCandidates(text);
+      if (normalized.length === 0) continue;
+      texts.push(...normalized);
+    }
+    return texts;
+  } catch {
+    return [];
+  }
+}
+
+function normalizeTagSuggestionText(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const segments = trimmed.split(":");
+  const normalized = segments.map((segment) => normalizeTagSegment(segment));
+  return normalized.join(":").replace(/\s+/g, " ").trim();
+}
+
+function collectTokenCountMap(
+  source: ImageSearchStatSource,
+): Map<string, { tag: string; count: number }> {
+  const counts = new Map<string, { tag: string; count: number }>();
+  for (const field of TOKEN_TEXT_FIELDS) {
+    const tokenTexts = extractTokenTexts(source[field]);
+    for (const tokenText of tokenTexts) {
+      const key = tokenText.toLowerCase();
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        counts.set(key, { tag: tokenText, count: 1 });
+      }
+    }
+  }
+  return counts;
+}
+
+function addStatDelta(
+  map: Map<string, ImageSearchStatDelta>,
+  next: ImageSearchStatDelta,
+): void {
+  const id = `${next.kind}\0${next.key}`;
+  const existing = map.get(id);
+  if (existing) {
+    existing.delta += next.delta;
+    if (
+      next.kind === "tag" &&
+      (!existing.model || existing.model.length === 0) &&
+      next.model
+    ) {
+      existing.model = next.model;
+    }
+    return;
+  }
+  map.set(id, { ...next });
+}
+
+function collectSourceStatDeltas(
+  source: ImageSearchStatSource,
+  sign: 1 | -1,
+  map: Map<string, ImageSearchStatDelta>,
+): void {
+  if (source.width > 0 && source.height > 0) {
+    addStatDelta(map, {
+      kind: "resolution",
+      key: `${source.width}x${source.height}`,
+      width: source.width,
+      height: source.height,
+      model: null,
+      delta: sign,
+    });
+  }
+
+  addStatDelta(map, {
+    kind: "model",
+    key: source.model ?? "",
+    width: null,
+    height: null,
+    model: source.model ?? "",
+    delta: sign,
+  });
+
+  const tokenCounts = collectTokenCountMap(source);
+  for (const [key, value] of tokenCounts) {
+    addStatDelta(map, {
+      kind: "tag",
+      key,
+      width: null,
+      height: null,
+      model: value.tag,
+      delta: sign * value.count,
+    });
+  }
+}
+
+function buildStatDeltasFromMutations(
+  mutations: ImageSearchStatMutation[],
+): ImageSearchStatDelta[] {
+  const deltaMap = new Map<string, ImageSearchStatDelta>();
+  for (const mutation of mutations) {
+    if (mutation.before) {
+      collectSourceStatDeltas(mutation.before, -1, deltaMap);
+    }
+    if (mutation.after) {
+      collectSourceStatDeltas(mutation.after, 1, deltaMap);
+    }
+  }
+  return Array.from(deltaMap.values()).filter((delta) => delta.delta !== 0);
+}
+
+async function applyImageSearchStatDeltas(
+  deltas: ImageSearchStatDelta[],
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  if (deltas.length === 0) return;
+  await ensureImageSearchStatTable();
+  const db = getDB();
+  const total = deltas.length;
+  let done = 0;
+  let lastProgressAt = 0;
+  onProgress?.(done, total);
+  await db.$transaction(async (tx) => {
+    for (const delta of deltas) {
+      if (delta.delta > 0) {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(kind, key) DO UPDATE SET
+             count = ImageSearchStat.count + excluded.count,
+             width = COALESCE(ImageSearchStat.width, excluded.width),
+             height = COALESCE(ImageSearchStat.height, excluded.height),
+             model = CASE
+               WHEN ImageSearchStat.kind = 'tag'
+                 THEN COALESCE(NULLIF(ImageSearchStat.model, ''), excluded.model)
+               ELSE excluded.model
+             END,
+             updatedAt = CURRENT_TIMESTAMP`,
+          delta.kind,
+          delta.key,
+          delta.width,
+          delta.height,
+          delta.model,
+          delta.delta,
+        );
+      } else {
+        await tx.$executeRawUnsafe(
+          `UPDATE ImageSearchStat
+           SET count = count + ?, updatedAt = CURRENT_TIMESTAMP
+           WHERE kind = ? AND key = ?`,
+          delta.delta,
+          delta.kind,
+          delta.key,
+        );
+        await tx.$executeRawUnsafe(
+          "DELETE FROM ImageSearchStat WHERE kind = ? AND key = ? AND count <= 0",
+          delta.kind,
+          delta.key,
+        );
+      }
+      done++;
+      const now = Date.now();
+      if (done === total || now - lastProgressAt >= 100) {
+        lastProgressAt = now;
+        onProgress?.(done, total);
+      }
+    }
+  });
+}
+
+export async function applyImageSearchStatsMutations(
+  mutations: ImageSearchStatMutation[],
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  const deltas = buildStatDeltasFromMutations(mutations);
+  await applyImageSearchStatDeltas(deltas, onProgress);
+}
+
+export async function applyImageSearchStatsMutation(
+  before: ImageSearchStatSource | null,
+  after: ImageSearchStatSource | null,
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  await applyImageSearchStatsMutations([{ before, after }], onProgress);
+}
+
+export async function decrementImageSearchStatsForRows(
+  rows: ImageSearchStatSource[],
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  if (rows.length === 0) return;
+  await applyImageSearchStatsMutations(
+    rows.map((row) => ({ before: row, after: null })),
+    onProgress,
+  );
+}
+
+export async function decrementImageSearchStatsForFolder(
+  folderId: number,
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  const rows = await listImageSearchStatSourcesForFolder(folderId);
+  await decrementImageSearchStatsForRows(rows, onProgress);
+}
+
+export async function listImageSearchStatSourcesForFolder(
+  folderId: number,
+): Promise<ImageSearchStatSource[]> {
+  return (await getDB().image.findMany({
+    where: { folderId },
+    select: IMAGE_SEARCH_STAT_SOURCE_SELECT,
+  })) as ImageSearchStatSource[];
+}
+
+function buildTagStatRows(
+  rows: SearchStatTokenSourceRow[],
+): Array<{ key: string; tag: string; count: number }> {
+  const counts = new Map<string, { tag: string; count: number }>();
+  for (const row of rows) {
+    for (const field of TOKEN_TEXT_FIELDS) {
+      const tokenTexts = extractTokenTexts(row[field]);
+      for (const tokenText of tokenTexts) {
+        const key = tokenText.toLowerCase();
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(key, { tag: tokenText, count: 1 });
+        }
+      }
+    }
+  }
+  return Array.from(counts.entries()).map(([key, value]) => ({
+    key,
+    tag: value.tag,
+    count: value.count,
+  }));
+}
+
+function normalizeSuggestLimit(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 8;
+  const integer = Math.floor(value!);
+  if (integer < 1) return 1;
+  return Math.min(integer, MAX_TAG_SUGGEST_LIMIT);
+}
+
+function normalizeExcludedTagKeys(values: string[] | undefined): string[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim().toLowerCase();
+    if (!trimmed) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
+}
+
+async function hasImageSearchTagRows(): Promise<boolean> {
+  const rows = (await getDB().$queryRawUnsafe(
+    "SELECT 1 AS found FROM ImageSearchStat WHERE kind = 'tag' LIMIT 1",
+  )) as Array<{ found: number }>;
+  return rows.length > 0;
+}
 
 async function readImageSearchPresetStatsFromTable(): Promise<ImageSearchPresetStats> {
   const db = getDB();
@@ -503,8 +931,13 @@ export async function rebuildImageSearchPresetStats(
      FROM Image
      GROUP BY model`,
   )) as SearchStatModelRow[];
+  const tokenSourceRows = (await db.image.findMany({
+    select: IMAGE_SEARCH_STAT_SOURCE_SELECT,
+  })) as SearchStatTokenSourceRow[];
+  const tagRows = buildTagStatRows(tokenSourceRows);
+  imageSearchTagStatsBackfillAttempted = true;
 
-  const total = 1 + resolutionRows.length + modelRows.length;
+  const total = 1 + resolutionRows.length + modelRows.length + tagRows.length;
   let done = 0;
   let lastProgressAt = 0;
   onProgress?.(done, total);
@@ -547,6 +980,22 @@ export async function rebuildImageSearchPresetStats(
       onProgress?.(done, total);
     }
   }
+  for (const row of tagRows) {
+    await db.$executeRawUnsafe(
+      `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+       VALUES (?, ?, NULL, NULL, ?, ?, CURRENT_TIMESTAMP)`,
+      "tag",
+      row.key,
+      row.tag,
+      row.count,
+    );
+    done++;
+    const now = Date.now();
+    if (done === total || now - lastProgressAt >= 100) {
+      lastProgressAt = now;
+      onProgress?.(done, total);
+    }
+  }
 }
 
 export async function getImageSearchPresetStats(
@@ -554,14 +1003,101 @@ export async function getImageSearchPresetStats(
 ): Promise<ImageSearchPresetStats> {
   await ensureImageSearchStatTable();
   let stats = await readImageSearchPresetStatsFromTable();
+  const hasTagRows = await hasImageSearchTagRows();
   if (
-    stats.availableResolutions.length === 0 &&
-    stats.availableModels.length === 0
+    (stats.availableResolutions.length === 0 &&
+      stats.availableModels.length === 0) ||
+    !hasTagRows
   ) {
     await rebuildImageSearchPresetStats(onProgress);
     stats = await readImageSearchPresetStatsFromTable();
   }
   return stats;
+}
+
+export async function suggestImageSearchTags(
+  query: ImageTagSuggestQuery,
+): Promise<ImageTagSuggestion[]> {
+  await ensureImageSearchStatTable();
+  const prefix = String(query?.prefix ?? "").trim().toLowerCase();
+  if (!prefix) return [];
+  const containsEnabled = prefix.length >= MIN_TAG_CONTAINS_QUERY_LENGTH;
+
+  if (
+    !(await hasImageSearchTagRows()) &&
+    !imageSearchTagStatsBackfillAttempted
+  ) {
+    imageSearchTagStatsBackfillAttempted = true;
+    await rebuildImageSearchPresetStats();
+  }
+
+  const db = getDB();
+  const limit = normalizeSuggestLimit(query?.limit);
+  const queryLimit = Math.max(
+    limit,
+    Math.min(MAX_TAG_SUGGEST_QUERY_ROWS, limit * 8),
+  );
+  const excluded = normalizeExcludedTagKeys(query?.exclude);
+  const excludedSet = new Set(excluded);
+  const normalizedKeySql =
+    "LOWER(REPLACE(REPLACE(REPLACE(REPLACE(key, '[', ''), ']', ''), '{', ''), '}', ''))";
+  const excludedClause =
+    excluded.length > 0
+      ? ` AND ${normalizedKeySql} NOT IN (${excluded.map(() => "?").join(", ")})`
+      : "";
+  const keyFilterValue = containsEnabled ? `%${prefix}%` : `${prefix}%`;
+  const orderRankSql = containsEnabled
+    ? `CASE WHEN ${normalizedKeySql} = ? THEN 0 WHEN ${normalizedKeySql} LIKE ? THEN 1 ELSE 2 END`
+    : `CASE WHEN ${normalizedKeySql} = ? THEN 0 ELSE 1 END`;
+  const rows = (await db.$queryRawUnsafe(
+    `SELECT key, model, count
+     FROM ImageSearchStat
+     WHERE kind = 'tag'
+       AND ${normalizedKeySql} LIKE ?
+       ${excludedClause}
+     ORDER BY ${orderRankSql}, count DESC, key ASC
+     LIMIT ?`,
+    keyFilterValue,
+    ...excluded,
+    prefix,
+    ...(containsEnabled ? [`${prefix}%`] : []),
+    queryLimit,
+  )) as SearchStatTagRow[];
+
+  const merged = new Map<string, ImageTagSuggestion>();
+  for (const row of rows) {
+    const count = Math.max(0, Math.floor(row.count ?? 0));
+    for (const tag of normalizeTagSuggestionCandidates(row.model ?? row.key)) {
+      const key = tag.toLowerCase();
+      if (containsEnabled) {
+        if (!key.includes(prefix)) continue;
+      } else if (!key.startsWith(prefix)) {
+        continue;
+      }
+      if (excludedSet.has(key)) continue;
+      const existing = merged.get(key);
+      if (existing) {
+        existing.count += count;
+      } else {
+        merged.set(key, { tag, count });
+      }
+    }
+  }
+
+  return Array.from(merged.values())
+    .sort((a, b) => {
+      const aExact = a.tag.toLowerCase() === prefix;
+      const bExact = b.tag.toLowerCase() === prefix;
+      if (aExact !== bExact) return aExact ? -1 : 1;
+      if (containsEnabled) {
+        const aPrefix = a.tag.toLowerCase().startsWith(prefix);
+        const bPrefix = b.tag.toLowerCase().startsWith(prefix);
+        if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
+      }
+      if (a.count !== b.count) return b.count - a.count;
+      return a.tag.localeCompare(b.tag);
+    })
+    .slice(0, limit);
 }
 
 export function scheduleImageSearchPresetStatsRebuild(
@@ -592,7 +1128,7 @@ type NormalizedImageListQuery = {
   page: number;
   pageSize: number;
   folderIds: number[];
-  searchQuery: string;
+  searchGroups: string[][];
   sortBy: ImageSortBy;
   onlyRecent: boolean;
   recentDays: number;
@@ -653,9 +1189,53 @@ function normalizeModelFilters(values: string[] | undefined): string[] {
   return normalized;
 }
 
+const MAX_SEARCH_TERMS = 32;
+const MAX_OR_TERMS_PER_GROUP = 16;
+const SEARCH_AND_SPLIT_RE = /[,\n\uFF0C]+/;
+const SEARCH_OR_SPLIT_RE = /[|\uFF5C]+/;
+
+function normalizeSearchGroups(rawQuery: string): string[][] {
+  if (!rawQuery) return [];
+
+  const normalized: string[][] = [];
+  const seenGroups = new Set<string>();
+  let totalTerms = 0;
+
+  for (const rawGroup of rawQuery.split(SEARCH_AND_SPLIT_RE)) {
+    if (totalTerms >= MAX_SEARCH_TERMS) break;
+
+    const seenTerms = new Set<string>();
+    const groupTerms: string[] = [];
+    for (const rawTerm of rawGroup.split(SEARCH_OR_SPLIT_RE)) {
+      if (totalTerms + groupTerms.length >= MAX_SEARCH_TERMS) break;
+      if (groupTerms.length >= MAX_OR_TERMS_PER_GROUP) break;
+
+      const term = rawTerm.trim();
+      if (!term) continue;
+
+      const dedupeKey = term.toLowerCase();
+      if (seenTerms.has(dedupeKey)) continue;
+      seenTerms.add(dedupeKey);
+      groupTerms.push(term);
+    }
+
+    if (groupTerms.length === 0) continue;
+
+    const groupKey = groupTerms.map((term) => term.toLowerCase()).join("\0");
+    if (seenGroups.has(groupKey)) continue;
+    seenGroups.add(groupKey);
+
+    normalized.push(groupTerms);
+    totalTerms += groupTerms.length;
+  }
+
+  return normalized;
+}
+
 function normalizeImageListQuery(
   query?: ImageListQuery,
 ): NormalizedImageListQuery {
+  const normalizedSearchQuery = String(query?.searchQuery ?? "").trim();
   const normalizedSort = (() => {
     switch (query?.sortBy) {
       case "oldest":
@@ -670,7 +1250,7 @@ function normalizeImageListQuery(
     page: normalizePositiveInt(query?.page, 1, 100000),
     pageSize: normalizePositiveInt(query?.pageSize, 50, 200),
     folderIds: normalizeIntegerArray(query?.folderIds),
-    searchQuery: String(query?.searchQuery ?? "").trim(),
+    searchGroups: normalizeSearchGroups(normalizedSearchQuery),
     sortBy: normalizedSort,
     onlyRecent: query?.onlyRecent === true,
     recentDays: normalizePositiveInt(query?.recentDays, 7, 3650),
@@ -679,7 +1259,7 @@ function normalizeImageListQuery(
       : null,
     builtinCategory:
       query?.builtinCategory === "favorites" ||
-      query?.builtinCategory === "random"
+        query?.builtinCategory === "random"
         ? query.builtinCategory
         : null,
     randomSeed: Number.isFinite(query?.randomSeed)
@@ -697,17 +1277,23 @@ function buildImageWhereInput(
 
   andConditions.push({ folderId: { in: query.folderIds } });
 
-  if (query.searchQuery) {
-    andConditions.push({
-      OR: [
-        { promptTokens: { contains: query.searchQuery } },
-        { negativePromptTokens: { contains: query.searchQuery } },
-        { characterPromptTokens: { contains: query.searchQuery } },
-        { prompt: { contains: query.searchQuery } },
-        { negativePrompt: { contains: query.searchQuery } },
-        { characterPrompts: { contains: query.searchQuery } },
-      ],
-    });
+  if (query.searchGroups.length > 0) {
+    for (const terms of query.searchGroups) {
+      const orConditions: Prisma.ImageWhereInput[] = [];
+      for (const term of terms) {
+        orConditions.push(
+          { promptTokens: { contains: term } },
+          { negativePromptTokens: { contains: term } },
+          { characterPromptTokens: { contains: term } },
+          { prompt: { contains: term } },
+          { negativePrompt: { contains: term } },
+          { characterPrompts: { contains: term } },
+        );
+      }
+      andConditions.push({
+        OR: orConditions,
+      });
+    }
   }
 
   if (query.resolutionFilters.length > 0) {
@@ -1018,6 +1604,16 @@ export async function resolveFolderDuplicates(
     }
   }
 
+  const existingToDeleteIds = Array.from(existingToDelete.keys());
+  const existingToDeleteRows = (await db.image.findMany({
+    where: { id: { in: existingToDeleteIds } },
+    select: { id: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
+  })) as Array<{ id: number } & ImageSearchStatSource>;
+  const existingToDeleteStatsMap = new Map(
+    existingToDeleteRows.map((row) => [row.id, row]),
+  );
+  const deletedExistingRows: ImageSearchStatSource[] = [];
+
   for (const [existingImageId, existingPath] of existingToDelete.entries()) {
     try {
       await fs.promises.unlink(existingPath);
@@ -1028,6 +1624,8 @@ export async function resolveFolderDuplicates(
     try {
       await db.image.delete({ where: { id: existingImageId } });
       removedImageIds.push(existingImageId);
+      const deletedStats = existingToDeleteStatsMap.get(existingImageId);
+      if (deletedStats) deletedExistingRows.push(deletedStats);
     } catch (e: unknown) {
       // If already removed by watcher race, treat as resolved.
       const message = e instanceof Error ? e.message : String(e);
@@ -1038,7 +1636,10 @@ export async function resolveFolderDuplicates(
   }
 
   await registerIgnoredDuplicatePaths(Array.from(ignoredIncomingPaths));
-  scheduleImageSearchPresetStatsRebuild(50, onSearchStatsProgress);
+  await decrementImageSearchStatsForRows(
+    deletedExistingRows,
+    onSearchStatsProgress,
+  );
 
   return {
     removedImageIds,
@@ -1060,24 +1661,46 @@ export async function backfillPromptTokens(): Promise<void> {
     where: { NOT: { promptTokens: { contains: '"text"' } } },
     select: {
       id: true,
+      width: true,
+      height: true,
+      model: true,
       prompt: true,
       negativePrompt: true,
       characterPrompts: true,
+      promptTokens: true,
+      negativePromptTokens: true,
+      characterPromptTokens: true,
     },
   });
   for (const img of images) {
     const charPrompts = JSON.parse(img.characterPrompts) as string[];
+    const nextPromptTokens = JSON.stringify(parsePromptTokens(img.prompt));
+    const nextNegativePromptTokens = JSON.stringify(
+      parsePromptTokens(img.negativePrompt),
+    );
+    const nextCharacterPromptTokens = JSON.stringify(
+      charPrompts.flatMap(parsePromptTokens),
+    );
+    if (
+      img.promptTokens === nextPromptTokens &&
+      img.negativePromptTokens === nextNegativePromptTokens &&
+      img.characterPromptTokens === nextCharacterPromptTokens
+    ) {
+      continue;
+    }
     await db.image.update({
       where: { id: img.id },
       data: {
-        promptTokens: JSON.stringify(parsePromptTokens(img.prompt)),
-        negativePromptTokens: JSON.stringify(
-          parsePromptTokens(img.negativePrompt),
-        ),
-        characterPromptTokens: JSON.stringify(
-          charPrompts.flatMap(parsePromptTokens),
-        ),
+        promptTokens: nextPromptTokens,
+        negativePromptTokens: nextNegativePromptTokens,
+        characterPromptTokens: nextCharacterPromptTokens,
       },
+    });
+    await applyImageSearchStatsMutation(img, {
+      ...img,
+      promptTokens: nextPromptTokens,
+      negativePromptTokens: nextNegativePromptTokens,
+      characterPromptTokens: nextCharacterPromptTokens,
     });
   }
 }
@@ -1108,14 +1731,14 @@ export async function syncAllFolders(
     const folders =
       orderedFolderIds && orderedFolderIds.length > 0
         ? (() => {
-            const folderMap = new Map(rawFolders.map((f) => [f.id, f]));
-            const ordered = orderedFolderIds
-              .map((id) => folderMap.get(id))
-              .filter((f): f is (typeof rawFolders)[0] => f !== undefined);
-            const orderedSet = new Set(orderedFolderIds);
-            const remaining = rawFolders.filter((f) => !orderedSet.has(f.id));
-            return [...ordered, ...remaining];
-          })()
+          const folderMap = new Map(rawFolders.map((f) => [f.id, f]));
+          const ordered = orderedFolderIds
+            .map((id) => folderMap.get(id))
+            .filter((f): f is (typeof rawFolders)[0] => f !== undefined);
+          const orderedSet = new Set(orderedFolderIds);
+          const remaining = rawFolders.filter((f) => !orderedSet.has(f.id));
+          return [...ordered, ...remaining];
+        })()
         : rawFolders;
     folderCount = folders.length;
     const db = getDB();
@@ -1203,21 +1826,31 @@ export async function syncAllFolders(
         try {
           const existing = await db.image.findMany({
             where: { folderId: folder.id },
-            select: { id: true, path: true, fileModifiedAt: true },
+            select: {
+              id: true,
+              path: true,
+              fileModifiedAt: true,
+              ...IMAGE_SEARCH_STAT_SOURCE_SELECT,
+            },
           });
           const existingMap = new Map(
             existing.map((e) => [e.path, e.fileModifiedAt]),
           );
           const currentPathSet = new Set(filePaths);
-          const staleImageIds = existing
-            .filter((row) => !currentPathSet.has(row.path))
-            .map((row) => row.id);
-          if (staleImageIds.length > 0) {
+          const staleRows = existing.filter(
+            (row) => !currentPathSet.has(row.path),
+          );
+          if (staleRows.length > 0) {
             // SQLite bind parameter limits require chunked deletes for large sets.
-            for (let i = 0; i < staleImageIds.length; i += 400) {
+            for (let i = 0; i < staleRows.length; i += 400) {
+              const chunk = staleRows.slice(i, i + 400);
               await db.image.deleteMany({
-                where: { id: { in: staleImageIds.slice(i, i + 400) } },
+                where: { id: { in: chunk.map((row) => row.id) } },
               });
+              await decrementImageSearchStatsForRows(
+                chunk,
+                onSearchStatsProgress,
+              );
             }
           }
 
@@ -1261,6 +1894,14 @@ export async function syncAllFolders(
           const flushBatch = async (): Promise<void> => {
             if (pending.length === 0) return;
             const batch = pending.splice(0);
+            const batchPaths = batch.map((row) => row.path);
+            const beforeRows = (await db.image.findMany({
+              where: { path: { in: batchPaths } },
+              select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
+            })) as Array<{ path: string } & ImageSearchStatSource>;
+            const beforeMap = new Map(
+              beforeRows.map((row) => [row.path, row]),
+            );
             const images = await db.$transaction(
               batch.map((data) =>
                 db.image.upsert({
@@ -1269,6 +1910,13 @@ export async function syncAllFolders(
                   create: data,
                 }),
               ),
+            );
+            await applyImageSearchStatsMutations(
+              batch.map((row) => ({
+                before: beforeMap.get(row.path) ?? null,
+                after: row,
+              })),
+              onSearchStatsProgress,
             );
             onBatch(images as unknown as ImageRow[]);
           };
@@ -1344,9 +1992,6 @@ export async function syncAllFolders(
         }
       }),
     );
-    if (!signal?.cancelled) {
-      await rebuildImageSearchPresetStats(onSearchStatsProgress);
-    }
     success = true;
   } finally {
     const elapsedMs = Date.now() - startedAt;

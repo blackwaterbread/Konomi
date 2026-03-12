@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld("image", {
   readFile: (path: string) => ipcRenderer.invoke("image:readFile", path),
   list: () => ipcRenderer.invoke("image:list"),
   getSearchPresetStats: () => ipcRenderer.invoke("image:getSearchPresetStats"),
+  suggestTags: (query: {
+    prefix: string;
+    limit?: number;
+    exclude?: string[];
+  }) => ipcRenderer.invoke("image:suggestTags", query),
   listPage: (query: {
     page?: number;
     pageSize?: number;

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Folder,
   Clock,
   Plus,
@@ -313,7 +313,7 @@ export function Sidebar({
                 </Button>
               </div>
               {folders.length === 0 ? (
-                <p className="text-xs text-muted-foreground px-1 select-none">
+                <p className="text-xs text-muted-foreground px-8 select-none">
                   추가된 폴더가 없습니다
                 </p>
               ) : (

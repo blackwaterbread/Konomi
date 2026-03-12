@@ -5,10 +5,12 @@ import { readImageMeta } from "./nai";
 import { getFolders } from "./folder";
 import { parsePromptTokens } from "./token";
 import {
+  applyImageSearchStatsMutation,
+  decrementImageSearchStatsForRows,
   findDuplicateGroupForIncomingPath,
   forgetIgnoredDuplicatePath,
   isIgnoredDuplicatePath,
-  scheduleImageSearchPresetStatsRebuild,
+  type ImageSearchStatSource,
   type ImageRow,
 } from "./image";
 
@@ -110,24 +112,37 @@ class FolderWatcher {
     if (this.sender.isDestroyed()) return;
     try {
       const db = getDB();
+      const emitSearchStatsProgress = (done: number, total: number): void => {
+        if (this.sender.isDestroyed()) return;
+        this.sender.send("image:searchStatsProgress", { done, total });
+      };
       const rows = await db.image.findMany({
         where: { folderId },
-        select: { id: true, path: true },
+        select: {
+          id: true,
+          path: true,
+          width: true,
+          height: true,
+          model: true,
+          promptTokens: true,
+          negativePromptTokens: true,
+          characterPromptTokens: true,
+        },
       });
-      const missingIds = rows
-        .filter((row) => !fs.existsSync(row.path))
-        .map((row) => row.id);
-      if (missingIds.length === 0 || this.sender.isDestroyed()) return;
-      for (let i = 0; i < missingIds.length; i += 400) {
+      const missingRows = rows.filter((row) => !fs.existsSync(row.path));
+      if (missingRows.length === 0 || this.sender.isDestroyed()) return;
+      for (let i = 0; i < missingRows.length; i += 400) {
+        const chunk = missingRows.slice(i, i + 400);
         await db.image.deleteMany({
-          where: { id: { in: missingIds.slice(i, i + 400) } },
+          where: { id: { in: chunk.map((row) => row.id) } },
         });
+        await decrementImageSearchStatsForRows(chunk, emitSearchStatsProgress);
       }
       if (!this.sender.isDestroyed()) {
-        scheduleImageSearchPresetStatsRebuild(300, (done, total) =>
-          this.sender.send("image:searchStatsProgress", { done, total }),
+        this.sender.send(
+          "image:removed",
+          missingRows.map((row) => row.id),
         );
-        this.sender.send("image:removed", missingIds);
       }
     } catch {
       // ignore reconciliation failures
@@ -140,6 +155,10 @@ class FolderWatcher {
   ): Promise<void> {
     if (this.sender.isDestroyed()) return;
     const db = getDB();
+    const emitSearchStatsProgress = (done: number, total: number): void => {
+      if (this.sender.isDestroyed()) return;
+      this.sender.send("image:searchStatsProgress", { done, total });
+    };
 
     if (!fs.existsSync(filePath)) {
       this.pendingDuplicatePaths.delete(filePath);
@@ -148,8 +167,10 @@ class FolderWatcher {
       const existing = await db.image.findUnique({ where: { path: filePath } });
       if (existing && !this.sender.isDestroyed()) {
         await db.image.delete({ where: { path: filePath } });
-        scheduleImageSearchPresetStatsRebuild(300, (done, total) =>
-          this.sender.send("image:searchStatsProgress", { done, total }),
+        await applyImageSearchStatsMutation(
+          existing,
+          null,
+          emitSearchStatsProgress,
         );
         this.sender.send("image:removed", [existing.id]);
       } else {
@@ -218,11 +239,13 @@ class FolderWatcher {
         update: data,
         create: data,
       });
+      await applyImageSearchStatsMutation(
+        existing as ImageSearchStatSource | null,
+        image as ImageSearchStatSource,
+        emitSearchStatsProgress,
+      );
 
       if (!this.sender.isDestroyed()) {
-        scheduleImageSearchPresetStatsRebuild(300, (done, total) =>
-          this.sender.send("image:searchStatsProgress", { done, total }),
-        );
         this.sender.send("image:batch", [image as ImageRow]);
       }
     } catch {

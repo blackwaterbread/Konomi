@@ -56,6 +56,13 @@ model NaiConfig {
   apiKey String @default("")
 }
 
+model IgnoredDuplicatePath {
+  path      String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model ImageSearchStat {
   kind      String
   key       String

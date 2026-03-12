@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Settings,
@@ -23,6 +23,77 @@ import { AdvancedSearchModal } from "@/components/advanced-search-modal";
 import { AppInfoDialog } from "@/components/app-info-dialog";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { filterLabel, filterKey } from "@/lib/advanced-filter";
+
+const SEARCH_TERM_SPLIT_RE = /[,\n\uFF0C|\uFF5C]+/;
+
+function isSearchSeparator(char: string): boolean {
+  return (
+    char === "," ||
+    char === "\n" ||
+    char === "|" ||
+    char === "\uFF0C" ||
+    char === "\uFF5C"
+  );
+}
+
+function collectSearchTerms(query: string): string[] {
+  if (!query) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const part of query.split(SEARCH_TERM_SPLIT_RE)) {
+    const term = part.trim();
+    if (!term) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(term);
+  }
+  return normalized;
+}
+
+type ActiveSearchToken = {
+  start: number;
+  end: number;
+  raw: string;
+  term: string;
+  excludeTerms: string[];
+};
+
+type TagSuggestion = {
+  tag: string;
+  count: number;
+};
+
+function getActiveSearchToken(
+  query: string,
+  cursorPosition: number,
+): ActiveSearchToken | null {
+  if (!query) return null;
+  const cursor = Math.max(0, Math.min(cursorPosition, query.length));
+
+  let start = cursor;
+  while (start > 0 && !isSearchSeparator(query[start - 1])) {
+    start -= 1;
+  }
+
+  let end = cursor;
+  while (end < query.length && !isSearchSeparator(query[end])) {
+    end += 1;
+  }
+
+  const raw = query.slice(start, end);
+  const term = raw.trim();
+  if (!term) return null;
+  const withoutActive = query.slice(0, start) + query.slice(end);
+
+  return {
+    start,
+    end,
+    raw,
+    term,
+    excludeTerms: collectSearchTerms(withoutActive),
+  };
+}
 
 type ActivePanel = "gallery" | "generator" | "settings";
 
@@ -72,11 +143,126 @@ export function Header({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
+  const [caretPosition, setCaretPosition] = useState<number | null>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [tagSuggestions, setTagSuggestions] = useState<TagSuggestion[]>([]);
+  const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
+  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestRequestSeqRef = useRef(0);
 
-  const commitSearch = () => onSearchChange(inputValue);
+  useEffect(() => {
+    setInputValue(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(
+    () => () => {
+      if (suggestDebounceRef.current) {
+        clearTimeout(suggestDebounceRef.current);
+      }
+      if (blurCloseTimerRef.current) {
+        clearTimeout(blurCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const activeSearchToken = useMemo(() => {
+    const cursor = caretPosition ?? inputValue.length;
+    return getActiveSearchToken(inputValue, cursor);
+  }, [caretPosition, inputValue]);
+
+  useEffect(() => {
+    if (!isSearchFocused || !activeSearchToken) {
+      setTagSuggestions([]);
+      setTagSuggestionOpen(false);
+      setTagSuggestionIndex(-1);
+      if (suggestDebounceRef.current) {
+        clearTimeout(suggestDebounceRef.current);
+        suggestDebounceRef.current = null;
+      }
+      return;
+    }
+
+    if (suggestDebounceRef.current) {
+      clearTimeout(suggestDebounceRef.current);
+      suggestDebounceRef.current = null;
+    }
+
+    suggestDebounceRef.current = setTimeout(() => {
+      const requestId = ++suggestRequestSeqRef.current;
+      void window.image
+        .suggestTags({
+          prefix: activeSearchToken.term,
+          limit: 8,
+          exclude: activeSearchToken.excludeTerms,
+        })
+        .then((items) => {
+          if (requestId !== suggestRequestSeqRef.current) return;
+          const termLower = activeSearchToken.term.toLowerCase();
+          const next = items.filter(
+            (item) => item.tag.trim() && item.tag.toLowerCase() !== termLower,
+          );
+          setTagSuggestions(next);
+          setTagSuggestionOpen(next.length > 0);
+          setTagSuggestionIndex(next.length > 0 ? 0 : -1);
+        })
+        .catch(() => {
+          if (requestId !== suggestRequestSeqRef.current) return;
+          setTagSuggestions([]);
+          setTagSuggestionOpen(false);
+          setTagSuggestionIndex(-1);
+        });
+    }, 140);
+
+    return () => {
+      if (suggestDebounceRef.current) {
+        clearTimeout(suggestDebounceRef.current);
+        suggestDebounceRef.current = null;
+      }
+    };
+  }, [activeSearchToken, isSearchFocused]);
+
+  const commitSearch = () => {
+    setTagSuggestionOpen(false);
+    setTagSuggestionIndex(-1);
+    onSearchChange(inputValue);
+  };
   const clearSearch = () => {
     setInputValue("");
+    setCaretPosition(0);
+    setTagSuggestions([]);
+    setTagSuggestionOpen(false);
+    setTagSuggestionIndex(-1);
     onSearchChange("");
+  };
+
+  const applyTagSuggestion = (suggestion: string) => {
+    const cursor =
+      inputRef.current?.selectionStart ?? caretPosition ?? inputValue.length;
+    const active = getActiveSearchToken(inputValue, cursor);
+    if (!active) return;
+    const leading = active.raw.match(/^\s*/)?.[0] ?? "";
+    const trailing = active.raw.match(/\s*$/)?.[0] ?? "";
+    const replacement = `${leading}${suggestion}${trailing}`;
+    const nextValue =
+      inputValue.slice(0, active.start) +
+      replacement +
+      inputValue.slice(active.end);
+    const nextCursor = active.start + leading.length + suggestion.length;
+    setInputValue(nextValue);
+    setCaretPosition(nextCursor);
+    setTagSuggestions([]);
+    setTagSuggestionOpen(false);
+    setTagSuggestionIndex(-1);
+    window.requestAnimationFrame(() => {
+      const node = inputRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   const handlePanelClick = (panel: ActivePanel) => {
@@ -149,15 +335,92 @@ export function Header({
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  ref={inputRef}
                   type="text"
                   placeholder="프롬프트로 이미지 검색..."
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={(e) => {
+                    setInputValue(e.target.value);
+                    setCaretPosition(e.target.selectionStart);
+                  }}
+                  onFocus={(e) => {
+                    if (blurCloseTimerRef.current) {
+                      clearTimeout(blurCloseTimerRef.current);
+                      blurCloseTimerRef.current = null;
+                    }
+                    setIsSearchFocused(true);
+                    setCaretPosition(e.target.selectionStart);
+                  }}
+                  onBlur={() => {
+                    blurCloseTimerRef.current = setTimeout(() => {
+                      setIsSearchFocused(false);
+                      setTagSuggestionOpen(false);
+                      setTagSuggestionIndex(-1);
+                    }, 120);
+                  }}
+                  onClick={(e) => setCaretPosition(e.currentTarget.selectionStart)}
+                  onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart)}
                   onKeyDown={(e) => {
+                    if (tagSuggestionOpen && tagSuggestions.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setTagSuggestionIndex((prev) =>
+                          prev < 0 ? 0 : (prev + 1) % tagSuggestions.length,
+                        );
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setTagSuggestionIndex((prev) =>
+                          prev <= 0 ? tagSuggestions.length - 1 : prev - 1,
+                        );
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        const index =
+                          tagSuggestionIndex >= 0 ? tagSuggestionIndex : 0;
+                        const picked = tagSuggestions[index];
+                        if (picked) {
+                          e.preventDefault();
+                          applyTagSuggestion(picked.tag);
+                          return;
+                        }
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTagSuggestionOpen(false);
+                        setTagSuggestionIndex(-1);
+                        return;
+                      }
+                    }
                     if (e.key === "Enter") commitSearch();
                   }}
                   className="w-full pl-10 pr-8 bg-secondary border-border focus:border-primary"
                 />
+                {tagSuggestionOpen && tagSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
+                    {tagSuggestions.map((item, index) => (
+                      <button
+                        key={`${item.tag}-${index}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applyTagSuggestion(item.tag);
+                        }}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs",
+                          index === tagSuggestionIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "text-popover-foreground hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        <span className="truncate">{item.tag}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-foreground">
+                          {item.count.toLocaleString()}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {inputValue && (
                   <button
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"

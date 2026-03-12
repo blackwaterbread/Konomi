@@ -95,6 +95,17 @@ export type ImageSearchPresetStats = {
   availableModels: string[];
 };
 
+export type ImageTagSuggestQuery = {
+  prefix: string;
+  limit?: number;
+  exclude?: string[];
+};
+
+export type ImageTagSuggestion = {
+  tag: string;
+  count: number;
+};
+
 export type SimilarGroup = { id: string; name: string; imageIds: number[] };
 
 export type Category = {
@@ -177,6 +188,7 @@ declare global {
       readFile: (path: string) => Promise<Buffer>;
       list: () => Promise<ImageRow[]>;
       getSearchPresetStats: () => Promise<ImageSearchPresetStats>;
+      suggestTags: (query: ImageTagSuggestQuery) => Promise<ImageTagSuggestion[]>;
       listPage: (query: ImageListQuery) => Promise<ImageListResult>;
       listByIds: (ids: number[]) => Promise<ImageRow[]>;
       scan: (options?: {

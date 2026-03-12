@@ -74,6 +74,17 @@ export function registerIpcHandlers(): void {
     bridge.request("image:getSearchPresetStats"),
   );
   ipcMain.handle(
+    "image:suggestTags",
+    (
+      _,
+      query: {
+        prefix: string;
+        limit?: number;
+        exclude?: string[];
+      },
+    ) => bridge.request("image:suggestTags", query),
+  );
+  ipcMain.handle(
     "image:listPage",
     (
       _,

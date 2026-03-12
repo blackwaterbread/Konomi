@@ -16,6 +16,9 @@ import {
   listImagesPage,
   listImagesByIds,
   getImageSearchPresetStats,
+  suggestImageSearchTags,
+  listImageSearchStatSourcesForFolder,
+  decrementImageSearchStatsForRows,
   syncAllFolders,
   setImageFavorite,
   backfillPromptTokens,
@@ -23,7 +26,6 @@ import {
   resolveFolderDuplicates,
   listIgnoredDuplicatePaths,
   clearIgnoredDuplicatePaths,
-  scheduleImageSearchPresetStatsRebuild,
 } from "./lib/image";
 import {
   listGroups,
@@ -116,8 +118,12 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     case "folder:delete": {
       const { id } = payload as { id: number };
       unwatchFolder(id);
+      const folderStatRows = await listImageSearchStatSourcesForFolder(id);
       await deleteFolder(id);
-      scheduleImageSearchPresetStatsRebuild(0, emitSearchStatsProgress);
+      await decrementImageSearchStatsForRows(
+        folderStatRows,
+        emitSearchStatsProgress,
+      );
       return null;
     }
     case "folder:rename": {
@@ -129,6 +135,14 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return listImages();
     case "image:getSearchPresetStats":
       return getImageSearchPresetStats(emitSearchStatsProgress);
+    case "image:suggestTags":
+      return suggestImageSearchTags(
+        (payload as {
+          prefix: string;
+          limit?: number;
+          exclude?: string[];
+        }) ?? { prefix: "" },
+      );
     case "image:listPage":
       return listImagesPage(
         (payload as {
