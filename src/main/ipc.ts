@@ -3,6 +3,12 @@ import { unlink, readFile } from "fs/promises";
 import { readImageMeta, readNaiMetaFromBuffer } from "./lib/nai";
 import { readWebuiMetaFromBuffer } from "./lib/webui";
 import { bridge } from "./bridge";
+import { isManagedImagePath, registerTransientPath } from "./lib/path-guard";
+
+async function assertManagedImagePath(filePath: string): Promise<void> {
+  if (await isManagedImagePath(filePath)) return;
+  throw new Error("허용되지 않은 이미지 경로입니다.");
+}
 
 export function registerIpcHandlers(): void {
   ipcMain.handle("app:getInfo", () => ({
@@ -16,24 +22,30 @@ export function registerIpcHandlers(): void {
   }));
 
   // ── File/system handlers (must stay in main process) ───────────────────────
-  ipcMain.handle("readNaiMeta", (_, filePath: string) =>
-    readImageMeta(filePath),
-  );
+  ipcMain.handle("readNaiMeta", async (_, filePath: string) => {
+    await assertManagedImagePath(filePath);
+    return readImageMeta(filePath);
+  });
   ipcMain.handle("image:readMetaFromBuffer", (_, data: Uint8Array) => {
     const buf = Buffer.from(data);
     return readWebuiMetaFromBuffer(buf) ?? readNaiMetaFromBuffer(buf);
   });
-  ipcMain.handle("image:readFile", (_, filePath: string) => readFile(filePath));
+  ipcMain.handle("image:readFile", async (_, filePath: string) => {
+    await assertManagedImagePath(filePath);
+    return readFile(filePath);
+  });
   ipcMain.handle("selectDirectory", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
     });
     return result.canceled ? null : result.filePaths[0];
   });
-  ipcMain.handle("image:revealInExplorer", (_, path: string) =>
-    shell.showItemInFolder(path),
-  );
+  ipcMain.handle("image:revealInExplorer", async (_, path: string) => {
+    await assertManagedImagePath(path);
+    shell.showItemInFolder(path);
+  });
   ipcMain.handle("image:delete", async (_, path: string) => {
+    await assertManagedImagePath(path);
     try {
       await shell.trashItem(path);
     } catch {
@@ -224,7 +236,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("nai:updateConfig", (_, patch) =>
     bridge.request("nai:updateConfig", patch),
   );
-  ipcMain.handle("nai:generate", (_, params) =>
-    bridge.request("nai:generate", params),
-  );
+  ipcMain.handle("nai:generate", async (_, params) => {
+    const generatedPath = await bridge.request<string>("nai:generate", params);
+    await registerTransientPath(generatedPath);
+    return generatedPath;
+  });
 }

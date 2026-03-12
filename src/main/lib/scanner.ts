@@ -1,27 +1,61 @@
 import fs from "fs";
 import path from "path";
 
-export async function scanPngFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  try {
-    const entries = await fs.promises.readdir(dir, {
-      withFileTypes: true,
-      recursive: true,
-    });
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (path.extname(entry.name).toLowerCase() !== ".png") continue;
+export type CancelToken = { cancelled: boolean };
 
-      const parent = (entry as any).parentPath ?? (entry as any).path ?? dir;
-      results.push(path.join(parent, entry.name));
+async function walkPngFiles(
+  rootDir: string,
+  onFile: (filePath: string) => void,
+  signal?: CancelToken,
+): Promise<void> {
+  const stack = [rootDir];
+  while (stack.length > 0 && !signal?.cancelled) {
+    const currentDir = stack.pop()!;
+    let handle: fs.Dir | null = null;
+    try {
+      handle = await fs.promises.opendir(currentDir);
+      for await (const entry of handle) {
+        if (signal?.cancelled) break;
+        const fullPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (path.extname(entry.name).toLowerCase() !== ".png") continue;
+        onFile(fullPath);
+      }
+    } catch {
+      // folder not accessible
+    } finally {
+      if (handle) {
+        await handle.close().catch(() => {
+          // ignore close errors
+        });
+      }
     }
-  } catch {
-    // folder not accessible
   }
+}
+
+export async function scanPngFiles(
+  dir: string,
+  signal?: CancelToken,
+): Promise<string[]> {
+  const results: string[] = [];
+  await walkPngFiles(dir, (filePath) => results.push(filePath), signal);
   return results;
 }
 
-export type CancelToken = { cancelled: boolean };
+export async function countPngFiles(
+  dir: string,
+  signal?: CancelToken,
+): Promise<number> {
+  let count = 0;
+  await walkPngFiles(dir, () => {
+    count++;
+  }, signal);
+  return count;
+}
 
 export async function withConcurrency<T>(
   items: T[],
@@ -30,6 +64,7 @@ export async function withConcurrency<T>(
   signal?: CancelToken,
 ): Promise<void> {
   if (items.length === 0) return;
+  const safeLimit = Math.max(1, Math.floor(limit));
   let index = 0;
   const worker = async (): Promise<void> => {
     while (index < items.length && !signal?.cancelled) {
@@ -38,6 +73,6 @@ export async function withConcurrency<T>(
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
+    Array.from({ length: Math.min(safeLimit, items.length) }, worker),
   );
 }

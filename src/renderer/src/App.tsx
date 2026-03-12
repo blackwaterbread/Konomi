@@ -740,14 +740,32 @@ export default function App() {
 
     void loadSearchPresetStats();
     runScan({ detectDuplicates: true }).then(() => scheduleAnalysis(0));
-    try {
-      window.image.watch();
-    } catch {
-      /* 감시 시작 실패는 조용히 무시 */
-    }
+    let watchCancelled = false;
+    let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    const startWatch = (attempt = 0): void => {
+      void window.image.watch().catch((error: unknown) => {
+        if (watchCancelled) return;
+        const delayMs = Math.min(10000, 1000 * 2 ** attempt);
+        log.warn("Image watcher start failed; retry scheduled", {
+          attempt: attempt + 1,
+          delayMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        watchRetryTimer = setTimeout(() => {
+          watchRetryTimer = null;
+          startWatch(attempt + 1);
+        }, delayMs);
+      });
+    };
+    startWatch();
 
     return () => {
       log.info("App unmount cleanup");
+      watchCancelled = true;
+      if (watchRetryTimer) {
+        clearTimeout(watchRetryTimer);
+        watchRetryTimer = null;
+      }
       if (pageRefreshTimerRef.current) {
         clearTimeout(pageRefreshTimerRef.current);
         pageRefreshTimerRef.current = null;

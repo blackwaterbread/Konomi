@@ -11,6 +11,7 @@ function runMigrations(dbPath: string): void {
   const migrationsPath = process.env.KONOMI_MIGRATIONS_PATH;
   if (!migrationsPath) return;
 
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
@@ -48,10 +49,17 @@ function runMigrations(dbPath: string): void {
       } catch {
         continue;
       }
-      db.exec(sql);
-      db.prepare(
-        `INSERT INTO "_prisma_migrations" (id, migration_name, finished_at, applied_steps_count) VALUES (?, ?, datetime('now'), 1)`,
-      ).run(crypto.randomUUID(), dir);
+      const checksum = crypto.createHash("sha256").update(sql).digest("hex");
+      const applyMigration = db.transaction(
+        (migrationName: string, migrationSql: string, migrationChecksum: string) => {
+          db.exec(migrationSql);
+          db.prepare(
+            `INSERT INTO "_prisma_migrations" (id, checksum, migration_name, finished_at, applied_steps_count)
+             VALUES (?, ?, ?, datetime('now'), 1)`,
+          ).run(crypto.randomUUID(), migrationChecksum, migrationName);
+        },
+      );
+      applyMigration(dir, sql, checksum);
     }
   } finally {
     db.close();

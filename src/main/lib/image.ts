@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import os from "os";
 import { Worker } from "worker_threads";
 import { getDB } from "./db";
 import { getFolders } from "./folder";
@@ -121,6 +122,13 @@ export type FolderDuplicateGroupResolution = {
 const POOL_SIZE = 4;
 const BATCH_SIZE = 20;
 const WORKER_PATH = path.join(__dirname, "nai.worker.js");
+const CPU_COUNT = Math.max(2, os.cpus().length || 4);
+const SIZE_SCAN_CONCURRENCY = Math.min(32, Math.max(8, CPU_COUNT * 2));
+const HASH_SCAN_CONCURRENCY = Math.min(
+  12,
+  Math.max(4, Math.ceil(CPU_COUNT * 1.5)),
+);
+const SYNC_SCAN_CONCURRENCY = Math.min(24, Math.max(8, CPU_COUNT * 2));
 
 class WorkerPool {
   private idle: Worker[] = [];
@@ -190,12 +198,28 @@ class WorkerPool {
 const naiPool = new WorkerPool(POOL_SIZE, WORKER_PATH);
 
 async function fileHash(filePath: string): Promise<string | null> {
-  try {
-    const buf = await fs.promises.readFile(filePath);
-    return crypto.createHash("sha1").update(buf).digest("hex");
-  } catch {
-    return null;
-  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const hash = crypto.createHash("sha1");
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", () => finalize(null));
+    stream.on("data", (chunk: string | Buffer) => {
+      hash.update(chunk);
+    });
+    stream.on("end", () => {
+      try {
+        finalize(hash.digest("hex"));
+      } catch {
+        finalize(null);
+      }
+    });
+  });
 }
 
 async function fileSize(filePath: string): Promise<number | null> {
@@ -219,7 +243,7 @@ async function buildExistingSizeBuckets(
   const buckets: ExistingSizeBuckets = new Map();
   await withConcurrency(
     rows,
-    24,
+    SIZE_SCAN_CONCURRENCY,
     async (row) => {
       const size = await fileSize(row.path);
       if (size === null) return;
@@ -243,7 +267,7 @@ async function buildIncomingSizeBuckets(
   const buckets: IncomingSizeBuckets = new Map();
   await withConcurrency(
     incomingPaths,
-    24,
+    SIZE_SCAN_CONCURRENCY,
     async (incomingPath) => {
       const size = await fileSize(incomingPath);
       if (size === null) return;
@@ -284,7 +308,7 @@ async function buildIncomingSignatureBuckets(
   );
   await withConcurrency(
     targets,
-    8,
+    HASH_SCAN_CONCURRENCY,
     async ({ size, entry }) => {
       const hash = await fileHash(entry.path);
       if (!hash) return;
@@ -309,7 +333,7 @@ async function buildExistingSignatureBuckets(
   );
   await withConcurrency(
     targets,
-    8,
+    HASH_SCAN_CONCURRENCY,
     async ({ size, entry }) => {
       const hash = await fileHash(entry.path);
       if (!hash) return;
@@ -1470,7 +1494,7 @@ export async function findFolderDuplicateImages(
   await ensureIgnoredDuplicatePathsLoaded();
   const db = getDB();
   const incomingPaths = (
-    options?.incomingPaths ?? (await scanPngFiles(folderPath))
+    options?.incomingPaths ?? (await scanPngFiles(folderPath, options?.signal))
   ).filter((filePath) => !ignoredDuplicatePaths.has(filePath));
   if (incomingPaths.length === 0) return [];
 
@@ -1531,7 +1555,7 @@ export async function findDuplicateGroupForIncomingPath(
   if (!incomingHash) return null;
 
   const existingEntries: FolderDuplicateExistingEntry[] = [];
-  await withConcurrency(candidates, 8, async (row) => {
+  await withConcurrency(candidates, HASH_SCAN_CONCURRENCY, async (row) => {
     const hash = await fileHash(row.path);
     if (hash !== incomingHash) return;
     existingEntries.push({
@@ -1767,37 +1791,41 @@ export async function syncAllFolders(
     folderCount = folders.length;
     const db = getDB();
 
-    // Pre-collect all file paths to know total count
-    const folderFiles = await Promise.all(
-      folders.map(async (folder) => ({
-        folder,
-        filePaths: await scanPngFiles(folder.path),
-      })),
-    );
-    total = folderFiles.reduce(
-      (sum, { filePaths }) => sum + filePaths.length,
-      0,
-    );
-    onProgress?.(done, total);
-
+    const preScannedTotals = detectDuplicates;
     const duplicateIncomingPathSet = new Set<string>();
+
     if (onDuplicateGroup && !signal?.cancelled) {
-      const incomingPaths = folderFiles.flatMap(({ filePaths }) => filePaths);
       const existingRows = await db.image.findMany({
         select: { id: true, path: true },
       });
       const existingPathSet = new Set(existingRows.map((row) => row.path));
       const incomingCandidates: string[] = [];
-      await withConcurrency(
-        incomingPaths,
-        24,
-        async (incomingPath) => {
-          if (existingPathSet.has(incomingPath)) return;
-          if (await isIgnoredDuplicatePath(incomingPath)) return;
-          incomingCandidates.push(incomingPath);
-        },
-        signal,
-      );
+
+      for (const folder of folders) {
+        if (signal?.cancelled) break;
+
+        const folderPaths = await scanPngFiles(folder.path, signal);
+        total += folderPaths.length;
+
+        await withConcurrency(
+          folderPaths,
+          SIZE_SCAN_CONCURRENCY,
+          async (incomingPath) => {
+            if (existingPathSet.has(incomingPath)) return;
+            if (await isIgnoredDuplicatePath(incomingPath)) return;
+            incomingCandidates.push(incomingPath);
+          },
+          signal,
+        );
+
+        const now = Date.now();
+        if (now - lastProgressAt >= 100) {
+          lastProgressAt = now;
+          onProgress?.(done, total);
+        }
+      }
+
+      onProgress?.(done, total);
 
       if (!signal?.cancelled && incomingCandidates.length > 0) {
         const existingSizeBuckets = await buildExistingSizeBuckets(
@@ -1842,182 +1870,178 @@ export async function syncAllFolders(
       }
     }
 
-    await Promise.all(
-      folderFiles.map(async ({ folder, filePaths }) => {
-        if (signal?.cancelled) return;
+    for (const folder of folders) {
+      if (signal?.cancelled) break;
 
-        onFolderStart?.(folder.id, folder.name);
-        try {
-          const existing = await db.image.findMany({
-            where: { folderId: folder.id },
-            select: {
-              id: true,
-              path: true,
-              fileModifiedAt: true,
-              ...IMAGE_SEARCH_STAT_SOURCE_SELECT,
-            },
-          });
-          const existingMap = new Map(
-            existing.map((e) => [e.path, e.fileModifiedAt]),
-          );
-          const currentPathSet = new Set(filePaths);
-          const staleRows = existing.filter(
-            (row) => !currentPathSet.has(row.path),
-          );
-          if (staleRows.length > 0) {
-            // SQLite bind parameter limits require chunked deletes for large sets.
-            for (let i = 0; i < staleRows.length; i += 400) {
-              const chunk = staleRows.slice(i, i + 400);
-              chunk.forEach((row) => deletedSimilarityIds.add(row.id));
-              await db.image.deleteMany({
-                where: { id: { in: chunk.map((row) => row.id) } },
-              });
-              await decrementImageSearchStatsForRows(
-                chunk,
-                onSearchStatsProgress,
-              );
-            }
+      const filePaths = await scanPngFiles(folder.path, signal);
+      if (!preScannedTotals) {
+        total += filePaths.length;
+        onProgress?.(done, total);
+      }
+
+      onFolderStart?.(folder.id, folder.name);
+      try {
+        const existing = await db.image.findMany({
+          where: { folderId: folder.id },
+          select: {
+            id: true,
+            path: true,
+            fileModifiedAt: true,
+            ...IMAGE_SEARCH_STAT_SOURCE_SELECT,
+          },
+        });
+        const existingMap = new Map(
+          existing.map((e) => [e.path, e.fileModifiedAt]),
+        );
+        const currentPathSet = new Set(filePaths);
+        const staleRows = existing.filter((row) => !currentPathSet.has(row.path));
+        if (staleRows.length > 0) {
+          // SQLite bind parameter limits require chunked deletes for large sets.
+          for (let i = 0; i < staleRows.length; i += 400) {
+            const chunk = staleRows.slice(i, i + 400);
+            chunk.forEach((row) => deletedSimilarityIds.add(row.id));
+            await db.image.deleteMany({
+              where: { id: { in: chunk.map((row) => row.id) } },
+            });
+            await decrementImageSearchStatsForRows(chunk, onSearchStatsProgress);
           }
-
-          // 신규 파일 먼저, 기존 파일은 최근 mtime 순으로 처리 — 첫 배치에 최신 이미지가 포함되도록
-          const sortedFilePaths = [
-            ...filePaths.filter((p) => !existingMap.has(p)),
-            ...filePaths
-              .filter((p) => existingMap.has(p))
-              .sort(
-                (a, b) =>
-                  existingMap.get(b)!.getTime() - existingMap.get(a)!.getTime(),
-              ),
-          ];
-
-          // I/O 결과를 모아 트랜잭션으로 일괄 쓰기 — 개별 upsert보다 10~100배 빠름
-          type DataEntry = {
-            path: string;
-            folderId: number;
-            prompt: string;
-            negativePrompt: string;
-            characterPrompts: string;
-            promptTokens: string;
-            negativePromptTokens: string;
-            characterPromptTokens: string;
-            source: string;
-            model: string;
-            seed: number;
-            width: number;
-            height: number;
-            sampler: string;
-            steps: number;
-            cfgScale: number;
-            cfgRescale: number;
-            noiseSchedule: string;
-            varietyPlus: boolean;
-            fileSize: number;
-            fileModifiedAt: Date;
-          };
-          const pending: DataEntry[] = [];
-
-          const flushBatch = async (): Promise<void> => {
-            if (pending.length === 0) return;
-            const batch = pending.splice(0);
-            const batchPaths = batch.map((row) => row.path);
-            const beforeRows = (await db.image.findMany({
-              where: { path: { in: batchPaths } },
-              select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
-            })) as Array<{ path: string } & ImageSearchStatSource>;
-            const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
-            const images = await db.$transaction(
-              batch.map((data) =>
-                db.image.upsert({
-                  where: { path: data.path },
-                  update: data,
-                  create: data,
-                }),
-              ),
-            );
-            for (const image of images) {
-              upsertedSimilarityIds.add(image.id);
-            }
-            await applyImageSearchStatsMutations(
-              batch.map((row) => ({
-                before: beforeMap.get(row.path) ?? null,
-                after: row,
-              })),
-              onSearchStatsProgress,
-            );
-            onBatch(images as unknown as ImageRow[]);
-          };
-
-          await withConcurrency(
-            sortedFilePaths,
-            20,
-            async (filePath) => {
-              try {
-                if (duplicateIncomingPathSet.has(filePath)) return;
-                if (await isIgnoredDuplicatePath(filePath)) return;
-
-                const stat = await fs.promises.stat(filePath);
-                const mtime = stat.mtime;
-
-                const existingMtime = existingMap.get(filePath);
-                if (
-                  existingMtime &&
-                  existingMtime.getTime() === mtime.getTime()
-                )
-                  return;
-
-                const meta = await naiPool.run(filePath);
-                pending.push({
-                  path: filePath,
-                  folderId: folder.id,
-                  prompt: meta?.prompt ?? "",
-                  negativePrompt: meta?.negativePrompt ?? "",
-                  characterPrompts: JSON.stringify(
-                    meta?.characterPrompts ?? [],
-                  ),
-                  promptTokens: JSON.stringify(
-                    parsePromptTokens(meta?.prompt ?? ""),
-                  ),
-                  negativePromptTokens: JSON.stringify(
-                    parsePromptTokens(meta?.negativePrompt ?? ""),
-                  ),
-                  characterPromptTokens: JSON.stringify(
-                    (meta?.characterPrompts ?? []).flatMap(parsePromptTokens),
-                  ),
-                  source: meta?.source ?? "unknown",
-                  model: meta?.model ?? "",
-                  seed: meta?.seed ?? 0,
-                  width: meta?.width ?? 0,
-                  height: meta?.height ?? 0,
-                  sampler: meta?.sampler ?? "",
-                  steps: meta?.steps ?? 0,
-                  cfgScale: meta?.cfgScale ?? 0,
-                  cfgRescale: meta?.cfgRescale ?? 0,
-                  noiseSchedule: meta?.noiseSchedule ?? "",
-                  varietyPlus: meta?.varietyPlus ?? false,
-                  fileSize: stat.size,
-                  fileModifiedAt: mtime,
-                });
-                if (pending.length >= BATCH_SIZE) await flushBatch();
-              } catch {
-                // skip unreadable or inaccessible files
-              } finally {
-                done++;
-                const progressNow = Date.now();
-                if (done === total || progressNow - lastProgressAt >= 100) {
-                  lastProgressAt = progressNow;
-                  onProgress?.(done, total);
-                }
-              }
-            },
-            signal,
-          );
-
-          await flushBatch();
-        } finally {
-          onFolderEnd?.(folder.id);
         }
-      }),
-    );
+
+        // 신규 파일 먼저, 기존 파일은 최근 mtime 순으로 처리 → 첫 배치에 최신 이미지가 포함되도록
+        const sortedFilePaths = [
+          ...filePaths.filter((p) => !existingMap.has(p)),
+          ...filePaths
+            .filter((p) => existingMap.has(p))
+            .sort(
+              (a, b) =>
+                existingMap.get(b)!.getTime() - existingMap.get(a)!.getTime(),
+            ),
+        ];
+
+        // I/O 결과를 모아 트랜잭션으로 묶어 쓰기 → 개별 upsert보다 10~100배 빠름
+        type DataEntry = {
+          path: string;
+          folderId: number;
+          prompt: string;
+          negativePrompt: string;
+          characterPrompts: string;
+          promptTokens: string;
+          negativePromptTokens: string;
+          characterPromptTokens: string;
+          source: string;
+          model: string;
+          seed: number;
+          width: number;
+          height: number;
+          sampler: string;
+          steps: number;
+          cfgScale: number;
+          cfgRescale: number;
+          noiseSchedule: string;
+          varietyPlus: boolean;
+          fileSize: number;
+          fileModifiedAt: Date;
+        };
+        const pending: DataEntry[] = [];
+
+        const flushBatch = async (): Promise<void> => {
+          if (pending.length === 0) return;
+          const batch = pending.splice(0);
+          const batchPaths = batch.map((row) => row.path);
+          const beforeRows = (await db.image.findMany({
+            where: { path: { in: batchPaths } },
+            select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
+          })) as Array<{ path: string } & ImageSearchStatSource>;
+          const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
+          const images = await db.$transaction(
+            batch.map((data) =>
+              db.image.upsert({
+                where: { path: data.path },
+                update: data,
+                create: data,
+              }),
+            ),
+          );
+          for (const image of images) {
+            upsertedSimilarityIds.add(image.id);
+          }
+          await applyImageSearchStatsMutations(
+            batch.map((row) => ({
+              before: beforeMap.get(row.path) ?? null,
+              after: row,
+            })),
+            onSearchStatsProgress,
+          );
+          onBatch(images as unknown as ImageRow[]);
+        };
+
+        await withConcurrency(
+          sortedFilePaths,
+          SYNC_SCAN_CONCURRENCY,
+          async (filePath) => {
+            try {
+              if (duplicateIncomingPathSet.has(filePath)) return;
+              if (await isIgnoredDuplicatePath(filePath)) return;
+
+              const stat = await fs.promises.stat(filePath);
+              const mtime = stat.mtime;
+
+              const existingMtime = existingMap.get(filePath);
+              if (existingMtime && existingMtime.getTime() === mtime.getTime()) {
+                return;
+              }
+
+              const meta = await naiPool.run(filePath);
+              pending.push({
+                path: filePath,
+                folderId: folder.id,
+                prompt: meta?.prompt ?? "",
+                negativePrompt: meta?.negativePrompt ?? "",
+                characterPrompts: JSON.stringify(meta?.characterPrompts ?? []),
+                promptTokens: JSON.stringify(parsePromptTokens(meta?.prompt ?? "")),
+                negativePromptTokens: JSON.stringify(
+                  parsePromptTokens(meta?.negativePrompt ?? ""),
+                ),
+                characterPromptTokens: JSON.stringify(
+                  (meta?.characterPrompts ?? []).flatMap(parsePromptTokens),
+                ),
+                source: meta?.source ?? "unknown",
+                model: meta?.model ?? "",
+                seed: meta?.seed ?? 0,
+                width: meta?.width ?? 0,
+                height: meta?.height ?? 0,
+                sampler: meta?.sampler ?? "",
+                steps: meta?.steps ?? 0,
+                cfgScale: meta?.cfgScale ?? 0,
+                cfgRescale: meta?.cfgRescale ?? 0,
+                noiseSchedule: meta?.noiseSchedule ?? "",
+                varietyPlus: meta?.varietyPlus ?? false,
+                fileSize: stat.size,
+                fileModifiedAt: mtime,
+              });
+              if (pending.length >= BATCH_SIZE) await flushBatch();
+            } catch {
+              // skip unreadable or inaccessible files
+            } finally {
+              done++;
+              const progressNow = Date.now();
+              if (done === total || progressNow - lastProgressAt >= 100) {
+                lastProgressAt = progressNow;
+                onProgress?.(done, total);
+              }
+            }
+          },
+          signal,
+        );
+
+        await flushBatch();
+      } finally {
+        onFolderEnd?.(folder.id);
+      }
+    }
+
+    if (signal?.cancelled) return;
+
     if (deletedSimilarityIds.size > 0) {
       await deleteSimilarityCacheForImageIds([...deletedSimilarityIds]);
     }

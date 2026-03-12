@@ -5,6 +5,11 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { registerIpcHandlers } from "./ipc";
 import { bridge } from "./bridge";
 import { createLogger } from "./lib/logger";
+import {
+  getImageContentType,
+  isManagedImagePath,
+  isSupportedImagePath,
+} from "./lib/path-guard";
 
 // Must be called before app.whenReady()
 protocol.registerSchemesAsPrivileged([
@@ -79,7 +84,16 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    try {
+      const nextUrl = new URL(details.url);
+      if (nextUrl.protocol === "https:" || nextUrl.protocol === "http:") {
+        void shell.openExternal(details.url);
+      } else {
+        log.warn("Blocked non-http(s) external URL", { url: details.url });
+      }
+    } catch {
+      log.warn("Blocked invalid external URL", { url: details.url });
+    }
     return { action: "deny" };
   });
 
@@ -107,13 +121,30 @@ app.whenReady().then(() => {
   // Serve local image files via konomi:// protocol
   // URL format: konomi://local/<encodeURIComponent(forwardSlashPath)>
   protocol.handle("konomi", async (request) => {
-    const pathname = new URL(request.url).pathname;
-    const filePath = decodeURIComponent(pathname.slice(1));
     try {
+      const parsedUrl = new URL(request.url);
+      if (parsedUrl.hostname !== "local") {
+        return new Response(null, { status: 400 });
+      }
+      const encodedPath = parsedUrl.pathname.startsWith("/")
+        ? parsedUrl.pathname.slice(1)
+        : parsedUrl.pathname;
+      const filePath = decodeURIComponent(encodedPath);
+      if (!filePath || !isSupportedImagePath(filePath)) {
+        return new Response(null, { status: 415 });
+      }
+      if (!(await isManagedImagePath(filePath))) {
+        log.warn("Blocked konomi protocol path outside managed roots", {
+          filePath,
+        });
+        return new Response(null, { status: 403 });
+      }
       const data = await fs.promises.readFile(filePath);
-      return new Response(data, { headers: { "content-type": "image/png" } });
+      return new Response(data, {
+        headers: { "content-type": getImageContentType(filePath) },
+      });
     } catch {
-      log.debug("konomi protocol file miss", { filePath });
+      log.debug("konomi protocol file miss", { url: request.url });
       return new Response(null, { status: 404 });
     }
   });
@@ -135,4 +166,8 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   log.info("All windows closed", { platform: process.platform });
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  bridge.stop();
 });
