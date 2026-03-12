@@ -61,6 +61,8 @@ interface ImageDetailProps {
   onClose: () => void;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
+  onAddTagToSearch: (tag: string) => void;
+  onAddTagToGenerator: (tag: string) => void;
   prevImage: ImageData | null;
   nextImage: ImageData | null;
   onPrev: () => void;
@@ -76,6 +78,8 @@ export function ImageDetail({
   onClose,
   onToggleFavorite,
   onCopyPrompt,
+  onAddTagToSearch,
+  onAddTagToGenerator,
   prevImage,
   nextImage,
   onPrev,
@@ -391,7 +395,12 @@ export function ImageDetail({
                     )}
                   </Button>
                 </div>
-                <TokenContainer tokens={image.tokens} isEditable={false} />
+                <TokenContainer
+                  tokens={image.tokens}
+                  isEditable={false}
+                  onAddTagToSearch={onAddTagToSearch}
+                  onAddTagToGeneration={onAddTagToGenerator}
+                />
               </div>
 
               {/* Negative Prompt */}
@@ -419,6 +428,8 @@ export function ImageDetail({
                   <TokenContainer
                     tokens={image.negativeTokens}
                     isEditable={false}
+                    onAddTagToSearch={onAddTagToSearch}
+                    onAddTagToGeneration={onAddTagToGenerator}
                   />
                 </div>
               )}
@@ -450,6 +461,8 @@ export function ImageDetail({
                     <TokenContainer
                       tokens={parsePromptTokens(cp)}
                       isEditable={false}
+                      onAddTagToSearch={onAddTagToSearch}
+                      onAddTagToGeneration={onAddTagToGenerator}
                     />
                   </div>
                 ))}

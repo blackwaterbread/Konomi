@@ -60,6 +60,8 @@ interface ImageCardProps {
   onDelete: (id: string) => void;
   onChangeCategory: (image: ImageData) => void;
   onSendToGenerator?: (image: ImageData) => void;
+  onAddTagToSearch?: (tag: string) => void;
+  onAddTagToGenerator?: (tag: string) => void;
   selectionMode?: boolean;
   selected?: boolean;
   onSelectChange?: (id: string, selected: boolean) => void;
@@ -79,7 +81,13 @@ export const ImageCard = memo(function ImageCard({
   selected = false,
   onSelectChange,
 }: ImageCardProps) {
+  const TOKEN_PREVIEW_LIMIT = 10;
   const [imageLoaded, setImageLoaded] = useState(false);
+  const previewTokens = image.tokens.slice(0, TOKEN_PREVIEW_LIMIT);
+  const hiddenTokenCount = Math.max(
+    0,
+    image.tokens.length - TOKEN_PREVIEW_LIMIT,
+  );
 
   useEffect(() => {
     if (!image.src) {
@@ -158,9 +166,7 @@ export const ImageCard = memo(function ImageCard({
                 onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
               />
             )}
-            <div
-              className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20"
-            >
+            <div className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20">
               {image.src && (
                 <img
                   src={image.src}
@@ -244,9 +250,17 @@ export const ImageCard = memo(function ImageCard({
               <div className="absolute bottom-0 left-0 right-0 p-4">
                 <div
                   onClick={(e) => e.stopPropagation()}
-                  className="max-h-36 overflow-y-auto rounded-md border border-white/15 bg-black/55 p-2 shadow-lg backdrop-blur-sm"
+                  onContextMenu={(e) => e.preventDefault()}
+                  className="relative max-h-28 overflow-hidden rounded-md border border-white/15 bg-black/55 p-2 shadow-lg backdrop-blur-sm"
                 >
-                  <TokenContainer tokens={image.tokens} isEditable={false} />
+                  <TokenContainer tokens={previewTokens} isEditable={false} />
+                  {hiddenTokenCount > 0 && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/80 to-transparent px-2 pb-1 pt-5">
+                      <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">
+                        외 {hiddenTokenCount}개
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

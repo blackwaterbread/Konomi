@@ -35,6 +35,7 @@ import type {
 } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
+import { dispatchSearchInputAppendTag } from "@/lib/search-input-event";
 
 const log = createLogger("renderer/App");
 const CATEGORY_ORDER_STORAGE_KEY = "konomi-category-order";
@@ -286,13 +287,17 @@ export default function App() {
   const [pendingGeneratorImport, setPendingGeneratorImport] =
     useState<ImageData | null>(null);
   const [similarImages, setSimilarImages] = useState<ImageData[]>([]);
+  const [appendPromptTagRequest, setAppendPromptTagRequest] = useState<{
+    id: number;
+    tag: string;
+  } | null>(null);
 
   const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const searchStatsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const searchStatsRefreshTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -303,6 +308,7 @@ export default function App() {
   const scanningRef = useRef(false);
   const analyzingRef = useRef(false);
   const rollbackRequestSeqRef = useRef(0);
+  const appendPromptTagRequestSeqRef = useRef(0);
   const similarityThresholdRef = useRef(settings.similarityThreshold);
   const mountedRef = useRef(false);
 
@@ -573,19 +579,21 @@ export default function App() {
     const offScanProgress = window.image.onScanProgress((data) => {
       if (scanningRef.current) startTransition(() => setScanProgress(data));
     });
-    const offSearchStatsProgress = window.image.onSearchStatsProgress((data) => {
-      startTransition(() => setSearchStatsProgress(data));
-      if (searchStatsClearTimerRef.current) {
-        clearTimeout(searchStatsClearTimerRef.current);
-        searchStatsClearTimerRef.current = null;
-      }
-      if (data.total > 0 && data.done >= data.total) {
-        searchStatsClearTimerRef.current = setTimeout(() => {
-          setSearchStatsProgress(null);
+    const offSearchStatsProgress = window.image.onSearchStatsProgress(
+      (data) => {
+        startTransition(() => setSearchStatsProgress(data));
+        if (searchStatsClearTimerRef.current) {
+          clearTimeout(searchStatsClearTimerRef.current);
           searchStatsClearTimerRef.current = null;
-        }, 250);
-      }
-    });
+        }
+        if (data.total > 0 && data.done >= data.total) {
+          searchStatsClearTimerRef.current = setTimeout(() => {
+            setSearchStatsProgress(null);
+            searchStatsClearTimerRef.current = null;
+          }, 250);
+        }
+      },
+    );
     const offScanFolder = window.image.onScanFolder(
       ({ folderId, folderName, active }) => {
         setActiveScanFolderIds((prev) => {
@@ -854,6 +862,27 @@ export default function App() {
       .catch(() => toast.error("클립보드 복사 실패"));
   }, []);
 
+  const handleAddTagToSearch = useCallback((tag: string) => {
+    const normalizedTag = tag.trim();
+    if (!normalizedTag) return;
+    dispatchSearchInputAppendTag({
+      tag: normalizedTag,
+      focusInput: false,
+      suppressAutocomplete: true,
+    });
+  }, []);
+
+  const handleAddTagToGenerator = useCallback((tag: string) => {
+    const normalizedTag = tag.trim();
+    if (!normalizedTag) return;
+    appendPromptTagRequestSeqRef.current += 1;
+    setAppendPromptTagRequest({
+      id: appendPromptTagRequestSeqRef.current,
+      tag: normalizedTag,
+    });
+    setActivePanel("generator");
+  }, []);
+
   const handleReveal = useCallback((path: string) => {
     window.image.revealInExplorer(path);
   }, []);
@@ -1023,6 +1052,7 @@ export default function App() {
             pendingImport={pendingGeneratorImport}
             onClearPendingImport={() => setPendingGeneratorImport(null)}
             outputFolder={outputFolder}
+            appendPromptTagRequest={appendPromptTagRequest}
           />
         </div>
 
@@ -1109,6 +1139,8 @@ export default function App() {
               onChangeCategory={handleChangeCategory}
               onBulkChangeCategory={handleBulkChangeCategory}
               onSendToGenerator={handleSendToGenerator}
+              onAddTagToSearch={handleAddTagToSearch}
+              onAddTagToGenerator={handleAddTagToGenerator}
               totalCount={totalImageCount}
               pageSize={settings.pageSize}
               page={galleryPage}
@@ -1180,6 +1212,8 @@ export default function App() {
         onClose={() => setIsDetailOpen(false)}
         onToggleFavorite={handleToggleFavorite}
         onCopyPrompt={handleCopyPrompt}
+        onAddTagToSearch={handleAddTagToSearch}
+        onAddTagToGenerator={handleAddTagToGenerator}
         prevImage={selectedIndex > 0 ? images[selectedIndex - 1] : null}
         nextImage={
           selectedIndex < images.length - 1 ? images[selectedIndex + 1] : null

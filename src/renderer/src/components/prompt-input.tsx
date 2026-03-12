@@ -13,17 +13,30 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
 import type { PromptToken } from "@/lib/token";
-import { parsePromptTokens, parseRawToken, tokenToRawString } from "@/lib/token";
+import {
+  parsePromptTokens,
+  parseRawToken,
+  tokenToRawString,
+} from "@/lib/token";
 import { TokenChip } from "./token-chip";
 
 type EditablePromptToken = PromptToken & { id: string };
+type PromptInputEditorMode = "simple" | "advanced";
+const INPUT_WRAP_SPACE_THRESHOLD_PX = 120;
+const INPUT_WRAP_CARET_BUFFER_PX = 18;
+const INPUT_WRAP_TOKEN_GAP_PX = 6;
 
 interface PromptInputProps {
   value: string;
   onChange: (value: string) => void;
+  mode?: PromptInputEditorMode;
   placeholder?: string;
   className?: string;
   resizable?: boolean;
@@ -32,7 +45,10 @@ interface PromptInputProps {
 }
 
 function createTokenId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `tok-${Math.random().toString(36).slice(2, 10)}`;
@@ -57,6 +73,7 @@ function serializePrompt(tokens: EditablePromptToken[], draft: string): string {
 export function PromptInput({
   value,
   onChange,
+  mode = "simple",
   placeholder = "tag, tag, tag...",
   className,
   resizable = true,
@@ -64,8 +81,11 @@ export function PromptInput({
   maxHeight = 420,
 }: PromptInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const measureCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const tokenRowRef = useRef<HTMLDivElement | null>(null);
   const tokenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const activeEditorTokenIdRef = useRef<string | null>(null);
+  const previousModeRef = useRef<PromptInputEditorMode>(mode);
   const [tokens, setTokens] = useState<EditablePromptToken[]>(() =>
     toEditableTokens(parsePromptTokens(value)),
   );
@@ -73,18 +93,36 @@ export function PromptInput({
   const [activeEditorTokenId, setActiveEditorTokenId] = useState<string | null>(
     null,
   );
+  const [shouldWrapInput, setShouldWrapInput] = useState(false);
+  const [tokenRowWidth, setTokenRowWidth] = useState(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
-  const serialized = useMemo(() => serializePrompt(tokens, draft), [tokens, draft]);
+  const serialized = useMemo(
+    () => serializePrompt(tokens, draft),
+    [tokens, draft],
+  );
 
   useEffect(() => {
+    if (mode !== "simple") return;
     if (value === serialized) return;
     setTokens(toEditableTokens(parsePromptTokens(value)));
     setDraft("");
-  }, [value, serialized]);
+  }, [mode, value, serialized]);
+
+  useEffect(() => {
+    const previousMode = previousModeRef.current;
+    if (
+      previousMode === "simple" &&
+      mode === "advanced" &&
+      value !== serialized
+    ) {
+      onChange(serialized);
+    }
+    previousModeRef.current = mode;
+  }, [mode, onChange, serialized, value]);
 
   useEffect(() => {
     activeEditorTokenIdRef.current = activeEditorTokenId;
@@ -95,6 +133,112 @@ export function PromptInput({
       prev && tokens.some((token) => token.id === prev) ? prev : null,
     );
   }, [tokens]);
+
+  useEffect(() => {
+    if (mode === "advanced") setActiveEditorTokenId(null);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "simple") {
+      setTokenRowWidth(0);
+      return;
+    }
+
+    const tokenRow = tokenRowRef.current;
+    if (!tokenRow) return;
+
+    const updateTokenRowWidth = () => {
+      const nextWidth = Math.floor(tokenRow.clientWidth);
+      setTokenRowWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+    };
+
+    const raf = window.requestAnimationFrame(updateTokenRowWidth);
+    const observer = new ResizeObserver(updateTokenRowWidth);
+    observer.observe(tokenRow);
+    window.addEventListener("resize", updateTokenRowWidth);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.removeEventListener("resize", updateTokenRowWidth);
+    };
+  }, [mode, tokens.length]);
+
+  useEffect(() => {
+    if (mode !== "simple" || tokens.length === 0) {
+      setShouldWrapInput(false);
+      return;
+    }
+
+    const tokenRow = tokenRowRef.current;
+    const lastToken = tokenRefs.current.get(
+      tokens[tokens.length - 1]?.id ?? "",
+    );
+    if (!tokenRow || !lastToken) {
+      setShouldWrapInput(false);
+      return;
+    }
+
+    const updateInputWrap = () => {
+      const input = inputRef.current;
+      if (!input) {
+        setShouldWrapInput(false);
+        return;
+      }
+
+      const rowRect = tokenRow.getBoundingClientRect();
+      const lastTokenRect = lastToken.getBoundingClientRect();
+      const remainingSpace = Math.max(
+        0,
+        rowRect.right - lastTokenRect.right - INPUT_WRAP_TOKEN_GAP_PX,
+      );
+
+      if (draft.length === 0) {
+        setShouldWrapInput(false);
+        return;
+      }
+
+      if (!measureCanvasContextRef.current) {
+        const canvas = document.createElement("canvas");
+        measureCanvasContextRef.current = canvas.getContext("2d");
+      }
+      const ctx = measureCanvasContextRef.current;
+      if (!ctx) {
+        setShouldWrapInput(remainingSpace <= INPUT_WRAP_SPACE_THRESHOLD_PX);
+        return;
+      }
+
+      const inputStyle = window.getComputedStyle(input);
+      const font =
+        inputStyle.font ||
+        `${inputStyle.fontWeight} ${inputStyle.fontSize} ${inputStyle.fontFamily}`;
+      ctx.font = font;
+      let textWidth = ctx.measureText(draft).width;
+      const letterSpacing = Number.parseFloat(inputStyle.letterSpacing);
+      if (Number.isFinite(letterSpacing) && draft.length > 1) {
+        textWidth += letterSpacing * (draft.length - 1);
+      }
+
+      const requiredInlineWidth =
+        Math.ceil(textWidth) + INPUT_WRAP_CARET_BUFFER_PX;
+      const shouldWrap =
+        remainingSpace <= INPUT_WRAP_SPACE_THRESHOLD_PX &&
+        requiredInlineWidth > remainingSpace;
+      setShouldWrapInput((prev) => (prev === shouldWrap ? prev : shouldWrap));
+    };
+
+    const raf = window.requestAnimationFrame(updateInputWrap);
+    const observer = new ResizeObserver(updateInputWrap);
+    observer.observe(tokenRow);
+    observer.observe(lastToken);
+    window.addEventListener("resize", updateInputWrap);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.removeEventListener("resize", updateInputWrap);
+    };
+  }, [draft, mode, tokens]);
 
   const emit = (nextTokens: EditablePromptToken[], nextDraft: string) => {
     setTokens(nextTokens);
@@ -120,7 +264,10 @@ export function PromptInput({
 
     const nextTokens = [
       ...tokens,
-      ...finalized.map((chunk) => ({ ...parseRawToken(chunk), id: createTokenId() })),
+      ...finalized.map((chunk) => ({
+        ...parseRawToken(chunk),
+        id: createTokenId(),
+      })),
     ];
     emit(nextTokens, nextDraft);
   };
@@ -199,7 +346,10 @@ export function PromptInput({
     const nextTokens = [...tokens];
     const normalizedDraft = draft.trim();
     if (normalizedDraft) {
-      nextTokens.push({ ...parseRawToken(normalizedDraft), id: createTokenId() });
+      nextTokens.push({
+        ...parseRawToken(normalizedDraft),
+        id: createTokenId(),
+      });
     }
     nextTokens.push(...pastedTokens);
     emit(nextTokens, "");
@@ -246,24 +396,51 @@ export function PromptInput({
     }
   };
 
+  if (mode === "advanced") {
+    return (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "w-full rounded-lg border border-border/60 bg-secondary/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/60",
+          resizable && "resize-y",
+          className,
+        )}
+        style={{ minHeight, maxHeight }}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
-        "w-full rounded-lg border border-border/60 bg-secondary/60 px-2 py-2 overflow-auto",
+        "w-full min-w-0 rounded-lg border border-border/60 bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
         resizable && "resize-y",
         className,
       )}
       style={{ minHeight, maxHeight }}
     >
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={tokens.map((token) => token.id)} strategy={rectSortingStrategy}>
-          <div className="flex flex-wrap items-center gap-1.5">
+        <SortableContext
+          items={tokens.map((token) => token.id)}
+          strategy={rectSortingStrategy}
+        >
+          <div
+            ref={tokenRowRef}
+            className="flex w-full min-w-0 flex-wrap items-center gap-1.5"
+          >
             {tokens.map((token, index) => (
               <TokenChip
                 key={token.id}
                 token={token}
                 raw={tokenToRawString(token)}
                 isEditable={true}
+                constrainToContainer={true}
+                maxWidthPx={Math.max(
+                  0,
+                  tokenRowWidth - INPUT_WRAP_TOKEN_GAP_PX,
+                )}
                 editorOpen={activeEditorTokenId === token.id}
                 onChange={(nextToken) => handleTokenChange(token.id, nextToken)}
                 onApplyAdvance={() => {
@@ -285,7 +462,7 @@ export function PromptInput({
                     return null;
                   })
                 }
-                openOnFocus={true}
+                openOnFocus={false}
                 focusEditorOnOpen={true}
                 onRequestAdjacentEdit={(direction) => {
                   if (direction === "prev") {
@@ -309,8 +486,11 @@ export function PromptInput({
               onKeyDown={handleInputKeyDown}
               onPaste={handleInputPaste}
               onFocus={() => setActiveEditorTokenId(null)}
-              placeholder={placeholder}
-              className="h-7 min-w-32 flex-1 bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
+              placeholder={tokens.length > 0 ? "" : placeholder}
+              className={cn(
+                "h-7 min-w-[3ch] flex-1 bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none",
+                shouldWrapInput ? "basis-full" : "basis-0",
+              )}
             />
           </div>
         </SortableContext>

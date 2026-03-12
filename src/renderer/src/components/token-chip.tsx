@@ -5,12 +5,19 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Copy } from "lucide-react";
+import { Copy, ImagePlus, Search } from "lucide-react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { PromptToken, TokenWeightExpression } from "@/lib/token";
 
@@ -86,9 +93,13 @@ interface TokenChipProps {
   token: PromptToken;
   raw: string;
   isEditable?: boolean;
+  constrainToContainer?: boolean;
+  maxWidthPx?: number;
   editorOpen?: boolean;
   copied?: boolean;
   onCopy?: () => void;
+  onAddTagToSearch?: (tag: string) => void;
+  onAddTagToGeneration?: (tag: string) => void;
   onChange?: (token: PromptToken) => void;
   onEditorOpenChange?: (open: boolean) => void;
   onApplyAdvance?: () => void;
@@ -107,9 +118,13 @@ function TokenChipCore({
   token,
   raw,
   isEditable = false,
+  constrainToContainer = false,
+  maxWidthPx,
   editorOpen,
   copied = false,
   onCopy,
+  onAddTagToSearch,
+  onAddTagToGeneration,
   onChange,
   onEditorOpenChange,
   onApplyAdvance,
@@ -313,15 +328,15 @@ function TokenChipCore({
   };
 
   const handleTrigger = () => {
-    if (isEditable) {
-      if (openOnFocus) {
-        setEditorOpenState(true);
-      } else {
-        setEditorOpenState(!resolvedEditorOpen);
-      }
-      return;
-    }
+    if (isEditable) return;
     onCopy?.();
+  };
+
+  const handleContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!isEditable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setEditorOpenState(true);
   };
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -405,11 +420,31 @@ function TokenChipCore({
     chipRef?.(node);
   };
 
+  const constrainedMaxWidth =
+    constrainToContainer &&
+    typeof maxWidthPx === "number" &&
+    Number.isFinite(maxWidthPx) &&
+    maxWidthPx > 0
+      ? Math.floor(maxWidthPx)
+      : undefined;
+  const contextMenuTag = token.text.trim();
+  const hasReadonlyContextMenu =
+    !isEditable &&
+    contextMenuTag.length > 0 &&
+    (Boolean(onAddTagToSearch) || Boolean(onAddTagToGeneration));
+
   const chip = (
     <div
       ref={setCombinedRef}
-      className={cn("relative inline-flex", sortable?.isDragging && "z-20")}
-      style={sortable?.style}
+      className={cn(
+        "relative inline-flex",
+        constrainToContainer && "min-w-0 max-w-full",
+        sortable?.isDragging && "z-20",
+      )}
+      style={{
+        ...sortable?.style,
+        ...(constrainedMaxWidth ? { maxWidth: constrainedMaxWidth } : {}),
+      }}
     >
       <div
         ref={setTriggerRef}
@@ -418,6 +453,7 @@ function TokenChipCore({
         data-token-chip="true"
         data-token-raw={raw}
         onClick={handleTrigger}
+        onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
         onFocus={handleFocus}
         {...sortable?.attributes}
@@ -425,14 +461,19 @@ function TokenChipCore({
         className={cn(
           chipClass,
           "inline-flex items-center gap-1 cursor-pointer touch-none",
+          constrainToContainer && "min-w-0 max-w-full",
           sortable?.isDragging && "opacity-70",
         )}
       >
-        <span>{token.text}</span>
-        <span className="text-[10px] font-mono text-foreground/60">
-          {`x${formatWeight(token.weight)}`}
+        <span className={cn(constrainToContainer && "min-w-0 truncate")}>
+          {token.text}
         </span>
-        {copied ? <Copy className="h-3 w-3" /> : null}
+        {weighted ? (
+          <span className="shrink-0 text-[10px] font-mono text-foreground/60">
+            {`x${formatWeight(token.weight)}`}
+          </span>
+        ) : null}
+        {copied ? <Copy className="h-3 w-3 shrink-0" /> : null}
       </div>
     </div>
   );
@@ -552,7 +593,29 @@ function TokenChipCore({
 
   return (
     <>
-      {chip}
+      {hasReadonlyContextMenu ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>{chip}</ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem
+              onSelect={() => onAddTagToSearch?.(contextMenuTag)}
+              disabled={!onAddTagToSearch}
+            >
+              <Search className="h-4 w-4" />
+              검색어에 태그 추가
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => onAddTagToGeneration?.(contextMenuTag)}
+              disabled={!onAddTagToGeneration}
+            >
+              <ImagePlus className="h-4 w-4" />
+              생성모드에 태그 추가
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        chip
+      )}
       {popover}
     </>
   );

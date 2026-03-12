@@ -23,6 +23,10 @@ import { AdvancedSearchModal } from "@/components/advanced-search-modal";
 import { AppInfoDialog } from "@/components/app-info-dialog";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { filterLabel, filterKey } from "@/lib/advanced-filter";
+import {
+  SEARCH_INPUT_APPEND_TAG_EVENT,
+  type SearchInputAppendTagDetail,
+} from "@/lib/search-input-event";
 
 const SEARCH_TERM_SPLIT_RE = /[,\n\uFF0C|\uFF5C]+/;
 
@@ -96,7 +100,6 @@ function getActiveSearchToken(
 }
 
 type ActivePanel = "gallery" | "generator" | "settings";
-
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -149,6 +152,7 @@ export function Header({
   const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
   const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const suppressAutocompleteOnceRef = useRef(false);
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestRequestSeqRef = useRef(0);
@@ -156,6 +160,53 @@ export function Header({
   useEffect(() => {
     setInputValue(searchQuery);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const handleAppendTag = (event: Event) => {
+      const detail = (event as CustomEvent<SearchInputAppendTagDetail>).detail;
+      const normalizedTag = detail?.tag?.trim() ?? "";
+      if (!normalizedTag) return;
+      if (detail?.suppressAutocomplete) {
+        suppressAutocompleteOnceRef.current = true;
+      }
+
+      let nextValue = "";
+      setInputValue((prev) => {
+        const trimmed = prev.trim();
+        nextValue = !trimmed
+          ? normalizedTag
+          : /[,\n\uFF0C|]\s*$/.test(trimmed)
+            ? `${trimmed} ${normalizedTag}`
+            : `${trimmed}, ${normalizedTag}`;
+        return nextValue;
+      });
+
+      setTagSuggestions([]);
+      setTagSuggestionOpen(false);
+      setTagSuggestionIndex(-1);
+      const nextCaret = nextValue.length;
+      setCaretPosition(nextCaret);
+
+      if (detail?.focusInput) {
+        window.requestAnimationFrame(() => {
+          const node = inputRef.current;
+          if (!node) return;
+          node.focus();
+          node.setSelectionRange(nextCaret, nextCaret);
+        });
+      } else {
+        setIsSearchFocused(false);
+      }
+    };
+
+    window.addEventListener(SEARCH_INPUT_APPEND_TAG_EVENT, handleAppendTag);
+    return () => {
+      window.removeEventListener(
+        SEARCH_INPUT_APPEND_TAG_EVENT,
+        handleAppendTag,
+      );
+    };
+  }, []);
 
   useEffect(
     () => () => {
@@ -183,6 +234,11 @@ export function Header({
         clearTimeout(suggestDebounceRef.current);
         suggestDebounceRef.current = null;
       }
+      return;
+    }
+
+    if (suppressAutocompleteOnceRef.current) {
+      suppressAutocompleteOnceRef.current = false;
       return;
     }
 
@@ -358,8 +414,12 @@ export function Header({
                       setTagSuggestionIndex(-1);
                     }, 120);
                   }}
-                  onClick={(e) => setCaretPosition(e.currentTarget.selectionStart)}
-                  onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart)}
+                  onClick={(e) =>
+                    setCaretPosition(e.currentTarget.selectionStart)
+                  }
+                  onKeyUp={(e) =>
+                    setCaretPosition(e.currentTarget.selectionStart)
+                  }
                   onKeyDown={(e) => {
                     if (tagSuggestionOpen && tagSuggestions.length > 0) {
                       if (e.key === "ArrowDown") {

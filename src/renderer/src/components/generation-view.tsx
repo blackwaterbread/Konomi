@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { NaiConfig, GenerateParams } from "@preload/index.d";
 import type { NovelAIMeta } from "@/types/nai";
@@ -34,10 +35,15 @@ type RefImage = {
 };
 
 type CharacterPromptMode = "prompt" | "negativePrompt";
+type PromptEditorMode = "simple" | "advanced";
 type CharacterPromptInput = {
   prompt: string;
   negativePrompt: string;
   inputMode: CharacterPromptMode;
+};
+type AppendPromptTagRequest = {
+  id: number;
+  tag: string;
 };
 
 type CharacterPromptPreset = "female" | "male" | "other";
@@ -275,6 +281,7 @@ interface GenerationViewProps {
   pendingImport?: ImageData | null;
   onClearPendingImport?: () => void;
   outputFolder: string;
+  appendPromptTagRequest?: AppendPromptTagRequest | null;
 }
 
 const NAI_GEN_KEY = "konomi-nai-gen-settings";
@@ -303,6 +310,7 @@ export function GenerationView({
   pendingImport,
   onClearPendingImport,
   outputFolder,
+  appendPromptTagRequest,
 }: GenerationViewProps) {
   const [config, setConfig] = useState<NaiConfig | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -314,6 +322,8 @@ export function GenerationView({
   const [promptInputMode, setPromptInputMode] = useState<
     "prompt" | "negativePrompt"
   >("prompt");
+  const [promptEditorMode, setPromptEditorMode] =
+    useState<PromptEditorMode>("simple");
   const [characterPrompts, setCharacterPrompts] = useState<
     CharacterPromptInput[]
   >([]);
@@ -390,6 +400,20 @@ export function GenerationView({
   const [importError, setImportError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const dragCountRef = useRef(0);
+  const lastAppendPromptTagRequestIdRef = useRef<number | null>(null);
+
+  const appendTagToPrompt = useCallback((tag: string) => {
+    const normalizedTag = tag.trim();
+    if (!normalizedTag) return;
+    setPrompt((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return normalizedTag;
+      if (/[,\n\uFF0C|]\s*$/.test(trimmed)) {
+        return `${trimmed} ${normalizedTag}`;
+      }
+      return `${trimmed}, ${normalizedTag}`;
+    });
+  }, []);
 
   useEffect(() => {
     if (!dropItem) {
@@ -412,6 +436,15 @@ export function GenerationView({
     setImportError(null);
     onClearPendingImport?.();
   }, [pendingImport]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!appendPromptTagRequest) return;
+    if (appendPromptTagRequest.id === lastAppendPromptTagRequestIdRef.current)
+      return;
+    lastAppendPromptTagRequestIdRef.current = appendPromptTagRequest.id;
+    appendTagToPrompt(appendPromptTagRequest.tag);
+    setPromptInputMode("prompt");
+  }, [appendPromptTagRequest, appendTagToPrompt]);
 
   useEffect(() => {
     window.nai
@@ -765,7 +798,11 @@ export function GenerationView({
       {/* Left panel */}
       <div
         className="flex flex-col border-r border-border shrink-0 bg-sidebar overflow-hidden"
-        style={{ width: panelWidth }}
+        style={{
+          width: panelWidth,
+          minWidth: panelWidth,
+          maxWidth: panelWidth,
+        }}
       >
         {/* API 설정 토글 */}
         <button
@@ -830,6 +867,43 @@ export function GenerationView({
           </div>
         )}
 
+        <div className="border-b border-border bg-secondary/10 px-4 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-foreground/80">
+              Prompt Input
+            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "text-[11px]",
+                  promptEditorMode === "simple"
+                    ? "text-foreground"
+                    : "text-muted-foreground/70",
+                )}
+              >
+                Simple
+              </span>
+              <Switch
+                checked={promptEditorMode === "advanced"}
+                onCheckedChange={(checked) =>
+                  setPromptEditorMode(checked ? "advanced" : "simple")
+                }
+                aria-label="Prompt editor mode"
+              />
+              <span
+                className={cn(
+                  "text-[11px]",
+                  promptEditorMode === "advanced"
+                    ? "text-foreground"
+                    : "text-muted-foreground/70",
+                )}
+              >
+                Advanced
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* 파라미터 영역 */}
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-4 space-y-5 w-full">
@@ -883,6 +957,7 @@ export function GenerationView({
                     ? setPrompt(nextValue)
                     : setNegativePrompt(nextValue)
                 }
+                mode={promptEditorMode}
                 placeholder={
                   promptInputMode === "prompt"
                     ? "1girl, beautiful, masterpiece, ..."
@@ -910,7 +985,9 @@ export function GenerationView({
                         {CHARACTER_PROMPT_PRESETS.map((preset) => (
                           <button
                             key={preset.value}
-                            onClick={() => handleAddCharacterPrompt(preset.value)}
+                            onClick={() =>
+                              handleAddCharacterPrompt(preset.value)
+                            }
                             className="w-full text-left px-2.5 py-1.5 text-xs text-foreground/80 hover:bg-secondary transition-colors"
                           >
                             {preset.label}
@@ -1013,6 +1090,7 @@ export function GenerationView({
                             }),
                           )
                         }
+                        mode={promptEditorMode}
                         placeholder={
                           character.inputMode === "prompt"
                             ? `캐릭터 ${i + 1} 프롬프트`

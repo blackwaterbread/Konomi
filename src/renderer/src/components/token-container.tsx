@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState, type ClipboardEvent } from "react";
-import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 import type { PromptToken } from "@/lib/token";
 import { tokenToRawString } from "@/lib/token";
 import { TokenChip } from "./token-chip";
@@ -11,6 +20,8 @@ interface TokenContainerProps {
   isEditable?: boolean;
   isDndEnabled?: boolean;
   onTokensChange?: (tokens: PromptToken[]) => void;
+  onAddTagToSearch?: (tag: string) => void;
+  onAddTagToGeneration?: (tag: string) => void;
 }
 
 export function TokenContainer({
@@ -18,6 +29,8 @@ export function TokenContainer({
   isEditable = false,
   isDndEnabled = false,
   onTokensChange,
+  onAddTagToSearch,
+  onAddTagToGeneration,
 }: TokenContainerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -74,7 +87,12 @@ export function TokenContainer({
   const handleCopySelectedRaw = (e: ClipboardEvent<HTMLDivElement>) => {
     const root = containerRef.current;
     const selection = window.getSelection();
-    if (!root || !selection || selection.isCollapsed || selection.rangeCount < 1)
+    if (
+      !root ||
+      !selection ||
+      selection.isCollapsed ||
+      selection.rangeCount < 1
+    )
       return;
 
     const chipNodes = Array.from(
@@ -114,6 +132,8 @@ export function TokenContainer({
         isEditable={isEditable}
         copied={copiedKey === key}
         onCopy={() => handleChipCopy(key, token)}
+        onAddTagToSearch={onAddTagToSearch}
+        onAddTagToGeneration={onAddTagToGeneration}
         onChange={(nextToken) => handleChipChange(i, nextToken)}
         isSortable={isDndEnabled}
         sortableId={key}
