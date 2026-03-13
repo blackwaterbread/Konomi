@@ -329,7 +329,7 @@ export default function App() {
   const listRequestSeqRef = useRef(0);
   const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
   const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scanPromiseRef = useRef<Promise<void> | null>(null);
+  const scanPromiseRef = useRef<Promise<boolean> | null>(null);
   const scanningRef = useRef(false);
   const analyzingRef = useRef(false);
   const rollbackRequestSeqRef = useRef(0);
@@ -615,7 +615,7 @@ export default function App() {
   );
 
   const runScan = useCallback(
-    (options?: { detectDuplicates?: boolean }) => {
+    (options?: { detectDuplicates?: boolean }): Promise<boolean> => {
       if (scanPromiseRef.current) {
         log.debug("Scan request deduped");
         return scanPromiseRef.current;
@@ -643,6 +643,7 @@ export default function App() {
           log.info("Scan completed", { elapsedMs: Date.now() - startedAt });
           schedulePageRefresh(0);
           void loadSearchPresetStats();
+          return true;
         })
         .catch((e: unknown) => {
           log.error("Scan failed", {
@@ -652,6 +653,7 @@ export default function App() {
           toast.error(
             `스캔 실패: ${e instanceof Error ? e.message : String(e)}`,
           );
+          return false;
         })
         .finally(() => {
           scanningRef.current = false;
@@ -739,7 +741,9 @@ export default function App() {
       );
 
     void loadSearchPresetStats();
-    runScan({ detectDuplicates: true }).then(() => scheduleAnalysis(0));
+    runScan({ detectDuplicates: true }).then((ok) => {
+      if (ok) scheduleAnalysis(0);
+    });
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -824,7 +828,8 @@ export default function App() {
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
       schedulePageRefresh(0);
-      runScan().then(() => {
+      runScan().then((ok) => {
+        if (!ok) return;
         setRollbackFolderIds((prev) => {
           const s = new Set(prev);
           s.delete(folderId);

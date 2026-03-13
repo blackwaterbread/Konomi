@@ -56,8 +56,12 @@ type FolderAddPendingInfo = {
 const toLocalSrc = (filePath: string) =>
   `konomi://local/${encodeURIComponent(filePath.replace(/\\/g, "/"))}`;
 
-const normalizeFolderPath = (folderPath: string): string =>
-  folderPath.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+const normalizeFolderPath = (folderPath: string): string => {
+  const normalized = folderPath.replace(/\\/g, "/").replace(/\/+$/, "").trim();
+  return navigator.userAgent.toLowerCase().includes("windows")
+    ? normalized.toLowerCase()
+    : normalized;
+};
 
 const mergeDuplicateGroups = (
   a: FolderDuplicateGroup,

@@ -1162,6 +1162,16 @@ export async function listImages(): Promise<ImageRow[]> {
   }) as unknown as Promise<ImageRow[]>;
 }
 
+export async function listImageIdsForFolder(
+  folderId: number,
+): Promise<number[]> {
+  const rows = await getDB().image.findMany({
+    where: { folderId },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}
+
 type NormalizedImageListQuery = {
   page: number;
   pageSize: number;
@@ -1399,6 +1409,47 @@ function randomRank(seed: number, row: { id: number; path: string }): number {
   return hashStringToUint32(`${seed}:${row.id}:${row.path}`);
 }
 
+function compareRandomCandidates(
+  seed: number,
+  a: { id: number; path: string },
+  b: { id: number; path: string },
+): number {
+  const rankA = randomRank(seed, a);
+  const rankB = randomRank(seed, b);
+  if (rankA !== rankB) return rankA - rankB;
+  return a.id - b.id;
+}
+
+function pickRandomCandidates(
+  seed: number,
+  candidates: Array<{ id: number; path: string }>,
+  limit: number,
+): number[] {
+  if (limit <= 0 || candidates.length === 0) return [];
+
+  const picked: Array<{ id: number; path: string }> = [];
+  for (const candidate of candidates) {
+    if (picked.length < limit) {
+      picked.push(candidate);
+      continue;
+    }
+
+    let worstIndex = 0;
+    for (let i = 1; i < picked.length; i++) {
+      if (compareRandomCandidates(seed, picked[worstIndex], picked[i]) < 0) {
+        worstIndex = i;
+      }
+    }
+
+    if (compareRandomCandidates(seed, candidate, picked[worstIndex]) < 0) {
+      picked[worstIndex] = candidate;
+    }
+  }
+
+  picked.sort((a, b) => compareRandomCandidates(seed, a, b));
+  return picked.map((row) => row.id);
+}
+
 export async function listImagesPage(
   query?: ImageListQuery,
 ): Promise<ImageListResult> {
@@ -1422,15 +1473,12 @@ export async function listImagesPage(
       where,
       select: { id: true, path: true },
     });
-    const sorted = [...candidates].sort((a, b) => {
-      const rankA = randomRank(normalized.randomSeed, a);
-      const rankB = randomRank(normalized.randomSeed, b);
-      if (rankA !== rankB) return rankA - rankB;
-      return a.id - b.id;
-    });
-    const sampledRows = sorted.slice(0, normalized.pageSize);
-    const sampledCount = sampledRows.length;
-    if (sampledCount === 0) {
+    const ids = pickRandomCandidates(
+      normalized.randomSeed,
+      candidates,
+      normalized.pageSize,
+    );
+    if (ids.length === 0) {
       return {
         rows: [],
         totalCount: 0,
@@ -1439,7 +1487,6 @@ export async function listImagesPage(
         totalPages: 1,
       };
     }
-    const ids = sampledRows.map((row) => row.id);
     const rows = (await db.image.findMany({
       where: { id: { in: ids } },
     })) as unknown as ImageRow[];
@@ -1449,7 +1496,7 @@ export async function listImagesPage(
       .filter((row): row is ImageRow => row !== undefined);
     return {
       rows: orderedRows,
-      totalCount: sampledCount,
+      totalCount: ids.length,
       page: normalized.page,
       pageSize: normalized.pageSize,
       totalPages: 1,

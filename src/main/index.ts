@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, protocol } from "electron";
 import { join } from "path";
 import fs from "fs";
+import { Readable } from "stream";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { registerIpcHandlers } from "./ipc";
 import { bridge } from "./bridge";
@@ -139,7 +140,9 @@ app.whenReady().then(() => {
         });
         return new Response(null, { status: 403 });
       }
-      const data = await fs.promises.readFile(filePath);
+      const data = Readable.toWeb(
+        fs.createReadStream(filePath),
+      ) as unknown as BodyInit;
       return new Response(data, {
         headers: { "content-type": getImageContentType(filePath) },
       });

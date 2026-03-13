@@ -15,6 +15,7 @@ import {
   listImages,
   listImagesPage,
   listImagesByIds,
+  listImageIdsForFolder,
   getImageSearchPresetStats,
   suggestImageSearchTags,
   listImageSearchStatSourcesForFolder,
@@ -39,6 +40,7 @@ import {
 } from "./lib/prompt";
 import {
   computeAllHashes,
+  deleteSimilarityCacheForImageIds,
   getSimilarGroups,
   getSimilarityReasons,
   resetAllHashes,
@@ -120,8 +122,10 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     case "folder:delete": {
       const { id } = payload as { id: number };
       unwatchFolder(id);
+      const folderImageIds = await listImageIdsForFolder(id);
       const folderStatRows = await listImageSearchStatSourcesForFolder(id);
       await deleteFolder(id);
+      await deleteSimilarityCacheForImageIds(folderImageIds);
       await decrementImageSearchStatsForRows(
         folderStatRows,
         emitSearchStatsProgress,
