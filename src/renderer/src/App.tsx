@@ -606,9 +606,8 @@ export default function App() {
         analyzeTimerRef.current = null;
       }
 
-      const ok = await runAnalysisNow();
-      if (!ok) return;
       setActivePanel(nextPanel);
+      void runAnalysisNow();
     },
     [activePanel, runAnalysisNow],
   );
