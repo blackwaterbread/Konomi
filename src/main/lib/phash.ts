@@ -5,7 +5,6 @@ import { withConcurrency } from "./scanner";
 
 const SIMILARITY_THRESHOLD = 10;
 const HASH_WRITE_BATCH_SIZE = 32;
-const CACHE_WRITE_BATCH_SIZE = 256;
 const CACHE_DELETE_BATCH_SIZE = 400;
 
 const STRICT_COMMON_TOKEN_RATIO = 0.15;
@@ -527,23 +526,23 @@ async function upsertSimilarityCacheRows(
   if (rows.length === 0) return;
   const db = getDB();
 
-  for (let i = 0; i < rows.length; i += CACHE_WRITE_BATCH_SIZE) {
-    const chunk = rows.slice(i, i + CACHE_WRITE_BATCH_SIZE);
-    await db.$transaction(
-      chunk.map((row) =>
-        db.$executeRawUnsafe(
-          `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
-           VALUES (?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(imageAId, imageBId) DO UPDATE SET
-             phashDistance = excluded.phashDistance,
-             textScore = excluded.textScore,
-             updatedAt = datetime('now')`,
-          row.imageAId,
-          row.imageBId,
-          row.phashDistance,
-          row.textScore,
-        ),
-      ),
+  // Multi-row INSERT: 4 params per row; keep well under SQLite's 32766 param limit
+  const ROWS_PER_STMT = 2000;
+  for (let i = 0; i < rows.length; i += ROWS_PER_STMT) {
+    const chunk = rows.slice(i, i + ROWS_PER_STMT);
+    const placeholders = chunk.map(() => `(?, ?, ?, ?, datetime('now'))`).join(",");
+    const params: unknown[] = [];
+    for (const row of chunk) {
+      params.push(row.imageAId, row.imageBId, row.phashDistance, row.textScore);
+    }
+    await db.$executeRawUnsafe(
+      `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+       VALUES ${placeholders}
+       ON CONFLICT(imageAId, imageBId) DO UPDATE SET
+         phashDistance = excluded.phashDistance,
+         textScore = excluded.textScore,
+         updatedAt = excluded.updatedAt`,
+      ...params,
     );
     await yieldToEventLoop();
   }
@@ -617,7 +616,8 @@ export async function refreshSimilarityCacheForImageIds(
   const isFullCoverage = existingTargetIds.length === sourceRows.length;
 
   const targetIdSet = new Set(existingTargetIds);
-  const upserts: SimilarityCacheRow[] = [];
+  const pending: SimilarityCacheRow[] = [];
+  const FLUSH_INTERVAL = 10000;
   const totalPairs = existingTargetIds.reduce((count, targetId) => {
     let next = count;
     for (const candidate of images) {
@@ -637,17 +637,23 @@ export async function refreshSimilarityCacheForImageIds(
       if (targetIdSet.has(candidate.id) && candidate.id < targetId) continue;
 
       const row = computePairCacheRow(target, candidate, idfMap);
-      if (row) upserts.push(row);
+      if (row) pending.push(row);
 
       processedPairs++;
       if (processedPairs % 256 === 0) {
         onProgress?.(processedPairs, totalPairs);
         await yieldToEventLoop();
       }
+      if (pending.length >= FLUSH_INTERVAL) {
+        await upsertSimilarityCacheRows(pending);
+        pending.length = 0;
+      }
     }
   }
 
-  await upsertSimilarityCacheRows(upserts);
+  if (pending.length > 0) {
+    await upsertSimilarityCacheRows(pending);
+  }
   onProgress?.(totalPairs, totalPairs);
   if (isFullCoverage) {
     await markSimilarityCachePrimed();
