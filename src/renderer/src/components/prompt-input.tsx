@@ -89,7 +89,7 @@ export function PromptInput({
   const measureCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const tokenRowRef = useRef<HTMLDivElement | null>(null);
   const tokenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const activeEditorTokenIdRef = useRef<string | null>(null);
+  const inlineEditTokenIdRef = useRef<string | null>(null);
   const previousModeRef = useRef<PromptInputEditorMode>(mode);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -97,9 +97,8 @@ export function PromptInput({
     toEditableTokens(parsePromptTokens(value)),
   );
   const [draft, setDraft] = useState("");
-  const [activeEditorTokenId, setActiveEditorTokenId] = useState<string | null>(
-    null,
-  );
+  const [inlineEditTokenId, setInlineEditTokenId] = useState<string | null>(null);
+  const [popoverTokenId, setPopoverTokenId] = useState<string | null>(null);
   const [shouldWrapInput, setShouldWrapInput] = useState(false);
   const [tokenRowWidth, setTokenRowWidth] = useState(0);
 
@@ -157,17 +156,23 @@ export function PromptInput({
   }, [mode, onChange, serialized, value]);
 
   useEffect(() => {
-    activeEditorTokenIdRef.current = activeEditorTokenId;
-  }, [activeEditorTokenId]);
+    inlineEditTokenIdRef.current = inlineEditTokenId;
+  }, [inlineEditTokenId]);
 
   useEffect(() => {
-    setActiveEditorTokenId((prev) =>
+    setInlineEditTokenId((prev) =>
+      prev && tokens.some((token) => token.id === prev) ? prev : null,
+    );
+    setPopoverTokenId((prev) =>
       prev && tokens.some((token) => token.id === prev) ? prev : null,
     );
   }, [tokens]);
 
   useEffect(() => {
-    if (mode === "advanced") setActiveEditorTokenId(null);
+    if (mode === "advanced") {
+      setInlineEditTokenId(null);
+      setPopoverTokenId(null);
+    }
   }, [mode]);
 
   useEffect(() => {
@@ -346,7 +351,7 @@ export function PromptInput({
   };
 
   const focusInput = (cursor: "start" | "end" = "end") => {
-    setActiveEditorTokenId(null);
+    setInlineEditTokenId(null);
     const input = inputRef.current;
     if (!input) return;
     input.focus();
@@ -357,9 +362,7 @@ export function PromptInput({
   const focusTokenAtIndex = (index: number) => {
     const token = tokens[index];
     if (!token) return;
-    setActiveEditorTokenId(token.id);
-    const node = tokenRefs.current.get(token.id);
-    node?.focus();
+    setInlineEditTokenId(token.id);
   };
 
   const handleInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -505,7 +508,7 @@ export function PromptInput({
                   groups={groups}
                   isEditable={true}
                   chipRef={(node) => setTokenRef(token.id, node)}
-                  onTokenFocus={() => setActiveEditorTokenId(null)}
+                  onTokenFocus={() => setInlineEditTokenId(null)}
                   onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
                   isSortable={true}
                   sortableId={token.id}
@@ -521,7 +524,19 @@ export function PromptInput({
                     0,
                     tokenRowWidth - INPUT_WRAP_TOKEN_GAP_PX,
                   )}
-                  editorOpen={activeEditorTokenId === token.id}
+                  inlineEditOpen={inlineEditTokenId === token.id}
+                  onInlineEditOpenChange={(open) =>
+                    setInlineEditTokenId((prev) => {
+                      if (open) return token.id;
+                      if (prev !== token.id) return prev;
+                      requestAnimationFrame(() => {
+                        if (inlineEditTokenIdRef.current === null)
+                          focusInput("end");
+                      });
+                      return null;
+                    })
+                  }
+                  editorOpen={popoverTokenId === token.id}
                   onChange={(nextToken) =>
                     handleTokenChange(token.id, nextToken)
                   }
@@ -532,17 +547,20 @@ export function PromptInput({
                     }
                     focusInput("end");
                   }}
-                  onEditorOpenChange={(open) =>
-                    setActiveEditorTokenId((prev) => {
-                      if (open) return token.id;
-                      if (prev !== token.id) return prev;
-                      requestAnimationFrame(() => {
-                        if (activeEditorTokenIdRef.current === null)
-                          focusInput("end");
+                  onEditorOpenChange={(open) => {
+                    if (open) {
+                      setInlineEditTokenId(null);
+                      setPopoverTokenId(token.id);
+                    } else {
+                      setPopoverTokenId((prev) => {
+                        if (prev !== token.id) return prev;
+                        requestAnimationFrame(() => {
+                          tokenRefs.current.get(token.id)?.focus();
+                        });
+                        return null;
                       });
-                      return null;
-                    })
-                  }
+                    }
+                  }}
                   openOnFocus={false}
                   focusEditorOnOpen={true}
                   onRequestAdjacentEdit={(direction) => {
@@ -575,7 +593,7 @@ export function PromptInput({
                 onKeyDown={handleInputKeyDown}
                 onPaste={handleInputPaste}
                 onFocus={() => {
-                  setActiveEditorTokenId(null);
+                  setInlineEditTokenId(null);
                 }}
                 onBlur={() => {
                   setTimeout(() => setGroupDropdownOpen(false), 150);

@@ -96,12 +96,14 @@ interface TokenChipProps {
   constrainToContainer?: boolean;
   maxWidthPx?: number;
   editorOpen?: boolean;
+  inlineEditOpen?: boolean;
   copied?: boolean;
   onCopy?: () => void;
   onAddTagToSearch?: (tag: string) => void;
   onAddTagToGeneration?: (tag: string) => void;
   onChange?: (token: PromptToken) => void;
   onEditorOpenChange?: (open: boolean) => void;
+  onInlineEditOpenChange?: (open: boolean) => void;
   onApplyAdvance?: () => void;
   chipRef?: (node: HTMLDivElement | null) => void;
   onRequestAdjacentEdit?: (direction: "prev" | "next") => void;
@@ -121,12 +123,14 @@ function TokenChipCore({
   constrainToContainer = false,
   maxWidthPx,
   editorOpen,
+  inlineEditOpen = false,
   copied = false,
   onCopy,
   onAddTagToSearch,
   onAddTagToGeneration,
   onChange,
   onEditorOpenChange,
+  onInlineEditOpenChange,
   onApplyAdvance,
   chipRef,
   onRequestAdjacentEdit,
@@ -143,6 +147,8 @@ function TokenChipCore({
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const editorInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineHandlingRef = useRef<"apply" | "cancel" | null>(null);
   const [internalEditorOpen, setInternalEditorOpen] = useState(false);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
   const [draftText, setDraftText] = useState(token.text);
@@ -259,6 +265,80 @@ function TokenChipCore({
     });
     return () => window.cancelAnimationFrame(raf);
   }, [resolvedEditorOpen, focusEditorOnOpen, popoverStyle]);
+
+  useEffect(() => {
+    if (!inlineEditOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      const input = inlineInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [inlineEditOpen]);
+
+  const applyInlineEdit = (advance = false) => {
+    if (inlineHandlingRef.current !== null) return;
+    inlineHandlingRef.current = "apply";
+    emitChange(draftText, draftWeight, draftExpression);
+    onInlineEditOpenChange?.(false);
+    if (advance) onApplyAdvance?.();
+    window.requestAnimationFrame(() => {
+      inlineHandlingRef.current = null;
+    });
+  };
+
+  const cancelInlineEdit = () => {
+    inlineHandlingRef.current = "cancel";
+    resetDraft();
+    onInlineEditOpenChange?.(false);
+    window.requestAnimationFrame(() => {
+      inlineHandlingRef.current = null;
+      triggerRef.current?.focus();
+    });
+  };
+
+  const handleInlineKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.ctrlKey && !e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      stepWeight(e.key === "ArrowUp" ? 0.1 : -0.1);
+      return;
+    }
+    if (handleExpressionShortcut(e)) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyInlineEdit(true);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelInlineEdit();
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      const pos = e.currentTarget.selectionStart ?? 0;
+      if (pos === 0 && (e.currentTarget.selectionEnd ?? 0) === 0) {
+        e.preventDefault();
+        applyInlineEdit(false);
+        onRequestAdjacentEdit?.("prev");
+      }
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      const len = e.currentTarget.value.length;
+      const pos = e.currentTarget.selectionStart ?? 0;
+      if (pos === len && (e.currentTarget.selectionEnd ?? 0) === len) {
+        e.preventDefault();
+        applyInlineEdit(false);
+        onRequestAdjacentEdit?.("next");
+      }
+    }
+  };
+
+  const handleInlineBlur = () => {
+    if (inlineHandlingRef.current !== null) return;
+    applyInlineEdit(false);
+  };
 
   const weighted = Math.abs(token.weight - 1.0) > 0.001;
   const chipClass = cn(
@@ -433,6 +513,8 @@ function TokenChipCore({
     contextMenuTag.length > 0 &&
     (Boolean(onAddTagToSearch) || Boolean(onAddTagToGeneration));
 
+  const inlineWeighted = Math.abs(draftWeight - 1.0) > 0.001;
+
   const chip = (
     <div
       ref={setCombinedRef}
@@ -446,35 +528,64 @@ function TokenChipCore({
         ...(constrainedMaxWidth ? { maxWidth: constrainedMaxWidth } : {}),
       }}
     >
-      <div
-        ref={setTriggerRef}
-        role="button"
-        tabIndex={0}
-        data-token-chip="true"
-        data-token-raw={raw}
-        onClick={handleTrigger}
-        onContextMenu={handleContextMenu}
-        onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        {...sortable?.attributes}
-        {...(resolvedEditorOpen ? {} : sortable?.listeners)}
-        className={cn(
-          chipClass,
-          "inline-flex items-center gap-1 cursor-pointer touch-none",
-          constrainToContainer && "min-w-0 max-w-full",
-          sortable?.isDragging && "opacity-70",
-        )}
-      >
-        <span className={cn(constrainToContainer && "min-w-0 truncate")}>
-          {token.text}
-        </span>
-        {weighted ? (
-          <span className="shrink-0 text-[10px] font-mono text-foreground/60">
-            {`x${formatWeight(token.weight)}`}
+      {inlineEditOpen ? (
+        <div
+          ref={setTriggerRef}
+          data-token-chip="true"
+          data-token-raw={raw}
+          onContextMenu={handleContextMenu}
+          className={cn(
+            chipClass,
+            "inline-flex items-center gap-1",
+            constrainToContainer && "min-w-0 max-w-full",
+          )}
+        >
+          <input
+            ref={inlineInputRef}
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            onKeyDown={handleInlineKeyDown}
+            onBlur={handleInlineBlur}
+            className="bg-transparent outline-none text-xs min-w-[2ch]"
+            size={Math.max(2, draftText.length + 1)}
+          />
+          {inlineWeighted ? (
+            <span className="shrink-0 text-[10px] font-mono text-foreground/60">
+              {`x${formatWeight(draftWeight)}`}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          ref={setTriggerRef}
+          role="button"
+          tabIndex={0}
+          data-token-chip="true"
+          data-token-raw={raw}
+          onClick={handleTrigger}
+          onContextMenu={handleContextMenu}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+          {...sortable?.attributes}
+          {...(resolvedEditorOpen ? {} : sortable?.listeners)}
+          className={cn(
+            chipClass,
+            "inline-flex items-center gap-1 cursor-pointer touch-none",
+            constrainToContainer && "min-w-0 max-w-full",
+            sortable?.isDragging && "opacity-70",
+          )}
+        >
+          <span className={cn(constrainToContainer && "min-w-0 truncate")}>
+            {token.text}
           </span>
-        ) : null}
-        {copied ? <Copy className="h-3 w-3 shrink-0" /> : null}
-      </div>
+          {weighted ? (
+            <span className="shrink-0 text-[10px] font-mono text-foreground/60">
+              {`x${formatWeight(token.weight)}`}
+            </span>
+          ) : null}
+          {copied ? <Copy className="h-3 w-3 shrink-0" /> : null}
+        </div>
+      )}
     </div>
   );
 
