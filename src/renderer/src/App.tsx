@@ -250,6 +250,11 @@ export default function App() {
     () => categories.find((cat) => cat.id === selectedCategoryId),
     [categories, selectedCategoryId],
   );
+  const selectedImageId = selectedImage?.id ?? null;
+  const selectedBuiltinCategory = useMemo(
+    () => getBuiltinCategoryKind(selectedCategory),
+    [selectedCategory],
+  );
   const resolutionFilters = useMemo(
     () =>
       advancedFilters
@@ -282,7 +287,7 @@ export default function App() {
         selectedCategory && !selectedCategory.isBuiltin
           ? selectedCategory.id
           : null,
-      builtinCategory: getBuiltinCategoryKind(selectedCategory),
+      builtinCategory: selectedBuiltinCategory,
       randomSeed,
       resolutionFilters,
       modelFilters,
@@ -295,6 +300,7 @@ export default function App() {
       activeView,
       settings.recentDays,
       selectedCategory,
+      selectedBuiltinCategory,
       randomSeed,
       resolutionFilters,
       modelFilters,
@@ -703,23 +709,28 @@ export default function App() {
       setImages((prev) => {
         const img = prev.find((i) => i.id === id);
         if (!img) return prev;
+        const nextIsFavorite = !img.isFavorite;
+        const shouldRefreshPage =
+          sortBy === "favorites" || selectedBuiltinCategory === "favorites";
         window.image
-          .setFavorite(parseInt(id), !img.isFavorite)
-          .then(() => schedulePageRefresh(0))
+          .setFavorite(parseInt(id, 10), nextIsFavorite)
+          .then(() => {
+            if (shouldRefreshPage) schedulePageRefresh(0);
+          })
           .catch((e: unknown) => {
             toast.error(
               `즐겨찾기 설정 실패: ${e instanceof Error ? e.message : String(e)}`,
             );
           });
         return prev.map((i) =>
-          i.id === id ? { ...i, isFavorite: !i.isFavorite } : i,
+          i.id === id ? { ...i, isFavorite: nextIsFavorite } : i,
         );
       });
       setSelectedImage((prev) =>
         prev?.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev,
       );
     },
-    [schedulePageRefresh, setImages],
+    [schedulePageRefresh, selectedBuiltinCategory, setImages, sortBy],
   );
 
   const handleCopyPrompt = useCallback((prompt: string) => {
@@ -816,12 +827,12 @@ export default function App() {
   }, [schedulePageRefresh]);
 
   useEffect(() => {
-    if (!selectedImage) {
+    if (!selectedImage || !selectedImageId) {
       setSimilarImages([]);
       setSimilarReasons({});
       return;
     }
-    const imageId = parseInt(selectedImage.id, 10);
+    const imageId = parseInt(selectedImageId, 10);
     const group = similarGroups.find((g) => g.imageIds.includes(imageId));
     if (!group || group.imageIds.length === 0) {
       setSimilarImages([]);
@@ -866,14 +877,19 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedImage, similarGroups, visualThresholdRef, promptThresholdRef]);
+  }, [
+    selectedImageId,
+    similarGroups,
+    visualThresholdRef,
+    promptThresholdRef,
+  ]);
 
   const selectedIndex = useMemo(
     () =>
-      selectedImage
-        ? images.findIndex((img) => img.id === selectedImage.id)
+      selectedImageId
+        ? images.findIndex((img) => img.id === selectedImageId)
         : -1,
-    [images, selectedImage],
+    [images, selectedImageId],
   );
 
   const handlePrev = useCallback(() => {
