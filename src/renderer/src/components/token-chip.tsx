@@ -646,7 +646,7 @@ function SortableTokenChip({
         attributes,
         listeners,
         style: {
-          transform: CSS.Transform.toString(transform),
+          transform: CSS.Translate.toString(transform),
           transition,
         },
         isDragging,
