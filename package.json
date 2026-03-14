@@ -17,8 +17,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
-    "db:generate": "DATABASE_URL=\"file:./dev.db\" prisma generate",
-    "db:migrate": "DATABASE_URL=\"file:./dev.db\" prisma migrate dev"
+    "db:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
+    "db:migrate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.4.2",

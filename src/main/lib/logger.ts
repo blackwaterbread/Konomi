@@ -71,4 +71,3 @@ export function createLogger(scope: string): Logger {
       }),
   };
 }
-

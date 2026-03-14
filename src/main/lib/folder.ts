@@ -14,14 +14,10 @@ async function normalizeFolderPath(folderPath: string): Promise<string> {
   try {
     const realPath = await fs.realpath(resolved);
     const normalized = path.normalize(realPath);
-    return process.platform === "win32"
-      ? normalized.toLowerCase()
-      : normalized;
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
   } catch {
     const normalized = path.normalize(resolved);
-    return process.platform === "win32"
-      ? normalized.toLowerCase()
-      : normalized;
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
   }
 }
 

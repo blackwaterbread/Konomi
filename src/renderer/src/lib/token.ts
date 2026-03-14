@@ -7,6 +7,17 @@ export type PromptToken = {
   weightExpression?: TokenWeightExpression;
 };
 
+export type GroupRefToken = {
+  kind: "group";
+  groupName: string;
+};
+
+export type AnyToken = PromptToken | GroupRefToken;
+
+export function isGroupRef(token: AnyToken): token is GroupRefToken {
+  return (token as GroupRefToken).kind === "group";
+}
+
 const MULT = 1.05;
 
 function parseBracketWeight(raw: string): PromptToken {
@@ -35,20 +46,24 @@ function parseBracketWeight(raw: string): PromptToken {
   return { text, weight: Math.pow(MULT, power), raw: raw.trim() };
 }
 
-export function tokenToRawString(token: PromptToken): string {
+export function tokenToRawString(token: AnyToken): string {
+  if (isGroupRef(token)) return `@{${token.groupName}}`;
   if (token.raw && token.raw.trim()) return token.raw.trim();
   if (Math.abs(token.weight - 1.0) <= 0.001) return token.text;
   return `${token.weight.toFixed(2)}::${token.text}::`;
 }
 
-export function parseRawToken(raw: string): PromptToken {
-  const parsed = parsePromptTokens(raw).at(0);
-  if (parsed) return { ...parsed, raw: raw.trim() };
-  return { text: raw.trim(), weight: 1, raw: raw.trim() };
+export function parseRawToken(raw: string): AnyToken {
+  const trimmed = raw.trim();
+  const groupMatch = trimmed.match(/^@\{([^}]+)\}$/);
+  if (groupMatch) return { kind: "group", groupName: groupMatch[1] };
+  const parsed = parsePromptTokens(trimmed).at(0);
+  if (parsed && !isGroupRef(parsed)) return { ...parsed, raw: trimmed };
+  return { text: trimmed, weight: 1, raw: trimmed };
 }
 
-export function parsePromptTokens(prompt: string): PromptToken[] {
-  const result: PromptToken[] = [];
+export function parsePromptTokens(prompt: string): AnyToken[] {
+  const result: AnyToken[] = [];
 
   const segments: Array<{ text: string; explicitWeight: number | null }> = [];
   const re = /(-?[\d.]+)::([\s\S]*?)::/g;
@@ -69,6 +84,12 @@ export function parsePromptTokens(prompt: string): PromptToken[] {
 
   for (const seg of segments) {
     for (const part of seg.text.split(",")) {
+      const trimmedPart = part.trim();
+      const groupMatch = trimmedPart.match(/^@\{([^}]+)\}$/);
+      if (groupMatch) {
+        result.push({ kind: "group", groupName: groupMatch[1] });
+        continue;
+      }
       const token = parseBracketWeight(part);
       if (!token.text) continue;
       result.push({

@@ -158,6 +158,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("prompt:reorderTokens", (_, groupId: number, ids: number[]) =>
     bridge.request("prompt:reorderTokens", { groupId, ids }),
   );
+  ipcMain.handle("prompt:resetGroups", () =>
+    bridge.request("prompt:resetGroups"),
+  );
 
   ipcMain.handle("image:computeHashes", () =>
     bridge.request("image:computeHashes"),

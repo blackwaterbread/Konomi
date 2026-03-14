@@ -1,7 +1,6 @@
 import {
   Settings as SettingsIcon,
   X,
-  FolderOpen,
   RotateCcw,
   RefreshCw,
   Trash2,
@@ -18,9 +17,6 @@ interface SettingsViewProps {
   onUpdate: (patch: Partial<Settings>) => void;
   onReset: (keys?: (keyof Settings)[]) => void;
   onClose: () => void;
-  outputFolder: string;
-  onOutputFolderChange: (outputFolder: string) => void;
-  onResetOutputFolder: () => void;
   onResetHashes: () => Promise<void>;
   isAnalyzing: boolean;
 }
@@ -132,9 +128,6 @@ export function SettingsView({
   onUpdate,
   onReset,
   onClose,
-  outputFolder,
-  onOutputFolderChange,
-  onResetOutputFolder,
   onResetHashes,
   isAnalyzing,
 }: SettingsViewProps) {
@@ -173,7 +166,8 @@ export function SettingsView({
     }
 
     const shouldBootstrapFromBasic =
-      settings.visualSimilarityThreshold === DEFAULTS.visualSimilarityThreshold &&
+      settings.visualSimilarityThreshold ===
+        DEFAULTS.visualSimilarityThreshold &&
       settings.promptSimilarityThreshold === DEFAULTS.promptSimilarityThreshold;
 
     if (!shouldBootstrapFromBasic) {
@@ -184,7 +178,9 @@ export function SettingsView({
     onUpdate({
       useAdvancedSimilarityThresholds: true,
       visualSimilarityThreshold: settings.similarityThreshold,
-      promptSimilarityThreshold: derivePromptThreshold(settings.similarityThreshold),
+      promptSimilarityThreshold: derivePromptThreshold(
+        settings.similarityThreshold,
+      ),
     });
   };
 
@@ -205,14 +201,8 @@ export function SettingsView({
     }
   };
 
-  const handleSelectFolder = async () => {
-    const dir = await window.dialog.selectDirectory();
-    if (dir) onOutputFolderChange(dir);
-  };
-
   const handleResetAll = () => {
     onReset();
-    onResetOutputFolder();
   };
 
   const handleReset = async () => {
@@ -394,7 +384,9 @@ export function SettingsView({
                           : "bg-border",
                       )}
                     />
-                    <p className="text-sm font-medium text-foreground">기본 모드</p>
+                    <p className="text-sm font-medium text-foreground">
+                      기본 모드
+                    </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     대부분의 사용자에게 적합
@@ -422,7 +414,9 @@ export function SettingsView({
                           : "bg-border",
                       )}
                     />
-                    <p className="text-sm font-medium text-foreground">고급 모드</p>
+                    <p className="text-sm font-medium text-foreground">
+                      고급 모드
+                    </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Visual/Prompt 기준 개별 조정
@@ -521,33 +515,6 @@ export function SettingsView({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-
-        <Separator className="bg-border" />
-
-        <div className="space-y-2">
-          <SectionHeader onReset={onResetOutputFolder}>
-            다운로드 폴더
-          </SectionHeader>
-          <p className="text-xs text-muted-foreground select-none">
-            NAI 생성 이미지가 저장될 폴더입니다.
-          </p>
-          <div className="flex gap-2">
-            <input
-              value={outputFolder}
-              onChange={(e) => onOutputFolderChange(e.target.value)}
-              placeholder="경로 선택..."
-              className="flex-1 min-w-0 h-9 px-3 text-sm bg-secondary border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={handleSelectFolder}
-            >
-              <FolderOpen className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 

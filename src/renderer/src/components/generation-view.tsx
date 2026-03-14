@@ -14,14 +14,17 @@ import {
   Crosshair,
   Plus,
   Trash2,
+  FolderOpen,
+  Layers,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Switch } from "@/components/ui/switch";
+
 import { cn } from "@/lib/utils";
-import type { NaiConfig, GenerateParams } from "@preload/index.d";
+import type { NaiConfig, GenerateParams, PromptGroup } from "@preload/index.d";
 import type { NovelAIMeta } from "@/types/nai";
 import type { ImageData } from "@/components/image-card";
 import { PromptInput } from "@/components/prompt-input";
+import { GroupManagerModal } from "@/components/group-manager-modal";
 
 type DropItem =
   | { kind: "file"; file: File; name: string }
@@ -281,6 +284,7 @@ interface GenerationViewProps {
   pendingImport?: ImageData | null;
   onClearPendingImport?: () => void;
   outputFolder: string;
+  onOutputFolderChange: (folder: string) => void;
   appendPromptTagRequest?: AppendPromptTagRequest | null;
 }
 
@@ -310,20 +314,22 @@ export function GenerationView({
   pendingImport,
   onClearPendingImport,
   outputFolder,
+  onOutputFolderChange,
   appendPromptTagRequest,
 }: GenerationViewProps) {
   const [config, setConfig] = useState<NaiConfig | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [configOpen, setConfigOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+  const [groups, setGroups] = useState<PromptGroup[]>([]);
 
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [promptInputMode, setPromptInputMode] = useState<
     "prompt" | "negativePrompt"
   >("prompt");
-  const [promptEditorMode, setPromptEditorMode] =
-    useState<PromptEditorMode>("simple");
+  const promptEditorMode: PromptEditorMode = "simple";
   const [characterPrompts, setCharacterPrompts] = useState<
     CharacterPromptInput[]
   >([]);
@@ -446,20 +452,28 @@ export function GenerationView({
     setPromptInputMode("prompt");
   }, [appendPromptTagRequest, appendTagToPrompt]);
 
+  const reloadGroups = () => {
+    window.promptBuilder
+      .listGroups()
+      .then((gs) => setGroups(gs))
+      .catch(() => {});
+  };
+
   useEffect(() => {
     window.nai
       .getConfig()
       .then((cfg) => {
         setConfig(cfg);
         setApiKeyInput(cfg.apiKey);
-        if (!cfg.apiKey || !outputFolder) setConfigOpen(true);
+        if (!cfg.apiKey || !outputFolder) setSettingsOpen(true);
       })
       .catch((e: unknown) => {
         toast.error(
           `설정 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
-        setConfigOpen(true);
+        setSettingsOpen(true);
       });
+    reloadGroups();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -552,7 +566,7 @@ export function GenerationView({
       const updated = await window.nai.updateConfig({ apiKey: apiKeyInput });
       setConfig(updated);
       toast.success("저장되었습니다");
-      if (updated.apiKey && outputFolder) setConfigOpen(false);
+      if (updated.apiKey && outputFolder) setSettingsOpen(false);
     } catch (e: unknown) {
       toast.error(
         `설정 저장 실패: ${e instanceof Error ? e.message : String(e)}`,
@@ -561,6 +575,13 @@ export function GenerationView({
       setConfigSaving(false);
     }
   };
+
+  const expandGroupRefs = (text: string): string =>
+    text.replace(/@\{([^}]+)\}/g, (_, name: string) => {
+      const group = groups.find((g) => g.name === name);
+      if (!group || group.tokens.length === 0) return "";
+      return group.tokens.map((t) => t.label).join(", ");
+    });
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -573,12 +594,14 @@ export function GenerationView({
         c.prompt.trim(),
       );
       const params: GenerateParams = {
-        prompt,
-        negativePrompt,
+        prompt: expandGroupRefs(prompt),
+        negativePrompt: expandGroupRefs(negativePrompt),
         ...(validCharacterPrompts.length > 0 && {
-          characterPrompts: validCharacterPrompts.map((c) => c.prompt.trim()),
+          characterPrompts: validCharacterPrompts.map((c) =>
+            expandGroupRefs(c.prompt.trim()),
+          ),
           characterNegativePrompts: validCharacterPrompts.map((c) =>
-            c.negativePrompt.trim(),
+            expandGroupRefs(c.negativePrompt.trim()),
           ),
         }),
         outputFolder,
@@ -804,105 +827,107 @@ export function GenerationView({
           maxWidth: panelWidth,
         }}
       >
-        {/* API 설정 토글 */}
+        {/* 설정 토글 */}
         <button
-          onClick={() => setConfigOpen((v) => !v)}
+          onClick={() => setSettingsOpen((v) => !v)}
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors border-b",
-            configOpen
+            settingsOpen
               ? "border-border bg-secondary/30 text-foreground"
-              : "border-transparent",
+              : "border-border",
           )}
         >
           <Settings2 className="h-3.5 w-3.5" />
-          <span>API 설정</span>
+          <span>설정</span>
           <div className="flex-1" />
           {(!config?.apiKey || !outputFolder) && (
             <span className="text-[10px] text-destructive font-medium">
               미설정
             </span>
           )}
-          {configOpen ? (
+          {settingsOpen ? (
             <ChevronUp className="h-3 w-3" />
           ) : (
             <ChevronDown className="h-3 w-3" />
           )}
         </button>
 
-        {configOpen && (
-          <div className="px-4 py-3 space-y-3 border-b border-border bg-secondary/20">
-            <div>
-              <FieldLabel label="API 키" />
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder="API Key"
-                className={INPUT_CLS}
-              />
-            </div>
-            {/* <div>
-              <FieldLabel label="출력 폴더" />
+        {settingsOpen && (
+          <div className="border-b border-border bg-secondary/20 divide-y divide-border/40">
+            {/* API 키 */}
+            <div className="px-4 py-3 space-y-1.5">
+              <span className="text-xs text-muted-foreground">API 키</span>
               <div className="flex gap-1.5">
-                <input value={outputFolder} onChange={e => setOutputFolder(e.target.value)} placeholder="저장 경로 선택..." className={cn(INPUT_CLS, "flex-1 min-w-0")} readOnly />
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="API Key"
+                  className={cn(INPUT_CLS, "flex-1 min-w-0")}
+                />
                 <button
-                  onClick={async () => {
-                    const dir = await window.dialog.selectDirectory()
-                    if (dir) setOutputFolder(dir)
-                  }}
-                  className="shrink-0 px-2.5 rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors text-xs"
+                  onClick={handleSaveConfig}
+                  disabled={configSaving}
+                  className="shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors disabled:opacity-40"
+                  title="저장"
                 >
-                  찾기
+                  {configSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
                 </button>
               </div>
-            </div> */}
-            <button
-              onClick={handleSaveConfig}
-              disabled={configSaving}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-primary text-xs font-medium hover:bg-primary/25 transition-colors disabled:opacity-50"
-            >
-              <Save className="h-3 w-3" />
-              {configSaving ? "저장 중..." : "저장"}
-            </button>
-          </div>
-        )}
+            </div>
 
-        <div className="border-b border-border bg-secondary/10 px-4 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-foreground/80">
-              Prompt Input
-            </span>
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "text-[11px]",
-                  promptEditorMode === "simple"
-                    ? "text-foreground"
-                    : "text-muted-foreground/70",
-                )}
+            {/* 다운로드 폴더 */}
+            <div className="px-4 py-3 space-y-1.5">
+              <span className="text-xs text-muted-foreground">다운로드 폴더</span>
+              <div className="flex gap-1.5">
+                <input
+                  value={outputFolder}
+                  onChange={(e) => onOutputFolderChange(e.target.value)}
+                  placeholder="저장 경로 선택..."
+                  className={cn(INPUT_CLS, "flex-1 min-w-0")}
+                  readOnly
+                />
+                <button
+                  onClick={async () => {
+                    const dir = await window.dialog.selectDirectory();
+                    if (dir) onOutputFolderChange(dir);
+                  }}
+                  className="shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Prompt 모드 */}
+            {/* <div className="px-4 py-3 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Prompt 모드</span>
+              <div className="flex items-center gap-2">
+                <span>Simple</span>
+                <Switch aria-label="Prompt editor mode" />
+                <span>Advanced</span>
+              </div>
+            </div> */}
+
+            {/* 그룹 관리 */}
+            <div className="px-4 py-3 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">그룹 관리</span>
+              <button
+                onClick={() => setGroupManagerOpen(true)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                Simple
-              </span>
-              <Switch
-                checked={promptEditorMode === "advanced"}
-                onCheckedChange={(checked) =>
-                  setPromptEditorMode(checked ? "advanced" : "simple")
-                }
-                aria-label="Prompt editor mode"
-              />
-              <span
-                className={cn(
-                  "text-[11px]",
-                  promptEditorMode === "advanced"
-                    ? "text-foreground"
-                    : "text-muted-foreground/70",
+                {groups.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground/50">{groups.length}개</span>
                 )}
-              >
-                Advanced
-              </span>
+                <Layers className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 파라미터 영역 */}
         <ScrollArea className="flex-1 min-h-0">
@@ -965,6 +990,7 @@ export function GenerationView({
                 }
                 minHeight={180}
                 maxHeight={460}
+                groups={groups}
               />
             </div>
 
@@ -1099,6 +1125,7 @@ export function GenerationView({
                         minHeight={110}
                         maxHeight={300}
                         className="min-w-0"
+                        groups={groups}
                       />
                     </div>
                   ))}
@@ -1386,7 +1413,7 @@ export function GenerationView({
             )}
             {generating ? "생성 중..." : "생성하기"}
           </button>
-          {(!config?.apiKey || !outputFolder) && !configOpen && (
+          {(!config?.apiKey || !outputFolder) && !settingsOpen && (
             <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5">
               API 설정을 먼저 완료해 주세요
             </p>
@@ -1636,6 +1663,14 @@ export function GenerationView({
           </div>
         </div>
       )}
+
+      <GroupManagerModal
+        open={groupManagerOpen}
+        onClose={() => {
+          setGroupManagerOpen(false);
+          reloadGroups();
+        }}
+      />
     </div>
   );
 }

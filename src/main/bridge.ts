@@ -120,7 +120,9 @@ class UtilityBridge {
         this.child = null;
       }
       this.rejectAllPending(
-        new Error(`Utility process exited unexpectedly (code: ${String(code)})`),
+        new Error(
+          `Utility process exited unexpectedly (code: ${String(code)})`,
+        ),
       );
       this.scheduleRestart();
     });

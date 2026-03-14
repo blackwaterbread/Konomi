@@ -161,6 +161,8 @@
   body {
     @apply bg-background text-foreground;
     word-break: keep-all;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   ::-webkit-scrollbar {
     width: 6px;

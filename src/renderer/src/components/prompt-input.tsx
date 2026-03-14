@@ -19,15 +19,18 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
-import type { PromptToken } from "@/lib/token";
+import type { AnyToken, PromptToken } from "@/lib/token";
 import {
   parsePromptTokens,
   parseRawToken,
   tokenToRawString,
+  isGroupRef,
 } from "@/lib/token";
+import type { PromptGroup } from "@preload/index.d";
 import { TokenChip } from "./token-chip";
+import { GroupChip } from "./group-chip";
 
-type EditablePromptToken = PromptToken & { id: string };
+type EditableToken = AnyToken & { id: string };
 type PromptInputEditorMode = "simple" | "advanced";
 const INPUT_WRAP_SPACE_THRESHOLD_PX = 120;
 const INPUT_WRAP_CARET_BUFFER_PX = 18;
@@ -42,6 +45,7 @@ interface PromptInputProps {
   resizable?: boolean;
   minHeight?: number;
   maxHeight?: number;
+  groups?: PromptGroup[];
 }
 
 function createTokenId(): string {
@@ -54,15 +58,15 @@ function createTokenId(): string {
   return `tok-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function toEditableTokens(tokens: PromptToken[]): EditablePromptToken[] {
+function toEditableTokens(tokens: AnyToken[]): EditableToken[] {
   return tokens
-    .filter((token) => token.text.trim().length > 0)
+    .filter((token) => isGroupRef(token) || token.text.trim().length > 0)
     .map((token) => ({ ...token, id: createTokenId() }));
 }
 
-function serializePrompt(tokens: EditablePromptToken[], draft: string): string {
+function serializePrompt(tokens: EditableToken[], draft: string): string {
   const tokenText = tokens
-    .filter((token) => token.text.trim().length > 0)
+    .filter((token) => isGroupRef(token) || token.text.trim().length > 0)
     .map((token) => tokenToRawString(token))
     .join(", ");
   const cleanDraft = draft.trim();
@@ -79,6 +83,7 @@ export function PromptInput({
   resizable = true,
   minHeight = 112,
   maxHeight = 420,
+  groups: groupsProp,
 }: PromptInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const measureCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -86,7 +91,9 @@ export function PromptInput({
   const tokenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const activeEditorTokenIdRef = useRef<string | null>(null);
   const previousModeRef = useRef<PromptInputEditorMode>(mode);
-  const [tokens, setTokens] = useState<EditablePromptToken[]>(() =>
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const [tokens, setTokens] = useState<EditableToken[]>(() =>
     toEditableTokens(parsePromptTokens(value)),
   );
   const [draft, setDraft] = useState("");
@@ -95,6 +102,31 @@ export function PromptInput({
   );
   const [shouldWrapInput, setShouldWrapInput] = useState(false);
   const [tokenRowWidth, setTokenRowWidth] = useState(0);
+
+  // @ group autocomplete
+  const [groups, setGroups] = useState<PromptGroup[]>(groupsProp ?? []);
+  const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
+  const [groupDropdownIndex, setGroupDropdownIndex] = useState(0);
+
+  useEffect(() => {
+    if (groupsProp !== undefined) {
+      setGroups(groupsProp);
+      return;
+    }
+    window.promptBuilder
+      .listGroups()
+      .then((gs) => setGroups(gs))
+      .catch(() => {});
+  }, [groupsProp]);
+
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((g) =>
+        g.name.toLowerCase().includes(groupSearch.toLowerCase()),
+      ),
+    [groups, groupSearch],
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -143,20 +175,16 @@ export function PromptInput({
       setTokenRowWidth(0);
       return;
     }
-
     const tokenRow = tokenRowRef.current;
     if (!tokenRow) return;
-
     const updateTokenRowWidth = () => {
       const nextWidth = Math.floor(tokenRow.clientWidth);
       setTokenRowWidth((prev) => (prev === nextWidth ? prev : nextWidth));
     };
-
     const raf = window.requestAnimationFrame(updateTokenRowWidth);
     const observer = new ResizeObserver(updateTokenRowWidth);
     observer.observe(tokenRow);
     window.addEventListener("resize", updateTokenRowWidth);
-
     return () => {
       window.cancelAnimationFrame(raf);
       observer.disconnect();
@@ -169,7 +197,6 @@ export function PromptInput({
       setShouldWrapInput(false);
       return;
     }
-
     const tokenRow = tokenRowRef.current;
     const lastToken = tokenRefs.current.get(
       tokens[tokens.length - 1]?.id ?? "",
@@ -178,26 +205,22 @@ export function PromptInput({
       setShouldWrapInput(false);
       return;
     }
-
     const updateInputWrap = () => {
       const input = inputRef.current;
       if (!input) {
         setShouldWrapInput(false);
         return;
       }
-
       const rowRect = tokenRow.getBoundingClientRect();
       const lastTokenRect = lastToken.getBoundingClientRect();
       const remainingSpace = Math.max(
         0,
         rowRect.right - lastTokenRect.right - INPUT_WRAP_TOKEN_GAP_PX,
       );
-
       if (draft.length === 0) {
         setShouldWrapInput(false);
         return;
       }
-
       if (!measureCanvasContextRef.current) {
         const canvas = document.createElement("canvas");
         measureCanvasContextRef.current = canvas.getContext("2d");
@@ -207,7 +230,6 @@ export function PromptInput({
         setShouldWrapInput(remainingSpace <= INPUT_WRAP_SPACE_THRESHOLD_PX);
         return;
       }
-
       const inputStyle = window.getComputedStyle(input);
       const font =
         inputStyle.font ||
@@ -215,10 +237,8 @@ export function PromptInput({
       ctx.font = font;
       let textWidth = ctx.measureText(draft).width;
       const letterSpacing = Number.parseFloat(inputStyle.letterSpacing);
-      if (Number.isFinite(letterSpacing) && draft.length > 1) {
+      if (Number.isFinite(letterSpacing) && draft.length > 1)
         textWidth += letterSpacing * (draft.length - 1);
-      }
-
       const requiredInlineWidth =
         Math.ceil(textWidth) + INPUT_WRAP_CARET_BUFFER_PX;
       const shouldWrap =
@@ -226,13 +246,11 @@ export function PromptInput({
         requiredInlineWidth > remainingSpace;
       setShouldWrapInput((prev) => (prev === shouldWrap ? prev : shouldWrap));
     };
-
     const raf = window.requestAnimationFrame(updateInputWrap);
     const observer = new ResizeObserver(updateInputWrap);
     observer.observe(tokenRow);
     observer.observe(lastToken);
     window.addEventListener("resize", updateInputWrap);
-
     return () => {
       window.cancelAnimationFrame(raf);
       observer.disconnect();
@@ -240,13 +258,44 @@ export function PromptInput({
     };
   }, [draft, mode, tokens]);
 
-  const emit = (nextTokens: EditablePromptToken[], nextDraft: string) => {
+  const emit = (nextTokens: EditableToken[], nextDraft: string) => {
     setTokens(nextTokens);
     setDraft(nextDraft);
     onChange(serializePrompt(nextTokens, nextDraft));
   };
 
+  const insertGroupToken = (groupName: string) => {
+    const groupToken: EditableToken = {
+      kind: "group",
+      groupName,
+      id: createTokenId(),
+    };
+    emit([...tokens, groupToken], "");
+    setGroupDropdownOpen(false);
+    setGroupSearch("");
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   const handleDraftChange = (nextValue: string) => {
+    // Detect @{ prefix for group autocomplete
+    const groupPrefixMatch = nextValue.match(/^@\{([^}]*)$/);
+    if (groupPrefixMatch) {
+      setGroupSearch(groupPrefixMatch[1]);
+      setGroupDropdownOpen(true);
+      setGroupDropdownIndex(0);
+      setDraft(nextValue);
+      return;
+    }
+
+    // Check if a complete @{...} was typed (closing })
+    const completeGroupMatch = nextValue.match(/^@\{([^}]+)\}$/);
+    if (completeGroupMatch) {
+      insertGroupToken(completeGroupMatch[1]);
+      return;
+    }
+
+    setGroupDropdownOpen(false);
+
     if (!nextValue.includes(",")) {
       emit(tokens, nextValue);
       return;
@@ -275,18 +324,16 @@ export function PromptInput({
   const handleTokenChange = (id: string, nextToken: PromptToken) => {
     const nextTokens = tokens
       .map((token) => (token.id === id ? { ...nextToken, id } : token))
-      .filter((token) => token.text.trim().length > 0);
+      .filter((token) => isGroupRef(token) || token.text.trim().length > 0);
     emit(nextTokens, draft);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
     const oldIndex = tokens.findIndex((token) => token.id === active.id);
     const newIndex = tokens.findIndex((token) => token.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-
     emit(arrayMove(tokens, oldIndex, newIndex), draft);
   };
 
@@ -316,6 +363,32 @@ export function PromptInput({
   };
 
   const handleInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    // Group dropdown navigation
+    if (groupDropdownOpen && filteredGroups.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setGroupDropdownIndex((i) =>
+          Math.min(i + 1, filteredGroups.length - 1),
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setGroupDropdownIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const selected = filteredGroups[groupDropdownIndex];
+        if (selected) insertGroupToken(selected.name);
+        return;
+      }
+      if (e.key === "Escape") {
+        setGroupDropdownOpen(false);
+        return;
+      }
+    }
+
     if (e.key === "ArrowLeft") {
       const atStart =
         (e.currentTarget.selectionStart ?? 0) === 0 &&
@@ -337,12 +410,9 @@ export function PromptInput({
   const handleInputPaste = (e: ReactClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData("text/plain").trim();
     if (!pasted) return;
-
     const pastedTokens = toEditableTokens(parsePromptTokens(pasted));
     if (pastedTokens.length === 0) return;
-
     e.preventDefault();
-
     const nextTokens = [...tokens];
     const normalizedDraft = draft.trim();
     if (normalizedDraft) {
@@ -365,19 +435,16 @@ export function PromptInput({
       else focusInput("start");
       return;
     }
-
     if (e.key === "ArrowRight") {
       e.preventDefault();
       if (index < tokens.length - 1) focusTokenAtIndex(index + 1);
       else focusInput("start");
       return;
     }
-
     if (e.key === "Backspace" || e.key === "Delete") {
       e.preventDefault();
       const nextTokens = tokens.filter((_, i) => i !== index);
       emit(nextTokens, draft);
-
       requestAnimationFrame(() => {
         if (nextTokens.length === 0) {
           focusInput("start");
@@ -430,68 +497,121 @@ export function PromptInput({
             ref={tokenRowRef}
             className="flex w-full min-w-0 flex-wrap items-center gap-1.5"
           >
-            {tokens.map((token, index) => (
-              <TokenChip
-                key={token.id}
-                token={token}
-                raw={tokenToRawString(token)}
-                isEditable={true}
-                constrainToContainer={true}
-                maxWidthPx={Math.max(
-                  0,
-                  tokenRowWidth - INPUT_WRAP_TOKEN_GAP_PX,
-                )}
-                editorOpen={activeEditorTokenId === token.id}
-                onChange={(nextToken) => handleTokenChange(token.id, nextToken)}
-                onApplyAdvance={() => {
-                  if (index < tokens.length - 1) {
-                    focusTokenAtIndex(index + 1);
-                    return;
+            {tokens.map((token, index) =>
+              isGroupRef(token) ? (
+                <GroupChip
+                  key={token.id}
+                  token={token}
+                  groups={groups}
+                  isEditable={true}
+                  chipRef={(node) => setTokenRef(token.id, node)}
+                  onTokenFocus={() => setActiveEditorTokenId(null)}
+                  onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
+                  isSortable={true}
+                  sortableId={token.id}
+                />
+              ) : (
+                <TokenChip
+                  key={token.id}
+                  token={token}
+                  raw={tokenToRawString(token)}
+                  isEditable={true}
+                  constrainToContainer={true}
+                  maxWidthPx={Math.max(
+                    0,
+                    tokenRowWidth - INPUT_WRAP_TOKEN_GAP_PX,
+                  )}
+                  editorOpen={activeEditorTokenId === token.id}
+                  onChange={(nextToken) =>
+                    handleTokenChange(token.id, nextToken)
                   }
-                  focusInput("end");
-                }}
-                onEditorOpenChange={(open) =>
-                  setActiveEditorTokenId((prev) => {
-                    if (open) return token.id;
-                    if (prev !== token.id) return prev;
-                    requestAnimationFrame(() => {
-                      if (activeEditorTokenIdRef.current === null) {
-                        focusInput("end");
-                      }
-                    });
-                    return null;
-                  })
-                }
-                openOnFocus={false}
-                focusEditorOnOpen={true}
-                onRequestAdjacentEdit={(direction) => {
-                  if (direction === "prev") {
-                    if (index > 0) focusTokenAtIndex(index - 1);
+                  onApplyAdvance={() => {
+                    if (index < tokens.length - 1) {
+                      focusTokenAtIndex(index + 1);
+                      return;
+                    }
+                    focusInput("end");
+                  }}
+                  onEditorOpenChange={(open) =>
+                    setActiveEditorTokenId((prev) => {
+                      if (open) return token.id;
+                      if (prev !== token.id) return prev;
+                      requestAnimationFrame(() => {
+                        if (activeEditorTokenIdRef.current === null)
+                          focusInput("end");
+                      });
+                      return null;
+                    })
+                  }
+                  openOnFocus={false}
+                  focusEditorOnOpen={true}
+                  onRequestAdjacentEdit={(direction) => {
+                    if (direction === "prev") {
+                      if (index > 0) focusTokenAtIndex(index - 1);
+                      else focusInput("start");
+                      return;
+                    }
+                    if (index < tokens.length - 1) focusTokenAtIndex(index + 1);
                     else focusInput("start");
-                    return;
-                  }
-                  if (index < tokens.length - 1) focusTokenAtIndex(index + 1);
-                  else focusInput("start");
-                }}
-                onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
-                isSortable={true}
-                sortableId={token.id}
-                chipRef={(node) => setTokenRef(token.id, node)}
-              />
-            ))}
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => handleDraftChange(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              onPaste={handleInputPaste}
-              onFocus={() => setActiveEditorTokenId(null)}
-              placeholder={tokens.length > 0 ? "" : placeholder}
+                  }}
+                  onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
+                  isSortable={true}
+                  sortableId={token.id}
+                  chipRef={(node) => setTokenRef(token.id, node)}
+                />
+              ),
+            )}
+
+            <div
               className={cn(
-                "h-7 min-w-[3ch] flex-1 bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none",
-                shouldWrapInput ? "basis-full" : "basis-0",
+                "relative min-w-[3ch]",
+                shouldWrapInput ? "basis-full" : "basis-0 flex-1",
               )}
-            />
+            >
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => handleDraftChange(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                onPaste={handleInputPaste}
+                onFocus={() => {
+                  setActiveEditorTokenId(null);
+                }}
+                onBlur={() => {
+                  setTimeout(() => setGroupDropdownOpen(false), 150);
+                }}
+                placeholder={tokens.length > 0 ? "" : placeholder}
+                className="h-7 w-full bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
+              />
+
+              {/* Group autocomplete dropdown */}
+              {groupDropdownOpen && filteredGroups.length > 0 && (
+                <div
+                  ref={dropdownRef}
+                  className="absolute top-full left-0 mt-1 w-44 rounded-lg border border-border bg-popover shadow-lg z-50 overflow-hidden"
+                >
+                  {filteredGroups.map((g, i) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertGroupToken(g.name);
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-1.5 text-xs transition-colors",
+                        i === groupDropdownIndex
+                          ? "bg-primary/15 text-primary"
+                          : "text-foreground/80 hover:bg-secondary",
+                      )}
+                    >
+                      <span className="text-violet-500 font-semibold">@</span>
+                      {`{${g.name}}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </SortableContext>
       </DndContext>

@@ -186,6 +186,7 @@ declare global {
       createToken: (groupId: number, label: string) => Promise<PromptToken>;
       deleteToken: (id: number) => Promise<void>;
       reorderTokens: (groupId: number, ids: number[]) => Promise<void>;
+      resetGroups: () => Promise<void>;
     };
     image: {
       readNaiMeta: (path: string) => Promise<NovelAIMeta | null>;

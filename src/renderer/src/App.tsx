@@ -162,8 +162,7 @@ function getBuiltinCategoryKind(
 
 export default function App() {
   const { settings, updateSettings, resetSettings } = useSettings();
-  const { outputFolder, setOutputFolder, resetOutputFolder } =
-    useNaiGenSettings();
+  const { outputFolder, setOutputFolder } = useNaiGenSettings();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(
     () => {
@@ -1212,6 +1211,7 @@ export default function App() {
             pendingImport={pendingGeneratorImport}
             onClearPendingImport={() => setPendingGeneratorImport(null)}
             outputFolder={outputFolder}
+            onOutputFolderChange={setOutputFolder}
             appendPromptTagRequest={appendPromptTagRequest}
           />
         </div>
@@ -1261,9 +1261,6 @@ export default function App() {
               onUpdate={handleSettingsUpdate}
               onReset={handleSettingsReset}
               onClose={() => void handlePanelChange("gallery")}
-              outputFolder={outputFolder}
-              onOutputFolderChange={setOutputFolder}
-              onResetOutputFolder={resetOutputFolder}
               onResetHashes={async () => {
                 try {
                   if (scanningRef.current) {

@@ -51,7 +51,11 @@ function runMigrations(dbPath: string): void {
       }
       const checksum = crypto.createHash("sha256").update(sql).digest("hex");
       const applyMigration = db.transaction(
-        (migrationName: string, migrationSql: string, migrationChecksum: string) => {
+        (
+          migrationName: string,
+          migrationSql: string,
+          migrationChecksum: string,
+        ) => {
           db.exec(migrationSql);
           db.prepare(
             `INSERT INTO "_prisma_migrations" (id, checksum, migration_name, finished_at, applied_steps_count)
@@ -68,11 +72,8 @@ function runMigrations(dbPath: string): void {
 
 export function getDB(): PrismaClient {
   if (!client) {
-    const isDev = process.env.NODE_ENV === "development";
-    const dbPath = isDev
-      ? path.join(process.cwd(), "dev.db")
-      : path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
-    if (!isDev) runMigrations(dbPath);
+    const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
+    runMigrations(dbPath);
     const adapter = new PrismaBetterSqlite3({ url: dbPath });
     client = new PrismaClient({ adapter });
   }

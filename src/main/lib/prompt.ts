@@ -9,6 +9,7 @@ const DEFAULT_BASE_GROUPS = [
   "기타 효과",
   "퀄리티 태그",
 ];
+
 const DEFAULT_CHAR_GROUPS = [
   "성별 혹은 인외 구분",
   "특정 캐릭터",
@@ -26,6 +27,25 @@ async function seedDefaults() {
   const db = getDB();
   const count = await db.promptGroup.count();
   if (count > 0) return;
+  await db.promptGroup.createMany({
+    data: [
+      ...DEFAULT_BASE_GROUPS.map((name, i) => ({
+        name,
+        type: "base",
+        order: i,
+      })),
+      ...DEFAULT_CHAR_GROUPS.map((name, i) => ({
+        name,
+        type: "character",
+        order: i,
+      })),
+    ],
+  });
+}
+
+export async function resetGroups(): Promise<void> {
+  const db = getDB();
+  await db.promptGroup.deleteMany();
   await db.promptGroup.createMany({
     data: [
       ...DEFAULT_BASE_GROUPS.map((name, i) => ({

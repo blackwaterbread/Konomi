@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { parsePromptTokens } from "@/lib/token";
+import { parsePromptTokens, isGroupRef, type PromptToken } from "@/lib/token";
 import type { ImageData } from "./image-card";
 import { TokenContainer } from "./token-container";
 
@@ -481,7 +481,9 @@ export function ImageDetail({
                       </Button>
                     </div>
                     <TokenContainer
-                      tokens={parsePromptTokens(cp)}
+                      tokens={parsePromptTokens(cp).filter(
+                        (t): t is PromptToken => !isGroupRef(t),
+                      )}
                       isEditable={false}
                       onAddTagToSearch={onAddTagToSearch}
                       onAddTagToGeneration={onAddTagToGenerator}

@@ -34,6 +34,7 @@ import {
   deleteGroup,
   renameGroup,
   reorderGroups,
+  resetGroups,
   createToken,
   deleteToken,
   reorderTokens,
@@ -245,6 +246,8 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       const { groupId, ids } = payload as { groupId: number; ids: number[] };
       return reorderTokens(groupId, ids);
     }
+    case "prompt:resetGroups":
+      return resetGroups();
 
     case "image:computeHashes":
       if (computeHashesInFlight) {

@@ -131,4 +131,3 @@ export async function isManagedImagePath(filePath: string): Promise<boolean> {
   const refreshedRoots = await getAllowedRoots(true);
   return isAllowedByRoots(refreshedRoots);
 }
-

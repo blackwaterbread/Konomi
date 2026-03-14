@@ -1941,7 +1941,9 @@ export async function syncAllFolders(
           existing.map((e) => [e.path, e.fileModifiedAt]),
         );
         const currentPathSet = new Set(filePaths);
-        const staleRows = existing.filter((row) => !currentPathSet.has(row.path));
+        const staleRows = existing.filter(
+          (row) => !currentPathSet.has(row.path),
+        );
         if (staleRows.length > 0) {
           // SQLite bind parameter limits require chunked deletes for large sets.
           for (let i = 0; i < staleRows.length; i += 400) {
@@ -1950,7 +1952,10 @@ export async function syncAllFolders(
             await db.image.deleteMany({
               where: { id: { in: chunk.map((row) => row.id) } },
             });
-            await decrementImageSearchStatsForRows(chunk, onSearchStatsProgress);
+            await decrementImageSearchStatsForRows(
+              chunk,
+              onSearchStatsProgress,
+            );
           }
         }
 
@@ -2034,7 +2039,10 @@ export async function syncAllFolders(
               const mtime = stat.mtime;
 
               const existingMtime = existingMap.get(filePath);
-              if (existingMtime && existingMtime.getTime() === mtime.getTime()) {
+              if (
+                existingMtime &&
+                existingMtime.getTime() === mtime.getTime()
+              ) {
                 return;
               }
 
@@ -2045,7 +2053,9 @@ export async function syncAllFolders(
                 prompt: meta?.prompt ?? "",
                 negativePrompt: meta?.negativePrompt ?? "",
                 characterPrompts: JSON.stringify(meta?.characterPrompts ?? []),
-                promptTokens: JSON.stringify(parsePromptTokens(meta?.prompt ?? "")),
+                promptTokens: JSON.stringify(
+                  parsePromptTokens(meta?.prompt ?? ""),
+                ),
                 negativePromptTokens: JSON.stringify(
                   parsePromptTokens(meta?.negativePrompt ?? ""),
                 ),

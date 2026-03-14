@@ -56,12 +56,14 @@ function splitTopLevelComma(raw: string): string[] {
 }
 
 function normalizeTokenText(raw: string): string {
-  return raw
-    .trim()
-    // Remove (tag:weight) style weight suffixes (SD/NAI hybrid syntax)
-    .replace(/:[\d.]+\s*(?=[)}\]>])/g, "")
-    .trim()
-    .replace(/\s+/g, " ");
+  return (
+    raw
+      .trim()
+      // Remove (tag:weight) style weight suffixes (SD/NAI hybrid syntax)
+      .replace(/:[\d.]+\s*(?=[)}\]>])/g, "")
+      .trim()
+      .replace(/\s+/g, " ")
+  );
 }
 
 function unwrapBracketWeight(raw: string): { text: string; power: number } {

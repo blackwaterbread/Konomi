@@ -51,9 +51,13 @@ export async function countPngFiles(
   signal?: CancelToken,
 ): Promise<number> {
   let count = 0;
-  await walkPngFiles(dir, () => {
-    count++;
-  }, signal);
+  await walkPngFiles(
+    dir,
+    () => {
+      count++;
+    },
+    signal,
+  );
   return count;
 }
 
