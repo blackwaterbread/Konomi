@@ -32,7 +32,8 @@ import { PromptSourcePanel } from "@/components/prompt-source-panel";
 
 type DropItem =
   | { kind: "file"; file: File; name: string }
-  | { kind: "image"; image: ImageData; name: string };
+  | { kind: "image"; image: ImageData; name: string }
+  | { kind: "path"; path: string; src: string; name: string };
 
 type RefImage = {
   data: Uint8Array;
@@ -386,13 +387,22 @@ function RecentThumb({
   onClick: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    const path = decodeURIComponent(new URL(src).pathname.slice(1));
+    e.dataTransfer.setData("text/x-konomi-path", path);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   return (
     <button
+      draggable
+      onDragStart={handleDragStart}
       className={cn(
         "relative w-full aspect-square rounded-md overflow-hidden ring-2 transition-all block",
         isCurrent
           ? "ring-primary cursor-default"
-          : "ring-transparent hover:ring-primary/50 cursor-pointer",
+          : "ring-transparent hover:ring-primary/50 cursor-grab active:cursor-grabbing",
       )}
       onClick={onClick}
     >
@@ -475,7 +485,7 @@ export function GenerationView({
   // Right side panel
   const [sourceImage, setSourceImage] = useState<ImageData | null>(null);
   const [rightPanelVisible, setRightPanelVisible] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"prompt-group" | "settings" | "reference">("prompt-group");
+  const [rightPanelTab, setRightPanelTab] = useState<"settings" | "prompt-group" | "reference">("settings");
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     try {
       return Number(localStorage.getItem("konomi-right-panel-width")) || 260;
@@ -578,6 +588,8 @@ export function GenerationView({
   const [importError, setImportError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const dragCountRef = useRef(0);
+  const lastParamsKeyRef = useRef<string | null>(null);
+  const [dupAlert, setDupAlert] = useState(false);
   const lastAppendPromptTagRequestIdRef = useRef<number | null>(null);
 
   const appendTagToPrompt = useCallback((tag: string) => {
@@ -603,7 +615,9 @@ export function GenerationView({
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
-    setPreviewUrl(dropItem.image.src);
+    setPreviewUrl(
+      dropItem.kind === "image" ? dropItem.image.src : dropItem.src,
+    );
     return undefined;
   }, [dropItem]);
 
@@ -783,17 +797,47 @@ export function GenerationView({
       return group.tokens.map((t) => t.label).join(", ");
     });
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (force = false) => {
     if (!prompt.trim()) return;
+    const seed = seedInput.trim() ? parseInt(seedInput, 10) : undefined;
+    const validCharacterPrompts = characterPrompts.filter((c) =>
+      c.prompt.trim(),
+    );
+    const paramsKey = JSON.stringify({
+      prompt: expandGroupRefs(prompt),
+      negativePrompt: expandGroupRefs(negativePrompt),
+      characterPrompts: validCharacterPrompts.map((c) =>
+        expandGroupRefs(c.prompt.trim()),
+      ),
+      characterNegativePrompts: validCharacterPrompts.map((c) =>
+        expandGroupRefs(c.negativePrompt.trim()),
+      ),
+      characterPositions: validCharacterPrompts.map((c) => c.position),
+      model,
+      width,
+      height,
+      steps,
+      scale,
+      sampler,
+      noiseSchedule,
+      seed,
+      i2iName: i2iRef?.name,
+      i2iStrength: i2iRef?.strength,
+      i2iNoise: i2iRef?.noise,
+      vibes: vibes.map((v) => v.name + v.infoExtracted + v.strength),
+      preciseRefName: preciseRef?.name,
+      preciseRefFidelity: preciseRef?.fidelity,
+    });
+    if (!force && paramsKey === lastParamsKeyRef.current) {
+      setDupAlert(true);
+      return;
+    }
+    lastParamsKeyRef.current = paramsKey;
     setGenerating(true);
     setError(null);
     setResultSrc(null);
     setPreviewSrc(null);
     try {
-      const seed = seedInput.trim() ? parseInt(seedInput, 10) : undefined;
-      const validCharacterPrompts = characterPrompts.filter((c) =>
-        c.prompt.trim(),
-      );
       const params: GenerateParams = {
         prompt: expandGroupRefs(prompt),
         negativePrompt: expandGroupRefs(negativePrompt),
@@ -867,6 +911,14 @@ export function GenerationView({
     e.preventDefault();
     dragCountRef.current = 0;
     setDragOver(false);
+    const konomiPath = e.dataTransfer.getData("text/x-konomi-path");
+    if (konomiPath) {
+      const name = konomiPath.split(/[/\\]/).pop() ?? "image";
+      const src = `konomi://local/${encodeURIComponent(konomiPath.replace(/\\/g, "/"))}`;
+      setDropItem({ kind: "path", path: konomiPath, src, name });
+      setImportError(null);
+      return;
+    }
     const file = e.dataTransfer.files[0];
     if (file) {
       setDropItem({ kind: "file", file, name: file.name });
@@ -880,10 +932,12 @@ export function GenerationView({
       const objUrl = URL.createObjectURL(item.file);
       return { data, previewUrl: objUrl, name: item.name, isObjectUrl: true };
     } else {
-      const buf = await window.image.readFile(item.image.path);
+      const path = item.kind === "image" ? item.image.path : item.path;
+      const src = item.kind === "image" ? item.image.src : item.src;
+      const buf = await window.image.readFile(path);
       return {
         data: new Uint8Array(buf),
-        previewUrl: item.image.src,
+        previewUrl: src,
         name: item.name,
         isObjectUrl: false,
       };
@@ -947,7 +1001,9 @@ export function GenerationView({
           ? await window.image.readMetaFromBuffer(
               new Uint8Array(await dropItem.file.arrayBuffer()),
             )
-          : await window.image.readNaiMeta(dropItem.image.path);
+          : await window.image.readNaiMeta(
+              dropItem.kind === "image" ? dropItem.image.path : dropItem.path,
+            );
       if (!meta) throw new Error("메타데이터를 찾을 수 없습니다");
 
       if (importChecks.prompt && meta.prompt) setPrompt(meta.prompt);
@@ -958,6 +1014,7 @@ export function GenerationView({
           meta.characterPrompts.map((cp, i) => ({
             ...createCharacterPromptInput(cp),
             negativePrompt: meta.characterNegativePrompts?.[i] ?? "",
+            position: (meta.characterPositions?.[i] ?? "global") as CharacterPosition,
           })),
         );
       }
@@ -967,6 +1024,8 @@ export function GenerationView({
           ...meta.characterPrompts.map((cp, i) => ({
             ...createCharacterPromptInput(cp),
             negativePrompt: meta.characterNegativePrompts?.[i] ?? "",
+            position: (meta.characterPositions?.[i] ??
+              "global") as CharacterPosition,
           })),
         ]);
       }
@@ -1530,7 +1589,7 @@ export function GenerationView({
         {/* 생성 버튼 */}
         <div className="p-3 border-t border-border bg-sidebar">
           <button
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
             disabled={!canGenerate}
             className={cn(
               "w-full h-10 flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all",
@@ -1862,6 +1921,39 @@ export function GenerationView({
           )}
         </div>
       </div>
+
+      {/* 중복 생성 방지 Modal */}
+      {dupAlert && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <div className="w-80 rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-border">
+              <p className="text-sm font-semibold text-foreground">
+                동일한 설정으로 이미 생성했습니다
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                직전과 모든 파라미터가 동일합니다. 그래도 생성하시겠습니까?
+              </p>
+            </div>
+            <div className="flex gap-2 p-3">
+              <button
+                onClick={() => setDupAlert(false)}
+                className="flex-1 h-9 rounded-lg border border-border/60 bg-secondary/60 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  setDupAlert(false);
+                  void handleGenerate(true);
+                }}
+                className="flex-1 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                그래도 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* API 검증 결과 Modal */}
       {validateResult && (

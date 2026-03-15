@@ -154,9 +154,20 @@ function parseNaiComment(raw: Record<string, unknown>): NovelAIMeta | null {
 
   interface CharCaption {
     char_caption: string;
+    centers?: { x: number; y: number }[];
   }
   interface V4Caption {
     caption: { base_caption: string; char_captions?: CharCaption[] };
+    use_coords?: boolean;
+  }
+
+  const colRevMap: Record<string, string> = { "0.1": "A", "0.3": "B", "0.5": "C", "0.7": "D", "0.9": "E" };
+  const rowRevMap: Record<string, string> = { "0.1": "1", "0.3": "2", "0.5": "3", "0.7": "4", "0.9": "5" };
+  function centerToPosition(center: { x: number; y: number } | undefined): string {
+    if (!center) return "global";
+    const col = colRevMap[String(center.x)];
+    const row = rowRevMap[String(center.y)];
+    return col && row ? `${col}${row}` : "global";
   }
 
   const v4Prompt = comment["v4_prompt"] as V4Caption | undefined;
@@ -183,6 +194,13 @@ function parseNaiComment(raw: Record<string, unknown>): NovelAIMeta | null {
     v4NegativeCaption?.caption?.char_captions
       ?.map((c) => c.char_caption) ?? [];
 
+  const useCoords = v4Prompt?.use_coords ?? false;
+  const characterPositions: string[] =
+    v4Prompt?.caption?.char_captions
+      ?.map((c) =>
+        useCoords ? centerToPosition(c.centers?.[0]) : "global",
+      ) ?? [];
+
   const source = typeof raw["Source"] === "string" ? raw["Source"] : "";
   const model = SOURCE_TO_MODEL[source] ?? "";
 
@@ -192,6 +210,7 @@ function parseNaiComment(raw: Record<string, unknown>): NovelAIMeta | null {
     negativePrompt,
     characterPrompts,
     characterNegativePrompts,
+    characterPositions,
     seed: Number(comment["seed"] ?? 0),
     model,
     sampler: String(comment["sampler"] ?? ""),

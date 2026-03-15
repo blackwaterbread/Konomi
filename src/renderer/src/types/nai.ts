@@ -4,6 +4,7 @@ export interface NovelAIMeta {
   negativePrompt: string;
   characterPrompts: string[];
   characterNegativePrompts: string[];
+  characterPositions: string[];
   seed: number;
   model: string;
   sampler: string;
