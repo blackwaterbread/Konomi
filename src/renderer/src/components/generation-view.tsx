@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -19,6 +20,7 @@ import {
   Check,
   LayoutList,
   Image as ImageIcon,
+  TriangleAlert,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -54,55 +56,135 @@ type CharacterPosition = "global" | "A1" | "A2" | "A3" | "A4" | "A5" | "B1" | "B
 const POSITION_COLS = ["A", "B", "C", "D", "E"] as const;
 const POSITION_ROWS = [1, 2, 3, 4, 5] as const;
 
-function PositionPicker({
+const POSITION_GRID_GAP = 6;
+const POSITION_GRID_EDGE_PAD = 8;
+
+// Per-character: position picker popover button (shown only when AI's Choice is OFF)
+function PositionAdjustButton({
   value,
   onChange,
 }: {
   value: CharacterPosition;
   onChange: (v: CharacterPosition) => void;
 }) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const btn = btnRef.current;
+      const pop = popoverRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const popH = pop?.offsetHeight ?? 140;
+      const popW = pop?.offsetWidth ?? 120;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let left = rect.left;
+      left = Math.max(
+        POSITION_GRID_EDGE_PAD,
+        Math.min(left, vw - popW - POSITION_GRID_EDGE_PAD),
+      );
+      const spaceBelow = vh - rect.bottom - POSITION_GRID_EDGE_PAD;
+      const spaceAbove = rect.top - POSITION_GRID_EDGE_PAD;
+      const top =
+        spaceBelow >= popH || spaceBelow >= spaceAbove
+          ? rect.bottom + POSITION_GRID_GAP
+          : rect.top - popH - POSITION_GRID_GAP;
+      setPopoverStyle({ position: "fixed", top, left, zIndex: 3000 });
+    };
+    const raf = requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    const onMouseDown = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (popoverRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [open]);
+
+  const popover =
+    open &&
+    createPortal(
+      <div
+        ref={popoverRef}
+        style={
+          popoverStyle ?? {
+            position: "fixed",
+            top: -9999,
+            left: -9999,
+            zIndex: 3000,
+            visibility: "hidden",
+          }
+        }
+        className="rounded-md border border-border bg-popover p-2.5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+          Position
+        </p>
+        <div
+          className="grid gap-0.5"
+          style={{ gridTemplateColumns: "repeat(5, 1fr)" }}
+        >
+          {POSITION_ROWS.map((row) =>
+            POSITION_COLS.map((col) => {
+              const key = `${col}${row}` as CharacterPosition;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  title={key}
+                  onClick={() => {
+                    onChange(key);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "w-5 h-5 rounded-sm transition-colors text-[8px] font-mono",
+                    value === key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary/60 hover:bg-secondary text-muted-foreground/40 hover:text-foreground",
+                  )}
+                >
+                  {key}
+                </button>
+              );
+            }),
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+
   return (
-    <div className="flex items-center gap-1.5">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => onChange("global")}
+        onClick={() => setOpen((v) => !v)}
         className={cn(
-          "text-[10px] px-1.5 py-0.5 rounded border transition-colors shrink-0",
-          value === "global"
-            ? "bg-primary text-primary-foreground border-primary"
+          "flex items-center gap-1 text-[11px] px-2 py-1 rounded border transition-colors",
+          open
+            ? "bg-secondary border-border text-foreground"
             : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border",
         )}
       >
-        Global
+        <Crosshair className="h-3 w-3" />
+        {value}
+        <ChevronDown className="h-2.5 w-2.5" />
       </button>
-      <div
-        className="grid gap-0.5"
-        style={{ gridTemplateColumns: "repeat(5, 1fr)" }}
-      >
-        {POSITION_ROWS.map((row) =>
-          POSITION_COLS.map((col) => {
-            const key = `${col}${row}` as CharacterPosition;
-            return (
-              <button
-                key={key}
-                type="button"
-                title={key}
-                onClick={() => onChange(key)}
-                className={cn(
-                  "w-4 h-4 rounded-sm transition-colors",
-                  value === key
-                    ? "bg-primary"
-                    : "bg-secondary/60 hover:bg-secondary",
-                )}
-              />
-            );
-          }),
-        )}
-      </div>
-      {value !== "global" && (
-        <span className="text-[10px] font-mono text-muted-foreground/60">{value}</span>
-      )}
-    </div>
+      {popover}
+    </>
   );
 }
 
@@ -456,6 +538,19 @@ export function GenerationView({
     CharacterPromptInput[]
   >([]);
   const [characterAddOpen, setCharacterAddOpen] = useState(false);
+  const [aiChoice, setAiChoice] = useState(true);
+  const duplicatePositions = !aiChoice
+    ? new Set(
+        Object.entries(
+          characterPrompts.reduce<Record<string, number>>((acc, c) => {
+            acc[c.position] = (acc[c.position] ?? 0) + 1;
+            return acc;
+          }, {}),
+        )
+          .filter(([, n]) => n > 1)
+          .map(([p]) => p),
+      )
+    : new Set<string>();
   const [model, setModel] = useState(() => loadNaiGenSettings().model);
   const [width, setWidth] = useState(() => loadNaiGenSettings().width);
   const [height, setHeight] = useState(() => loadNaiGenSettings().height);
@@ -1172,6 +1267,7 @@ export function GenerationView({
                 </button>
               </div>
               <PromptInput
+                key={promptInputMode}
                 value={promptInputMode === "prompt" ? prompt : negativePrompt}
                 onChange={(nextValue) =>
                   promptInputMode === "prompt"
@@ -1221,6 +1317,44 @@ export function GenerationView({
                   </div>
                 }
               />
+              {characterPrompts.length > 0 && (
+                <div className="px-1 pb-1 space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !aiChoice;
+                      setAiChoice(next);
+                      if (next) {
+                        setCharacterPrompts((prev) =>
+                          prev.map((c) => ({ ...c, position: "global" })),
+                        );
+                      } else {
+                        setCharacterPrompts((prev) =>
+                          prev.map((c) => ({
+                            ...c,
+                            position: c.position === "global" ? "C3" : c.position,
+                          })),
+                        );
+                      }
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 text-[11px] px-2 py-1 rounded border transition-colors",
+                      aiChoice
+                        ? "bg-primary/15 border-primary/40 text-primary"
+                        : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border",
+                    )}
+                  >
+                    <Check className={cn("h-3 w-3", !aiChoice && "opacity-20")} />
+                    Automatic Position
+                  </button>
+                  {duplicatePositions.size > 0 && (
+                    <div className="flex items-center gap-1 text-[11px] text-amber-500 dark:text-amber-400">
+                      <TriangleAlert className="h-3 w-3 shrink-0" />
+                      <span>동일한 포지션을 가진 캐릭터가 있습니다</span>
+                    </div>
+                  )}
+                </div>
+              )}
               {characterPrompts.length === 0 ? (
                 <p className="text-xs text-muted-foreground/40 text-center py-2">
                   캐릭터 없음 — + 버튼으로 추가
@@ -1230,7 +1364,12 @@ export function GenerationView({
                   {characterPrompts.map((character, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border border-border/40 bg-secondary/20 p-2 space-y-2"
+                      className={cn(
+                        "rounded-lg border bg-secondary/20 p-2 space-y-2",
+                        !aiChoice && duplicatePositions.has(character.position)
+                          ? "border-amber-400/60 dark:border-amber-400/40"
+                          : "border-border/40",
+                      )}
                     >
                       <div className="flex items-center gap-1.5">
                         <div
@@ -1297,17 +1436,20 @@ export function GenerationView({
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <PositionPicker
-                        value={character.position}
-                        onChange={(pos) =>
-                          setCharacterPrompts((prev) =>
-                            prev.map((item, idx) =>
-                              idx === i ? { ...item, position: pos } : item,
-                            ),
-                          )
-                        }
-                      />
+                      {!aiChoice && (
+                        <PositionAdjustButton
+                          value={character.position}
+                          onChange={(pos) =>
+                            setCharacterPrompts((prev) =>
+                              prev.map((item, idx) =>
+                                idx === i ? { ...item, position: pos } : item,
+                              ),
+                            )
+                          }
+                        />
+                      )}
                       <PromptInput
+                        key={character.inputMode}
                         value={
                           character.inputMode === "prompt"
                             ? character.prompt
@@ -1622,7 +1764,7 @@ export function GenerationView({
             {generating ? "생성 중..." : "생성하기"}
           </button>
           {(!config?.apiKey || !outputFolder) && (
-            <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5">
+            <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5 select-none">
               API 설정을 먼저 완료해 주세요
             </p>
           )}

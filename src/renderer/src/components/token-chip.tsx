@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Copy, ImagePlus, Search, Trash2 } from "lucide-react";
+import { Copy, ImagePlus, Minus, Plus, Search, Trash2 } from "lucide-react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -643,9 +643,27 @@ function TokenChipCore({
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Emphasis
                 </label>
-                <span className="text-[10px] font-mono text-foreground/80">
-                  {formatWeight(draftWeight)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => stepWeight(-0.1)}
+                    disabled={draftWeight <= 0}
+                    className="h-5 w-5 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                  >
+                    <Minus className="h-2.5 w-2.5" />
+                  </button>
+                  <span className="text-[10px] font-mono text-foreground/80 w-7 text-center tabular-nums">
+                    {formatWeight(draftWeight)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => stepWeight(0.1)}
+                    disabled={draftWeight >= 3}
+                    className="h-5 w-5 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                  >
+                    <Plus className="h-2.5 w-2.5" />
+                  </button>
+                </div>
               </div>
               <input
                 type="range"
