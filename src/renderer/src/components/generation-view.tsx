@@ -35,6 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { cn } from "@/lib/utils";
 import type {
@@ -963,16 +969,29 @@ function AutoGenSection({
                 ))}
               </div>
               <div className="relative">
-                <button
-                  ref={warningButtonRef}
-                  type="button"
-                  onClick={() => setWarningOpen((prev) => !prev)}
-                  title="자동 생성 경고"
-                  aria-label="자동 생성 경고 보기"
-                  className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-600 transition-colors hover:border-amber-500/50 hover:text-amber-500"
-                >
-                  <TriangleAlert className="h-4 w-4" />
-                </button>
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip open={!policyAgreed && !warningOpen}>
+                    <TooltipTrigger asChild>
+                      <button
+                        ref={warningButtonRef}
+                        type="button"
+                        onClick={() => setWarningOpen((prev) => !prev)}
+                        title="자동 생성 경고"
+                        aria-label="자동 생성 경고 보기"
+                        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-600 transition-colors hover:border-amber-500/50 hover:text-amber-500"
+                      >
+                        <TriangleAlert className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="left"
+                      sideOffset={8}
+                      className="select-none text-foreground/85"
+                    >
+                      자동 생성 사용하려면 확인 필요
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 {warningOpen && (
                   <div
                     ref={warningPopoverRef}
@@ -983,8 +1002,8 @@ function AutoGenSection({
                     </p>
                     <p className="mt-2 text-xs leading-relaxed text-foreground/85">
                       NovelAI API를 통한 사용이 정책을 위반하거나 혹은 사용량이
-                      비정상적으로 많은 경우 일시적, 영구적인 이용 제한 조치를
-                      받으실 수 있으며 이에 대한 책임은 전적으로 사용자
+                      비정상적으로 많은 경우 일시적이거나 영구적인 이용 제한
+                      조치를 받으실 수 있으며 이에 대한 책임은 전적으로 사용자
                       책임입니다.
                     </p>
                     <div className="mt-3 border-t border-border/40 pt-3">
