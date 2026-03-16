@@ -22,6 +22,9 @@ import {
   Image as ImageIcon,
   TriangleAlert,
   ChevronUp,
+  Hash,
+  Copy,
+  Download,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -1008,7 +1011,10 @@ export function GenerationView({
   const [resultSrc, setResultSrc] = useState<string | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [recentImages, setRecentImages] = useState<string[]>([]);
+  const [recentSeeds, setRecentSeeds] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const [seedDropdownOpen, setSeedDropdownOpen] = useState(false);
+  const seedDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Right side panel
   const [sourceImage, setSourceImage] = useState<ImageData | null>(null);
@@ -1073,6 +1079,17 @@ export function GenerationView({
   useEffect(() => {
     return window.nai.onGeneratePreview((dataUrl) => setPreviewSrc(dataUrl));
   }, []);
+
+  useEffect(() => {
+    if (!seedDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (seedDropdownRef.current && !seedDropdownRef.current.contains(e.target as Node)) {
+        setSeedDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [seedDropdownOpen]);
 
   // Resizable panel
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -1451,6 +1468,11 @@ export function GenerationView({
       setResultSrc(src);
       setRecentImages((prev) => [src, ...prev]);
       saveLastGenParams();
+      void window.image.readNaiMeta(filePath).then((meta) => {
+        if (meta?.seed != null) {
+          setRecentSeeds((prev) => new Map(prev).set(src, meta.seed!));
+        }
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1534,6 +1556,11 @@ export function GenerationView({
         setResultSrc(src);
         setRecentImages((prev) => [src, ...prev]);
         saveLastGenParams();
+        void window.image.readNaiMeta(filePath).then((meta) => {
+          if (meta?.seed != null) {
+            setRecentSeeds((prev) => new Map(prev).set(src, meta.seed!));
+          }
+        });
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
         break;
@@ -2627,11 +2654,52 @@ export function GenerationView({
               </p>
             </div>
           ) : resultSrc ? (
-            <img
-              src={resultSrc}
-              alt="생성 결과"
-              className="max-w-full max-h-full object-contain rounded-sm"
-            />
+            <>
+              <img
+                src={resultSrc}
+                alt="생성 결과"
+                className="max-w-full max-h-full object-contain rounded-sm"
+              />
+              {recentSeeds.get(resultSrc) != null && (
+                <div
+                  ref={seedDropdownRef}
+                  className="absolute bottom-3 right-3 z-20"
+                >
+                  <button
+                    onClick={() => setSeedDropdownOpen((o) => !o)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border/50 text-xs font-mono tabular-nums text-foreground/80 hover:text-foreground hover:bg-background/95 transition-colors shadow-sm"
+                  >
+                    <Hash className="h-3 w-3 shrink-0" />
+                    {recentSeeds.get(resultSrc)}
+                  </button>
+                  {seedDropdownOpen && (
+                    <div className="absolute bottom-full right-0 mb-1.5 w-36 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+                      <button
+                        onClick={() => {
+                          void navigator.clipboard.writeText(String(recentSeeds.get(resultSrc)));
+                          setSeedDropdownOpen(false);
+                          toast.success("시드가 클립보드에 복사됐습니다");
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors"
+                      >
+                        <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        클립보드에 복사
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSeedInput(String(recentSeeds.get(resultSrc)));
+                          setSeedDropdownOpen(false);
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors"
+                      >
+                        <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        가져오기
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <div className="flex flex-col items-center gap-3 select-none">
               <div className="h-16 w-16 rounded-2xl bg-secondary/50 border border-border/30 flex items-center justify-center">
