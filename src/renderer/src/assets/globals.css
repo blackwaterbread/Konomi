@@ -9,37 +9,30 @@
 }
 
 @font-face {
-  font-family: 'Pretendard';
-  src: url('./fonts/Pretendard-Light.woff2') format('woff2');
+  font-family: 'IBM Plex Sans KR';
+  src: url('./fonts/IBMPlexSansKR-Light.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'Pretendard';
-  src: url('./fonts/Pretendard-Regular.woff2') format('woff2');
+  font-family: 'IBM Plex Sans KR';
+  src: url('./fonts/IBMPlexSansKR-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'Pretendard';
-  src: url('./fonts/Pretendard-Bold.woff2') format('woff2');
+  font-family: 'IBM Plex Sans KR';
+  src: url('./fonts/IBMPlexSansKR-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  src: url('./fonts/IBMPlexSansKR-Bold.woff2') format('woff2');
   font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Pretendard';
-  src: url('./fonts/Pretendard-ExtraBold.woff2') format('woff2');
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Pretendard';
-  src: url('./fonts/Pretendard-Black.woff2') format('woff2');
-  font-weight: 900;
   font-style: normal;
   font-display: swap;
 }
@@ -119,7 +112,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Pretendard', sans-serif;
+  --font-sans: 'IBM Plex Sans KR', sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
