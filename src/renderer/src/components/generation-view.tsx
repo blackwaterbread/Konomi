@@ -547,7 +547,7 @@ function AdvancedParamsSection({
   const seedDisplay = seedInput.trim() ? seedInput.trim() : "-";
 
   return (
-    <div className="border border-border/40 rounded-lg overflow-hidden">
+    <div className="overflow-hidden">
       {/* 접힌 헤더 / 요약 */}
       <button
         type="button"
@@ -1401,13 +1401,31 @@ export function GenerationView({
     <div className="flex flex-1 overflow-hidden">
       {/* Left panel */}
       <div
-        className="flex flex-col border-r border-border shrink-0 bg-sidebar overflow-hidden"
+        className="relative flex flex-col border-r border-border shrink-0 bg-sidebar overflow-hidden"
         style={{
           width: panelWidth,
           minWidth: panelWidth,
           maxWidth: panelWidth,
         }}
       >
+        {(!config?.apiKey || !outputFolder) && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 backdrop-blur-sm bg-sidebar/60 select-none">
+            <Settings className="h-8 w-8 text-muted-foreground/40" />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-sm font-medium text-foreground/70">
+                설정이 필요합니다
+              </span>
+              <span className="text-[11px] text-muted-foreground/50 text-center leading-relaxed">
+                {!config?.apiKey && !outputFolder
+                  ? "API 키와 출력 폴더를"
+                  : !config?.apiKey
+                    ? "API 키를"
+                    : "출력 폴더를"}
+                {" 먼저 설정해 주세요"}
+              </span>
+            </div>
+          </div>
+        )}
         {/* 그룹 관리 (주석처리) */}
         {/* <div className="px-4 py-3 flex items-center justify-between border-b border-border/40">
           <span className="text-xs text-muted-foreground">그룹 관리</span>
@@ -1875,35 +1893,37 @@ export function GenerationView({
                 />
               </div>
             </div>
-
-            {/* 고급 파라미터 (접힘) */}
-            <AdvancedParamsSection
-              steps={steps}
-              setSteps={setSteps}
-              scale={scale}
-              setScale={setScale}
-              cfgRescale={cfgRescale}
-              setCfgRescale={setCfgRescale}
-              varietyPlus={varietyPlus}
-              setVarietyPlus={setVarietyPlus}
-              sampler={sampler}
-              setSampler={setSampler}
-              noiseSchedule={noiseSchedule}
-              setNoiseSchedule={setNoiseSchedule}
-              seedInput={seedInput}
-              setSeedInput={setSeedInput}
-              onReset={() => {
-                setSteps(NAI_GEN_DEFAULTS.steps);
-                setScale(NAI_GEN_DEFAULTS.scale);
-                setCfgRescale(NAI_GEN_DEFAULTS.cfgRescale);
-                setVarietyPlus(NAI_GEN_DEFAULTS.varietyPlus);
-                setSampler(NAI_GEN_DEFAULTS.sampler);
-                setNoiseSchedule(NAI_GEN_DEFAULTS.noiseSchedule);
-                setSeedInput("");
-              }}
-            />
           </div>
         </ScrollArea>
+
+        {/* 고급 파라미터 (패널 하단 고정) */}
+        <div className="border-t border-border/40 bg-sidebar">
+          <AdvancedParamsSection
+            steps={steps}
+            setSteps={setSteps}
+            scale={scale}
+            setScale={setScale}
+            cfgRescale={cfgRescale}
+            setCfgRescale={setCfgRescale}
+            varietyPlus={varietyPlus}
+            setVarietyPlus={setVarietyPlus}
+            sampler={sampler}
+            setSampler={setSampler}
+            noiseSchedule={noiseSchedule}
+            setNoiseSchedule={setNoiseSchedule}
+            seedInput={seedInput}
+            setSeedInput={setSeedInput}
+            onReset={() => {
+              setSteps(NAI_GEN_DEFAULTS.steps);
+              setScale(NAI_GEN_DEFAULTS.scale);
+              setCfgRescale(NAI_GEN_DEFAULTS.cfgRescale);
+              setVarietyPlus(NAI_GEN_DEFAULTS.varietyPlus);
+              setSampler(NAI_GEN_DEFAULTS.sampler);
+              setNoiseSchedule(NAI_GEN_DEFAULTS.noiseSchedule);
+              setSeedInput("");
+            }}
+          />
+        </div>
 
         {/* 생성 버튼 */}
         <div className="p-3 border-t border-border bg-sidebar">
@@ -1924,21 +1944,18 @@ export function GenerationView({
             )}
             {generating ? "생성 중..." : "생성하기"}
           </button>
-          {(!config?.apiKey || !outputFolder) && (
-            <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5 select-none">
-              API 설정을 먼저 완료해 주세요
-            </p>
-          )}
         </div>
       </div>
+
+      {/* Left panel resize handle */}
+      <div
+        onMouseDown={handleResizeStart}
+        className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+      />
 
       {/* Right side panel (adjacent to left panel) */}
       {rightPanelVisible ? (
         <>
-          <div
-            onMouseDown={handleResizeStart}
-            className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-          />
           <div
             className="shrink-0 flex flex-col h-full bg-sidebar border-r border-border/40 overflow-hidden"
             style={{ width: rightPanelWidth }}
@@ -1998,10 +2015,10 @@ export function GenerationView({
             {rightPanelTab === "settings" && (
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="divide-y divide-border/40 flex-1 overflow-y-auto">
-                  {/* API 키 */}
+                  {/* NAI API Key */}
                   <div className="px-4 py-3 space-y-1.5">
                     <span className="text-xs text-muted-foreground">
-                      API 키
+                      API Key
                     </span>
                     {apiKeyValidated ? (
                       <div className="flex gap-1.5">
@@ -2047,7 +2064,7 @@ export function GenerationView({
                       ) : apiKeyValidated ? (
                         <Check className="h-3.5 w-3.5" />
                       ) : null}
-                      {apiKeyValidated ? "검증 성공" : "API 키 검증"}
+                      {apiKeyValidated ? "로그인 성공" : "로그인"}
                     </button>
                   </div>
 
@@ -2121,10 +2138,12 @@ export function GenerationView({
       )}
 
       {/* Resize handle */}
-      <div
-        onMouseDown={handleRightResizeStart}
-        className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-      />
+      {rightPanelVisible && (
+        <div
+          onMouseDown={handleRightResizeStart}
+          className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+        />
+      )}
 
       {/* Result area */}
       <div
