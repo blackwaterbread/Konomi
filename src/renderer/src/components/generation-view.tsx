@@ -701,7 +701,7 @@ function AdvancedParamsSection({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto self-stretch px-4 flex items-center justify-center rounded hover:bg-secondary transition-colors"
+          className="ml-auto self-stretch px-4 flex cursor-pointer items-center justify-center rounded transition-colors"
         >
           <ChevronUp
             className={cn(
@@ -860,7 +860,7 @@ function AutoGenSection({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto self-stretch px-4 flex items-center justify-center rounded hover:bg-secondary transition-colors"
+          className="ml-auto self-stretch px-4 flex cursor-pointer items-center justify-center rounded transition-colors"
         >
           {open ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
