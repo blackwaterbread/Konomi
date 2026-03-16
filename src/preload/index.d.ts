@@ -159,6 +159,8 @@ export type GenerateParams = {
   width?: number;
   height?: number;
   scale?: number;
+  cfgRescale?: number;
+  varietyPlus?: boolean;
   sampler?: string;
   steps?: number;
   seed?: number;

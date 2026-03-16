@@ -448,6 +448,8 @@ const NAI_GEN_DEFAULTS = {
   height: 1216,
   steps: 28,
   scale: 5.0,
+  cfgRescale: 0,
+  varietyPlus: false,
   sampler: "k_euler_ancestral",
   noiseSchedule: "karras",
 };
@@ -507,6 +509,194 @@ function RecentThumb({
   );
 }
 
+function AdvancedParamsSection({
+  steps,
+  setSteps,
+  scale,
+  setScale,
+  cfgRescale,
+  setCfgRescale,
+  varietyPlus,
+  setVarietyPlus,
+  sampler,
+  setSampler,
+  noiseSchedule,
+  setNoiseSchedule,
+  seedInput,
+  setSeedInput,
+  onReset,
+}: {
+  steps: number;
+  setSteps: (v: number) => void;
+  scale: number;
+  setScale: (v: number) => void;
+  cfgRescale: number;
+  setCfgRescale: (v: number) => void;
+  varietyPlus: boolean;
+  setVarietyPlus: (v: boolean | ((p: boolean) => boolean)) => void;
+  sampler: string;
+  setSampler: (v: string) => void;
+  noiseSchedule: string;
+  setNoiseSchedule: (v: string) => void;
+  seedInput: string;
+  setSeedInput: (v: string) => void;
+  onReset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const seedDisplay = seedInput.trim() ? seedInput.trim() : "N/A";
+
+  return (
+    <div className="border border-border/40 rounded-lg overflow-hidden">
+      {/* 접힌 헤더 / 요약 */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-secondary/40 transition-colors"
+      >
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            파라미터
+          </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
+                Steps
+              </span>
+              <span className="text-sm font-semibold tabular-nums leading-none">
+                {steps}
+              </span>
+            </span>
+            <span className="w-px h-6 bg-border/50 shrink-0" />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
+                CFG
+              </span>
+              <span className="text-sm font-semibold tabular-nums leading-none">
+                {scale.toFixed(1)}
+              </span>
+            </span>
+            <span className="w-px h-6 bg-border/50 shrink-0" />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
+                Seed
+              </span>
+              <span className="text-sm font-semibold tabular-nums leading-none font-mono">
+                {seedDisplay}
+              </span>
+            </span>
+            <span className="w-px h-6 bg-border/50 shrink-0" />
+            <span className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
+                Sampler
+              </span>
+              <span className="text-xs font-medium leading-none truncate">
+                {sampler}
+              </span>
+            </span>
+          </div>
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform ml-2",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {/* 펼쳐진 본문 */}
+      {open && (
+        <div className="px-3 pb-3 pt-4 space-y-3.5 border-t border-border/30">
+          <div>
+            <FieldLabel label="Steps" value={steps} />
+            <Slider min={1} max={50} value={steps} onChange={setSteps} />
+          </div>
+          <div>
+            <FieldLabel label="CFG Scale" value={scale.toFixed(1)} />
+            <Slider
+              min={1}
+              max={10}
+              step={0.1}
+              value={scale}
+              onChange={setScale}
+            />
+          </div>
+          <div>
+            <FieldLabel
+              label="Prompt Guidance Rescale"
+              value={cfgRescale.toFixed(2)}
+            />
+            <Slider
+              min={0}
+              max={1}
+              step={0.02}
+              value={cfgRescale}
+              onChange={setCfgRescale}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setVarietyPlus((v) => !v)}
+            className={cn(
+              "flex items-center gap-1 text-[11px] px-2 py-1 rounded border transition-colors",
+              varietyPlus
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border",
+            )}
+          >
+            <Check className={cn("h-3 w-3", !varietyPlus && "opacity-20")} />
+            Variety+
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <FieldLabel label="샘플러" />
+              <Select
+                value={sampler}
+                onChange={setSampler}
+                options={SAMPLERS.map((s) => ({ value: s, label: s }))}
+              />
+            </div>
+            <div>
+              <FieldLabel label="노이즈" />
+              <Select
+                value={noiseSchedule}
+                onChange={setNoiseSchedule}
+                options={NOISE_SCHEDULES.map((n) => ({ value: n, label: n }))}
+              />
+            </div>
+          </div>
+          <div>
+            <FieldLabel label="시드" />
+            <div className="flex gap-1.5">
+              <input
+                type="number"
+                value={seedInput}
+                onChange={(e) => setSeedInput(e.target.value)}
+                placeholder="랜덤"
+                className={cn(INPUT_CLS, "flex-1 min-w-0 font-mono")}
+              />
+              <button
+                onClick={() => setSeedInput("")}
+                title="랜덤 시드"
+                className="shrink-0 px-2.5 rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onReset}
+            className="w-full text-[11px] text-muted-foreground hover:text-foreground border border-border/40 hover:border-border rounded-lg py-1.5 transition-colors"
+          >
+            파라미터 초기화
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GenerationView({
   pendingImport,
   onClearPendingImport,
@@ -556,6 +746,12 @@ export function GenerationView({
   const [height, setHeight] = useState(() => loadNaiGenSettings().height);
   const [steps, setSteps] = useState(() => loadNaiGenSettings().steps);
   const [scale, setScale] = useState(() => loadNaiGenSettings().scale);
+  const [cfgRescale, setCfgRescale] = useState(
+    () => loadNaiGenSettings().cfgRescale,
+  );
+  const [varietyPlus, setVarietyPlus] = useState(
+    () => loadNaiGenSettings().varietyPlus,
+  );
   const [sampler, setSampler] = useState(() => loadNaiGenSettings().sampler);
   const [noiseSchedule, setNoiseSchedule] = useState(
     () => loadNaiGenSettings().noiseSchedule,
@@ -774,6 +970,8 @@ export function GenerationView({
         sampler,
         steps,
         scale,
+        cfgRescale,
+        varietyPlus,
         width,
         height,
         noiseSchedule,
@@ -785,6 +983,8 @@ export function GenerationView({
     sampler,
     steps,
     scale,
+    cfgRescale,
+    varietyPlus,
     width,
     height,
     noiseSchedule,
@@ -967,6 +1167,8 @@ export function GenerationView({
         height,
         steps,
         scale,
+        cfgRescale,
+        varietyPlus,
         sampler,
         noiseSchedule,
         seed,
@@ -1674,73 +1876,32 @@ export function GenerationView({
               </div>
             </div>
 
-            {/* 파라미터 */}
-            <div>
-              <SectionHeader label="파라미터" />
-              <div className="space-y-3.5">
-                <div>
-                  <FieldLabel label="Steps" value={steps} />
-                  <Slider min={1} max={50} value={steps} onChange={setSteps} />
-                </div>
-                <div>
-                  <FieldLabel label="CFG Scale" value={scale.toFixed(1)} />
-                  <Slider
-                    min={1}
-                    max={10}
-                    step={0.1}
-                    value={scale}
-                    onChange={setScale}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 샘플링 */}
-            <div>
-              <SectionHeader label="샘플링" />
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <FieldLabel label="샘플러" />
-                  <Select
-                    value={sampler}
-                    onChange={setSampler}
-                    options={SAMPLERS.map((s) => ({ value: s, label: s }))}
-                  />
-                </div>
-                <div>
-                  <FieldLabel label="노이즈" />
-                  <Select
-                    value={noiseSchedule}
-                    onChange={setNoiseSchedule}
-                    options={NOISE_SCHEDULES.map((n) => ({
-                      value: n,
-                      label: n,
-                    }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 시드 */}
-            <div>
-              <SectionHeader label="시드" />
-              <div className="flex gap-1.5">
-                <input
-                  type="number"
-                  value={seedInput}
-                  onChange={(e) => setSeedInput(e.target.value)}
-                  placeholder="랜덤"
-                  className={cn(INPUT_CLS, "flex-1 min-w-0 font-mono")}
-                />
-                <button
-                  onClick={() => setSeedInput("")}
-                  title="랜덤 시드"
-                  className="shrink-0 px-2.5 rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                >
-                  <Shuffle className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+            {/* 고급 파라미터 (접힘) */}
+            <AdvancedParamsSection
+              steps={steps}
+              setSteps={setSteps}
+              scale={scale}
+              setScale={setScale}
+              cfgRescale={cfgRescale}
+              setCfgRescale={setCfgRescale}
+              varietyPlus={varietyPlus}
+              setVarietyPlus={setVarietyPlus}
+              sampler={sampler}
+              setSampler={setSampler}
+              noiseSchedule={noiseSchedule}
+              setNoiseSchedule={setNoiseSchedule}
+              seedInput={seedInput}
+              setSeedInput={setSeedInput}
+              onReset={() => {
+                setSteps(NAI_GEN_DEFAULTS.steps);
+                setScale(NAI_GEN_DEFAULTS.scale);
+                setCfgRescale(NAI_GEN_DEFAULTS.cfgRescale);
+                setVarietyPlus(NAI_GEN_DEFAULTS.varietyPlus);
+                setSampler(NAI_GEN_DEFAULTS.sampler);
+                setNoiseSchedule(NAI_GEN_DEFAULTS.noiseSchedule);
+                setSeedInput("");
+              }}
+            />
           </div>
         </ScrollArea>
 

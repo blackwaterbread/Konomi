@@ -38,6 +38,8 @@ export interface GenerateParams {
   width?: number;
   height?: number;
   scale?: number;
+  cfgRescale?: number;
+  varietyPlus?: boolean;
   sampler?: string;
   steps?: number;
   seed?: number;
@@ -128,6 +130,9 @@ export async function generateImage(
     if (p) {
       // Fix seed: override with original value regardless of SDK clamping
       if (params.seed !== undefined) p.seed = params.seed;
+      // Prompt guidance rescale
+      if (params.cfgRescale !== undefined) p.cfg_rescale = params.cfgRescale;
+      if (params.varietyPlus !== undefined) p.dynamic_thresholding = params.varietyPlus;
       // Fix negative prompt: SDK appends UC preset tags; restore to exact user input
       const rawNeg = params.negativePrompt ?? "";
       p.negative_prompt = rawNeg;

@@ -583,7 +583,9 @@ function TokenChipCore({
           data-token-chip="true"
           data-token-raw={raw}
           onClick={handleTrigger}
-          onDoubleClick={() => { if (isEditable) onInlineEditOpenChange?.(true); }}
+          onDoubleClick={() => {
+            if (isEditable) onInlineEditOpenChange?.(true);
+          }}
           onContextMenu={handleContextMenu}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
