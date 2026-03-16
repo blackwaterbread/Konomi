@@ -107,7 +107,7 @@ interface TokenChipProps {
   onChange?: (token: PromptToken) => void;
   onDelete?: () => void;
   onEditorOpenChange?: (open: boolean) => void;
-  onInlineEditOpenChange?: (open: boolean, reason?: "cancel") => void;
+  onInlineEditOpenChange?: (open: boolean, reason?: "cancel" | "stay") => void;
   onApplyAdvance?: () => void;
   chipRef?: (node: HTMLDivElement | null) => void;
   onRequestAdjacentEdit?: (direction: "prev" | "next") => void;
@@ -325,7 +325,14 @@ function TokenChipCore({
     // if (handleExpressionShortcut(e)) return;
     if (e.key === "Enter") {
       e.preventDefault();
-      applyInlineEdit(true);
+      if (inlineHandlingRef.current !== null) return;
+      inlineHandlingRef.current = "apply";
+      emitChange(draftText, draftWeight, draftExpression);
+      onInlineEditOpenChange?.(false, "stay");
+      window.requestAnimationFrame(() => {
+        inlineHandlingRef.current = null;
+        triggerRef.current?.focus();
+      });
       return;
     }
     if (e.key === "Escape") {

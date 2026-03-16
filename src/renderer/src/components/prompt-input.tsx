@@ -108,6 +108,7 @@ export function PromptInput({
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const undoStackRef = useRef<{ tokens: EditableToken[]; draft: string }[]>([]);
   const isUndoingRef = useRef(false);
+  const lastEmittedRef = useRef<string>(value);
 
   const [externalDragOver, setExternalDragOver] = useState(false);
   const [tokens, setTokens] = useState<EditableToken[]>(() =>
@@ -160,6 +161,7 @@ export function PromptInput({
   useEffect(() => {
     if (mode !== "simple") return;
     if (value === serialized) return;
+    if (value === lastEmittedRef.current) return;
     setTokens(toEditableTokens(parsePromptTokens(value)));
     setDraft("");
   }, [mode, value, serialized]);
@@ -296,24 +298,27 @@ export function PromptInput({
   }, [draft, insertIndex, mode, tokens]);
 
   const emit = (nextTokens: EditableToken[], nextDraft: string) => {
-    if (!isUndoingRef.current) {
-      const tokensChanged =
-        nextTokens.length !== tokens.length ||
-        nextTokens.some(
-          (t, i) =>
-            t.id !== tokens[i]?.id ||
-            tokenToRawString(t) !== tokenToRawString(tokens[i]!),
-        );
-      if (tokensChanged) {
-        undoStackRef.current = [
-          ...undoStackRef.current.slice(-49),
-          { tokens, draft },
-        ];
-      }
+    const tokensChanged =
+      nextTokens.length !== tokens.length ||
+      nextTokens.some(
+        (t, i) =>
+          t.id !== tokens[i]?.id ||
+          tokenToRawString(t) !== tokenToRawString(tokens[i]!),
+      );
+    if (!isUndoingRef.current && tokensChanged) {
+      undoStackRef.current = [
+        ...undoStackRef.current.slice(-49),
+        { tokens, draft },
+      ];
     }
     setTokens(nextTokens);
     setDraft(nextDraft);
-    onChange(serializePrompt(nextTokens, nextDraft));
+    if (tokensChanged) {
+      const nextSerialized = serializePrompt(nextTokens, nextDraft);
+      lastEmittedRef.current = nextSerialized;
+      onChange(nextSerialized);
+    }
+    // draft-only: no onChange — parent update deferred to blur
   };
 
   const handleUndo = () => {
@@ -324,7 +329,9 @@ export function PromptInput({
     isUndoingRef.current = true;
     setTokens(prev.tokens);
     setDraft(prev.draft);
-    onChange(serializePrompt(prev.tokens, prev.draft));
+    const undoSerialized = serializePrompt(prev.tokens, prev.draft);
+    lastEmittedRef.current = undoSerialized;
+    onChange(undoSerialized);
     isUndoingRef.current = false;
   };
 
@@ -505,6 +512,19 @@ export function PromptInput({
       return;
     }
 
+    if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+      e.preventDefault();
+      if (draft.length > 0) {
+        setDraft("");
+        const cleared = serializePrompt(tokens, "");
+        lastEmittedRef.current = cleared;
+        onChange(cleared);
+      } else {
+        handleUndo();
+      }
+      return;
+    }
+
     if (e.key === "Backspace" && draft.length === 0 && tokens.length > 0) {
       e.preventDefault();
       const deleteAt =
@@ -670,6 +690,11 @@ export function PromptInput({
         }}
         onBlur={() => {
           setTimeout(() => setGroupDropdownOpen(false), 150);
+          if (draft.trim()) {
+            const serializedWithDraft = serializePrompt(tokens, draft);
+            lastEmittedRef.current = serializedWithDraft;
+            onChange(serializedWithDraft);
+          }
         }}
         placeholder={tokens.length > 0 ? "" : placeholder}
         className="h-7 w-full bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
@@ -911,7 +936,7 @@ export function PromptInput({
                       setInlineEditTokenId((prev) => {
                         if (open) return token.id;
                         if (prev !== token.id) return prev;
-                        if (reason !== "cancel") {
+                        if (reason !== "cancel" && reason !== "stay") {
                           requestAnimationFrame(() => {
                             if (
                               inlineEditTokenIdRef.current === null &&

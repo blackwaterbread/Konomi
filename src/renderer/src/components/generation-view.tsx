@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -1193,6 +1193,8 @@ export function GenerationView({
     setPromptInputMode("prompt");
   }, [appendPromptTagRequest, appendTagToPrompt]);
 
+  const promptGroups = useMemo(() => categories.flatMap((c) => c.groups), [categories]);
+
   const reloadGroups = () => {
     window.promptBuilder
       .listCategories()
@@ -1877,7 +1879,7 @@ export function GenerationView({
                 }
                 minHeight={180}
                 maxHeight={460}
-                groups={categories.flatMap((c) => c.groups)}
+                groups={promptGroups}
                 allowExternalDrop
               />
             </div>
@@ -2069,7 +2071,7 @@ export function GenerationView({
                         minHeight={110}
                         maxHeight={300}
                         className="min-w-0"
-                        groups={categories.flatMap((c) => c.groups)}
+                        groups={promptGroups}
                         allowExternalDrop
                       />
                     </div>
