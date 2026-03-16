@@ -25,6 +25,7 @@ import {
   Hash,
   Copy,
   Download,
+  ArrowRightLeft,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -1765,6 +1766,11 @@ export function GenerationView({
     setCharacterAddOpen(false);
   };
 
+  const handleSwapDimensions = useCallback(() => {
+    setWidth(height);
+    setHeight(width);
+  }, [height, width]);
+
   const selectedPreset = SIZE_PRESETS.find(
     (p) => p.width === width && p.height === height,
   );
@@ -2252,9 +2258,15 @@ export function GenerationView({
                   onChange={setWidth}
                   className={cn(INPUT_CLS, "flex-1 min-w-0 font-mono text-center")}
                 />
-                <span className="text-muted-foreground/50 text-xs shrink-0">
-                  ×
-                </span>
+                <button
+                  type="button"
+                  onClick={handleSwapDimensions}
+                  title="가로/세로 바꾸기"
+                  aria-label="가로와 세로 값 바꾸기"
+                  className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground"
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                </button>
                 <DeferredNumberInput
                   value={height}
                   onChange={setHeight}
