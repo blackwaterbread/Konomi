@@ -333,9 +333,10 @@ export default function App() {
     setGalleryPage,
     galleryTotalPages,
     hasLoadedOnce,
-    refreshImagesNow,
     schedulePageRefresh,
-  } = useGalleryImages(listBaseQuery);
+  } = useGalleryImages(listBaseQuery, {
+    enabled: !startupScanPending,
+  });
 
   const loadSearchPresetStats = useCallback(async () => {
     try {
@@ -510,16 +511,19 @@ export default function App() {
         ),
       );
 
-    void loadSearchPresetStats();
-
     let bootstrapCancelled = false;
     void (async () => {
       try {
-        const ok = await runScan({ detectDuplicates: true });
+        const ok = await runScan({
+          detectDuplicates: true,
+          refreshPage: false,
+          refreshSearchPresetStats: false,
+        });
+        if (bootstrapCancelled) return;
+        setStartupScanPending(false);
+        await loadSearchPresetStats();
         if (bootstrapCancelled) return;
         if (ok) {
-          await refreshImagesNow();
-          if (bootstrapCancelled) return;
           scheduleAnalysis(0);
         }
       } finally {
@@ -570,7 +574,6 @@ export default function App() {
     };
   }, [
     loadSearchPresetStats,
-    refreshImagesNow,
     runScan,
     scanningRef,
     scheduleAnalysis,

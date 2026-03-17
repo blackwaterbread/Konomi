@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useRef, startTransition } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  startTransition,
+} from "react";
 import { toast } from "sonner";
 import { createLogger } from "@/lib/logger";
 
@@ -66,11 +72,20 @@ export function useScanning({
   }, []);
 
   const runScan = useCallback(
-    (options?: { detectDuplicates?: boolean }): Promise<boolean> => {
+    (options?: {
+      detectDuplicates?: boolean;
+      refreshPage?: boolean;
+      refreshSearchPresetStats?: boolean;
+    }): Promise<boolean> => {
       if (scanPromiseRef.current) {
         log.debug("Scan request deduped");
         return scanPromiseRef.current;
       }
+      const {
+        detectDuplicates,
+        refreshPage = true,
+        refreshSearchPresetStats = true,
+      } = options ?? {};
       const startedAt = Date.now();
       log.info("Scan started", { options });
       scanningRef.current = true;
@@ -89,11 +104,15 @@ export function useScanning({
         }
       })();
       const scanPromise = window.image
-        .scan({ ...options, orderedFolderIds })
+        .scan({ detectDuplicates, orderedFolderIds })
         .then(() => {
           log.info("Scan completed", { elapsedMs: Date.now() - startedAt });
-          schedulePageRefresh(0);
-          void loadSearchPresetStats();
+          if (refreshPage) {
+            schedulePageRefresh(0);
+          }
+          if (refreshSearchPresetStats) {
+            void loadSearchPresetStats();
+          }
           return true;
         })
         .catch((e: unknown) => {

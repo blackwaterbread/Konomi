@@ -10,6 +10,7 @@ import {
   getImageContentType,
   isManagedImagePath,
   isSupportedImagePath,
+  warmManagedRootsCache,
 } from "./lib/path-guard";
 import { PROMPTS_DB_FILENAME } from "./lib/prompts-db";
 
@@ -210,8 +211,6 @@ function createWindow(): void {
     },
   });
 
-  let appliedReactDevToolsReloadWorkaround = false;
-
   mainWindow.on("ready-to-show", () => {
     log.info("Main window ready-to-show");
     mainWindow.show();
@@ -256,14 +255,6 @@ function createWindow(): void {
 
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
-    mainWindow.webContents.on("did-finish-load", () => {
-      if (appliedReactDevToolsReloadWorkaround) {
-        return;
-      }
-      appliedReactDevToolsReloadWorkaround = true;
-      log.info("Reloading renderer once to attach React DevTools");
-      mainWindow.webContents.reloadIgnoringCache();
-    });
   }
 
   bridge.setWebContents(mainWindow.webContents);
@@ -320,7 +311,10 @@ app
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
 
-    return installReactDevTools().finally(() => {
+    return Promise.all([
+      installReactDevTools(),
+      warmManagedRootsCache(),
+    ]).finally(() => {
       createWindow();
     });
   })

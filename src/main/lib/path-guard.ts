@@ -25,6 +25,7 @@ const log = createLogger("main/path-guard");
 const transientPaths = new Map<string, number>();
 let cachedRoots: string[] = [];
 let rootsLoadedAt = 0;
+let pendingRootsLoad: Promise<string[]> | null = null;
 
 function normalizePathForCompare(filePath: string): string {
   const normalized = path.normalize(filePath);
@@ -88,10 +89,26 @@ async function getAllowedRoots(forceRefresh = false): Promise<string[]> {
     return cachedRoots;
   }
 
-  const roots = await readRootsFromUtility();
-  cachedRoots = roots;
-  rootsLoadedAt = now;
-  return roots;
+  if (pendingRootsLoad) {
+    return pendingRootsLoad;
+  }
+
+  pendingRootsLoad = readRootsFromUtility()
+    .then((roots) => {
+      cachedRoots = roots;
+      rootsLoadedAt = Date.now();
+      return roots;
+    })
+    .finally(() => {
+      pendingRootsLoad = null;
+    });
+
+  return pendingRootsLoad;
+}
+
+export async function warmManagedRootsCache(): Promise<void> {
+  const roots = await getAllowedRoots(false);
+  log.info("Managed roots cache warmed", { count: roots.length });
 }
 
 export async function registerTransientPath(filePath: string): Promise<void> {

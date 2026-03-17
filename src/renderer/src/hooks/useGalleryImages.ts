@@ -10,7 +10,11 @@ import type { ImageData } from "@/components/image-card";
 import type { ImageListQuery } from "@preload/index.d";
 import { rowToImageData } from "@/lib/image-utils";
 
-export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
+export function useGalleryImages(
+  listBaseQuery: Omit<ImageListQuery, "page">,
+  options?: { enabled?: boolean },
+) {
+  const enabled = options?.enabled ?? true;
   const [images, setImages] = useState<ImageData[]>([]);
   const [totalImageCount, setTotalImageCount] = useState(0);
   const [galleryPage, setGalleryPage] = useState(1);
@@ -20,14 +24,25 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
   const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const enabledRef = useRef(enabled);
   const listRequestSeqRef = useRef(0);
   const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
+    enabledRef.current = enabled;
+    if (!enabled && pageRefreshTimerRef.current) {
+      clearTimeout(pageRefreshTimerRef.current);
+      pageRefreshTimerRef.current = null;
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
     setGalleryPage(1);
-  }, [listBaseQuery]);
+  }, [enabled, listBaseQuery]);
 
   const loadImagesPage = useCallback(async () => {
+    if (!enabled) return;
     const requestId = ++listRequestSeqRef.current;
     try {
       const result = await window.image.listPage({
@@ -53,9 +68,10 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
         setHasLoadedOnce(true);
       }
     }
-  }, [galleryPage, listBaseQuery]);
+  }, [enabled, galleryPage, listBaseQuery]);
 
   const schedulePageRefresh = useCallback((delay = 120) => {
+    if (!enabledRef.current) return;
     if (pageRefreshTimerRef.current) clearTimeout(pageRefreshTimerRef.current);
     pageRefreshTimerRef.current = setTimeout(() => {
       void loadImagesPageRef.current();
@@ -66,11 +82,10 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
     loadImagesPageRef.current = loadImagesPage;
   }, [loadImagesPage]);
 
-  const refreshImagesNow = useCallback(() => loadImagesPageRef.current(), []);
-
   useEffect(() => {
+    if (!enabled) return;
     void loadImagesPage();
-  }, [loadImagesPage]);
+  }, [enabled, loadImagesPage]);
 
   useEffect(() => {
     return () => {
@@ -89,7 +104,6 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
     setGalleryPage,
     galleryTotalPages,
     hasLoadedOnce,
-    refreshImagesNow,
     schedulePageRefresh,
   };
 }
