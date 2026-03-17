@@ -49,6 +49,7 @@ function applyFolderOrder(
 
 export function useFolders() {
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +64,8 @@ export function useFolders() {
       toast.error(
         `폴더 목록 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
       );
+    } finally {
+      setHasLoaded(true);
     }
   }, []);
 
@@ -93,5 +96,12 @@ export function useFolders() {
     setFolders((prev) => applyFolderOrder(prev, ids));
   }, []);
 
-  return { folders, addFolder, removeFolder, renameFolder, reorderFolders };
+  return {
+    folders,
+    hasLoaded,
+    addFolder,
+    removeFolder,
+    renameFolder,
+    reorderFolders,
+  };
 }

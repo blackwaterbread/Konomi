@@ -12,6 +12,7 @@ import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
 import { ImageGallery } from "@/components/image-gallery";
 import { ImageDetail } from "@/components/image-detail";
+import { AppSplash } from "@/components/app-splash";
 import { SettingsView } from "@/components/settings-view";
 import { CategoryDialog } from "@/components/category-dialog";
 import { GenerationView } from "@/components/generation-view";
@@ -43,6 +44,8 @@ import { dispatchSearchInputAppendTag } from "@/lib/search-input-event";
 
 const log = createLogger("renderer/App");
 const CATEGORY_ORDER_STORAGE_KEY = "konomi-category-order";
+const APP_SPLASH_MIN_VISIBLE_MS = 520;
+const APP_SPLASH_FADE_OUT_MS = 240;
 const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
   "similarityThreshold",
   "useAdvancedSimilarityThresholds",
@@ -139,6 +142,9 @@ export default function App() {
     "gallery" | "generator" | "settings"
   >("gallery");
   const [folderCount, setFolderCount] = useState<number | null>(null);
+  const [startupScanPending, setStartupScanPending] = useState(true);
+  const [renderSplash, setRenderSplash] = useState(true);
+  const [splashFadingOut, setSplashFadingOut] = useState(false);
   const [folderDialogRequest, setFolderDialogRequest] = useState(0);
   const [tourOpen, setTourOpen] = useState(
     () => localStorage.getItem("konomi-tour-completed") !== "true",
@@ -155,6 +161,9 @@ export default function App() {
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const currentSidebarWidth = useRef(sidebarWidth);
+  const splashShownAtRef = useRef(Date.now());
+  const splashMinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const splashFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -323,6 +332,8 @@ export default function App() {
     galleryPage,
     setGalleryPage,
     galleryTotalPages,
+    hasLoadedOnce,
+    refreshImagesNow,
     schedulePageRefresh,
   } = useGalleryImages(listBaseQuery);
 
@@ -446,7 +457,13 @@ export default function App() {
       setActivePanel(nextPanel);
       void runAnalysisNow();
     },
-    [activePanel, runAnalysisNow, scanningRef, analyzeTimerRef, pendingSimilarityRecalcRef],
+    [
+      activePanel,
+      runAnalysisNow,
+      scanningRef,
+      analyzeTimerRef,
+      pendingSimilarityRecalcRef,
+    ],
   );
 
   useEffect(() => {
@@ -494,9 +511,24 @@ export default function App() {
       );
 
     void loadSearchPresetStats();
-    runScan({ detectDuplicates: true }).then((ok) => {
-      if (ok) scheduleAnalysis(0);
-    });
+
+    let bootstrapCancelled = false;
+    void (async () => {
+      try {
+        const ok = await runScan({ detectDuplicates: true });
+        if (bootstrapCancelled) return;
+        if (ok) {
+          await refreshImagesNow();
+          if (bootstrapCancelled) return;
+          scheduleAnalysis(0);
+        }
+      } finally {
+        if (!bootstrapCancelled) {
+          setStartupScanPending(false);
+        }
+      }
+    })();
+
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -518,6 +550,7 @@ export default function App() {
 
     return () => {
       log.info("App unmount cleanup");
+      bootstrapCancelled = true;
       watchCancelled = true;
       if (watchRetryTimer) {
         clearTimeout(watchRetryTimer);
@@ -537,6 +570,7 @@ export default function App() {
     };
   }, [
     loadSearchPresetStats,
+    refreshImagesNow,
     runScan,
     scanningRef,
     scheduleAnalysis,
@@ -584,7 +618,13 @@ export default function App() {
         scheduleAnalysis(0);
       });
     },
-    [runScan, scheduleAnalysis, schedulePageRefresh, setActiveScanFolderIds, setRollbackFolderIds],
+    [
+      runScan,
+      scheduleAnalysis,
+      schedulePageRefresh,
+      setActiveScanFolderIds,
+      setRollbackFolderIds,
+    ],
   );
 
   const handleFolderCancelled = useCallback(
@@ -608,7 +648,12 @@ export default function App() {
       schedulePageRefresh(0);
       scheduleAnalysis(500);
     },
-    [scheduleAnalysis, schedulePageRefresh, setActiveScanFolderIds, setRollbackFolderIds],
+    [
+      scheduleAnalysis,
+      schedulePageRefresh,
+      setActiveScanFolderIds,
+      setRollbackFolderIds,
+    ],
   );
 
   const handleFolderRemoved = useCallback(
@@ -633,7 +678,13 @@ export default function App() {
       scheduleAnalysis(500);
       runScan();
     },
-    [runScan, scheduleAnalysis, schedulePageRefresh, setActiveScanFolderIds, setRollbackFolderIds],
+    [
+      runScan,
+      scheduleAnalysis,
+      schedulePageRefresh,
+      setActiveScanFolderIds,
+      setRollbackFolderIds,
+    ],
   );
 
   const handleCategorySelect = useCallback((id: number | null) => {
@@ -900,12 +951,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [
-    selectedImageId,
-    similarGroups,
-    visualThresholdRef,
-    promptThresholdRef,
-  ]);
+  }, [selectedImageId, similarGroups, visualThresholdRef, promptThresholdRef]);
 
   const selectedIndex = useMemo(
     () =>
@@ -928,6 +974,82 @@ export default function App() {
     setSelectedImage(image);
     setIsDetailOpen(true);
   }, []);
+
+  const isAppInitializing =
+    images.length === 0 &&
+    (folderCount === null || !hasLoadedOnce || startupScanPending);
+
+  const clearSplashTimers = useCallback(() => {
+    if (splashMinTimerRef.current) {
+      clearTimeout(splashMinTimerRef.current);
+      splashMinTimerRef.current = null;
+    }
+    if (splashFadeTimerRef.current) {
+      clearTimeout(splashFadeTimerRef.current);
+      splashFadeTimerRef.current = null;
+    }
+  }, []);
+
+  const splashStatusText = useMemo(() => {
+    if (folderCount === null) {
+      return "등록된 폴더를 확인하고 첫 화면을 준비하고 있습니다.";
+    }
+    if (folderCount === 0) {
+      return "시작 화면을 구성하고 바로 폴더를 추가할 수 있게 준비하고 있습니다.";
+    }
+    if (startupScanPending) {
+      return "등록된 이미지를 스캔하고 라이브러리 상태를 동기화하고 있습니다.";
+    }
+    return "라이브러리와 검색 화면을 마무리하고 있습니다.";
+  }, [folderCount, startupScanPending]);
+
+  const splashDetailText = useMemo(() => {
+    if (scanProgress && scanProgress.total > 0) {
+      const folderNames = Array.from(scanningFolderNames.values());
+      const folderLabel =
+        folderNames.length <= 1
+          ? folderNames[0]
+          : `${folderNames[0]} 외 ${folderNames.length - 1}개 폴더`;
+      return folderLabel
+        ? `${folderLabel} 스캔 ${scanProgress.done}/${scanProgress.total}`
+        : `이미지 스캔 ${scanProgress.done}/${scanProgress.total}`;
+    }
+    if (folderCount === null) {
+      return "폴더 목록을 불러오는 중입니다.";
+    }
+    if (folderCount === 0) {
+      return "온보딩 화면을 준비하는 중입니다.";
+    }
+    return "첫 라이브러리 상태를 불러오는 중입니다.";
+  }, [folderCount, scanProgress, scanningFolderNames]);
+
+  useEffect(() => {
+    if (isAppInitializing) {
+      clearSplashTimers();
+      if (!renderSplash) {
+        splashShownAtRef.current = Date.now();
+      }
+      setRenderSplash(true);
+      setSplashFadingOut(false);
+      return;
+    }
+
+    if (!renderSplash) return;
+
+    const elapsedMs = Date.now() - splashShownAtRef.current;
+    const waitMs = Math.max(0, APP_SPLASH_MIN_VISIBLE_MS - elapsedMs);
+
+    splashMinTimerRef.current = setTimeout(() => {
+      setSplashFadingOut(true);
+      splashFadeTimerRef.current = setTimeout(() => {
+        setRenderSplash(false);
+      }, APP_SPLASH_FADE_OUT_MS);
+    }, waitMs);
+
+    return clearSplashTimers;
+  }, [clearSplashTimers, isAppInitializing, renderSplash]);
+
+  useEffect(() => clearSplashTimers, [clearSplashTimers]);
 
   return (
     <div className="h-screen bg-background flex flex-col">
@@ -1082,6 +1204,7 @@ export default function App() {
               onClearSearch={() => setSearchQuery("")}
               hasFolders={folderCount === null || folderCount > 0}
               onAddFolder={() => setFolderDialogRequest((n) => n + 1)}
+              isInitializing={isAppInitializing}
             />
           </div>
         </div>
@@ -1162,7 +1285,20 @@ export default function App() {
         similarPageSize={settings.similarPageSize}
       />
 
-      <FeatureTour open={tourOpen} onClose={handleTourClose} onPanelChange={setActivePanel} onAction={setTourAction} />
+      <FeatureTour
+        open={tourOpen}
+        onClose={handleTourClose}
+        onPanelChange={setActivePanel}
+        onAction={setTourAction}
+      />
+
+      {renderSplash && (
+        <AppSplash
+          fadingOut={splashFadingOut}
+          statusText={splashStatusText}
+          detailText={splashDetailText}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useRef, startTransition } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  startTransition,
+} from "react";
 import { toast } from "sonner";
 import type { ImageData } from "@/components/image-card";
 import type { ImageListQuery } from "@preload/index.d";
@@ -9,8 +15,11 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
   const [totalImageCount, setTotalImageCount] = useState(0);
   const [galleryPage, setGalleryPage] = useState(1);
   const [galleryTotalPages, setGalleryTotalPages] = useState(1);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const listRequestSeqRef = useRef(0);
   const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
 
@@ -39,6 +48,10 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
       toast.error(
         `이미지 목록 로드 실패: ${e instanceof Error ? e.message : String(e)}`,
       );
+    } finally {
+      if (requestId === listRequestSeqRef.current) {
+        setHasLoadedOnce(true);
+      }
     }
   }, [galleryPage, listBaseQuery]);
 
@@ -52,6 +65,8 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
   useEffect(() => {
     loadImagesPageRef.current = loadImagesPage;
   }, [loadImagesPage]);
+
+  const refreshImagesNow = useCallback(() => loadImagesPageRef.current(), []);
 
   useEffect(() => {
     void loadImagesPage();
@@ -73,6 +88,8 @@ export function useGalleryImages(listBaseQuery: Omit<ImageListQuery, "page">) {
     galleryPage,
     setGalleryPage,
     galleryTotalPages,
+    hasLoadedOnce,
+    refreshImagesNow,
     schedulePageRefresh,
   };
 }

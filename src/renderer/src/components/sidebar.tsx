@@ -53,7 +53,7 @@ interface SidebarProps {
   onCategoryAddByPrompt: (id: number, query: string) => void;
   onRandomRefresh: () => void;
   isAnalyzing?: boolean;
-  onFolderCountChange?: (count: number) => void;
+  onFolderCountChange?: (count: number | null) => void;
   folderDialogRequest?: number;
 }
 
@@ -86,8 +86,14 @@ export function Sidebar({
   onFolderCountChange,
   folderDialogRequest,
 }: SidebarProps) {
-  const { folders, addFolder, removeFolder, renameFolder, reorderFolders } =
-    useFolders();
+  const {
+    folders,
+    hasLoaded,
+    addFolder,
+    removeFolder,
+    renameFolder,
+    reorderFolders,
+  } = useFolders();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -136,8 +142,8 @@ export function Sidebar({
   }, [duplicateResolution.folderAddResolvedSeq, handleFolderDialogOpenChange]);
 
   useEffect(() => {
-    onFolderCountChange?.(folders.length);
-  }, [folders.length, onFolderCountChange]);
+    onFolderCountChange?.(hasLoaded ? folders.length : null);
+  }, [folders.length, hasLoaded, onFolderCountChange]);
 
   const folderDialogRequestRef = useRef(0);
   useEffect(() => {
@@ -306,7 +312,10 @@ export function Sidebar({
             </div>
 
             {/* Folders */}
-            <div className="pt-4 border-t border-border" data-tour="sidebar-folders">
+            <div
+              className="pt-4 border-t border-border"
+              data-tour="sidebar-folders"
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground select-none">
                   <FolderPlus className="h-4 w-4" />
@@ -462,7 +471,10 @@ export function Sidebar({
             </div>
 
             {/* Categories */}
-            <div className="border-t border-border pt-4" data-tour="sidebar-categories">
+            <div
+              className="border-t border-border pt-4"
+              data-tour="sidebar-categories"
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground select-none">
                   <Tag className="h-4 w-4" />

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   SquareCheckBig,
   Tags,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,7 @@ interface ImageGalleryProps {
   onClearSearch?: () => void;
   hasFolders?: boolean;
   onAddFolder?: () => void;
+  isInitializing?: boolean;
 }
 
 export const ImageGallery = memo(function ImageGallery({
@@ -76,6 +78,7 @@ export const ImageGallery = memo(function ImageGallery({
   onClearSearch,
   hasFolders = true,
   onAddFolder,
+  isInitializing = false,
 }: ImageGalleryProps) {
   const [internalPage, setInternalPage] = useState(1);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -184,7 +187,10 @@ export const ImageGallery = memo(function ImageGallery({
 
   return (
     <div className="relative flex-1 flex flex-col">
-      <div className="flex flex-col gap-3 p-4 border-b border-border bg-background" data-tour="gallery-toolbar">
+      <div
+        className="flex flex-col gap-3 p-4 border-b border-border bg-background"
+        data-tour="gallery-toolbar"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground select-none">
@@ -355,6 +361,18 @@ export const ImageGallery = memo(function ImageGallery({
             </div>
           </div>
         </ScrollArea>
+      ) : isInitializing ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-4 select-none">
+          <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2">
+            라이브러리 준비 중
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-md">
+            등록된 폴더를 확인하고 이미지를 불러오고 있습니다.
+          </p>
+        </div>
       ) : !hasFolders && onAddFolder ? (
         <OnboardingView onAddFolder={onAddFolder} />
       ) : (
