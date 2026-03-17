@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, protocol } from "electron";
+import { app, shell, BrowserWindow, protocol, session } from "electron";
 import { dirname, join } from "path";
 import fs from "fs";
 import { Readable } from "stream";
@@ -41,7 +41,9 @@ function configureAppDataPaths(): void {
 }
 
 function resolveBundledPromptsDBPath(): string | null {
-  const overridePath = (process.env.KONOMI_BUNDLED_PROMPTS_DB_PATH ?? "").trim();
+  const overridePath = (
+    process.env.KONOMI_BUNDLED_PROMPTS_DB_PATH ?? ""
+  ).trim();
   if (overridePath && fs.existsSync(overridePath)) {
     return overridePath;
   }
@@ -115,7 +117,8 @@ function syncBundledPromptsDBToUserData(): void {
 }
 
 function pathEquals(left: string, right: string): boolean {
-  const normalizedLeft = process.platform === "win32" ? left.toLowerCase() : left;
+  const normalizedLeft =
+    process.platform === "win32" ? left.toLowerCase() : left;
   const normalizedRight =
     process.platform === "win32" ? right.toLowerCase() : right;
   return normalizedLeft === normalizedRight;
@@ -147,6 +150,51 @@ function saveBounds(win: BrowserWindow): void {
   }
 }
 
+async function installReactDevTools(): Promise<void> {
+  if (!is.dev || app.isPackaged) {
+    return;
+  }
+
+  try {
+    const { downloadChromeExtension } =
+      await import("electron-devtools-installer/dist/downloadChromeExtension");
+    const extensionPath = await downloadChromeExtension(
+      "fmkadmapgofadopljbjfkapdkoienihi",
+    );
+    const extensions = session.defaultSession.extensions;
+    const installedExtension = extensions
+      .getAllExtensions()
+      .find(
+        (extension) =>
+          extension.path === extensionPath ||
+          extension.name === "React Developer Tools",
+      );
+
+    if (installedExtension) {
+      log.info("React DevTools extension already loaded", {
+        id: installedExtension.id,
+        name: installedExtension.name,
+        path: installedExtension.path,
+      });
+      return;
+    }
+
+    const extension = await extensions.loadExtension(extensionPath, {
+      allowFileAccess: true,
+    });
+    log.info("Installed React DevTools extension", {
+      id: extension.id,
+      name: extension.name,
+      path: extension.path,
+      version: extension.version,
+    });
+  } catch (error) {
+    log.warn("Failed to install React DevTools extension", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 function createWindow(): void {
   const bounds = loadBounds();
   log.info("Creating main window", { bounds });
@@ -161,6 +209,8 @@ function createWindow(): void {
       contextIsolation: true,
     },
   });
+
+  let appliedReactDevToolsReloadWorkaround = false;
 
   mainWindow.on("ready-to-show", () => {
     log.info("Main window ready-to-show");
@@ -206,12 +256,21 @@ function createWindow(): void {
 
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
+    mainWindow.webContents.on("did-finish-load", () => {
+      if (appliedReactDevToolsReloadWorkaround) {
+        return;
+      }
+      appliedReactDevToolsReloadWorkaround = true;
+      log.info("Reloading renderer once to attach React DevTools");
+      mainWindow.webContents.reloadIgnoringCache();
+    });
   }
 
   bridge.setWebContents(mainWindow.webContents);
 }
 
-app.whenReady()
+app
+  .whenReady()
   .then(() => {
     log.info("App ready");
     syncBundledPromptsDBToUserData();
@@ -256,11 +315,13 @@ app.whenReady()
       optimizer.watchWindowShortcuts(window);
     });
 
-    createWindow();
-
     app.on("activate", () => {
       log.info("App activate");
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+
+    return installReactDevTools().finally(() => {
+      createWindow();
     });
   })
   .catch((error) => {
