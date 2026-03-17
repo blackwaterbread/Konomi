@@ -18,7 +18,8 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "db:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
-    "db:migrate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev"
+    "db:migrate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev",
+    "db:prompts": "node ./scripts/run-electron-node.mjs ./scripts/build-prompts-db.mjs"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.4.2",
