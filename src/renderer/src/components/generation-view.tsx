@@ -280,8 +280,37 @@ const SIZE_PRESETS = [
   { label: "세로", width: 832, height: 1216 },
   { label: "가로", width: 1216, height: 832 },
   { label: "정방", width: 1024, height: 1024 },
-  { label: "소형", width: 768, height: 768 },
 ];
+
+const CUSTOM_SIZES_KEY = "konomi-custom-sizes";
+
+type CustomSize = { width: number; height: number };
+
+function loadCustomSizes(): CustomSize[] {
+  try {
+    const stored = localStorage.getItem(CUSTOM_SIZES_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (x): x is CustomSize =>
+        x !== null &&
+        typeof x === "object" &&
+        typeof (x as CustomSize).width === "number" &&
+        typeof (x as CustomSize).height === "number",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomSizes(sizes: CustomSize[]): void {
+  try {
+    localStorage.setItem(CUSTOM_SIZES_KEY, JSON.stringify(sizes));
+  } catch {
+    // ignore
+  }
+}
 
 const SAMPLERS = [
   "k_euler",
@@ -761,7 +790,7 @@ function AdvancedParamsSection({
               Sampler
             </span>
             <RadixSelect value={sampler} onValueChange={setSampler}>
-              <SelectTrigger className="h-auto data-[size=default]:h-auto p-0 border-none bg-transparent shadow-none text-sm font-semibold leading-none text-foreground gap-1 focus-visible:ring-0 max-w-[120px] [&_svg]:size-3.5">
+              <SelectTrigger className="h-auto data-[size=default]:h-auto p-0 border-none bg-transparent shadow-none text-sm font-semibold leading-none text-foreground gap-1 focus-visible:ring-0 max-w-37.5 [&_svg]:size-3.5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1126,6 +1155,12 @@ export function GenerationView({
     CharacterPromptInput[]
   >(() => loadLastGenParams()?.characterPrompts ?? []);
   const [characterAddOpen, setCharacterAddOpen] = useState(false);
+  const [customSizes, setCustomSizes] = useState<CustomSize[]>(() =>
+    loadCustomSizes(),
+  );
+  const [customSizesOpen, setCustomSizesOpen] = useState(false);
+  const [customSizeAddW, setCustomSizeAddW] = useState("");
+  const [customSizeAddH, setCustomSizeAddH] = useState("");
   const [aiChoice, setAiChoice] = useState(
     () => loadLastGenParams()?.aiChoice ?? true,
   );
@@ -2560,6 +2595,104 @@ export function GenerationView({
                     {p.label}
                   </button>
                 ))}
+                <div className="relative">
+                  <button
+                    onClick={() => setCustomSizesOpen((v) => !v)}
+                    className={cn(
+                      "px-2.5 py-1.5 text-xs rounded-lg border transition-colors whitespace-nowrap",
+                      customSizesOpen
+                        ? "bg-primary/20 text-primary border-primary/50 font-medium"
+                        : "bg-secondary/60 text-muted-foreground border-border/60 hover:text-foreground hover:border-border",
+                    )}
+                  >
+                    커스텀
+                  </button>
+                  {customSizesOpen && (
+                    <div className="absolute right-0 bottom-full mb-1 w-52 rounded-lg border border-border/60 bg-popover shadow-lg z-10 overflow-hidden">
+                      {customSizes.length === 0 ? (
+                        <p className="px-3 py-8 text-xs text-muted-foreground text-center">
+                          저장된 크기 없음
+                        </p>
+                      ) : (
+                        customSizes.map((s, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-1 px-2 py-1.5 hover:bg-secondary transition-colors"
+                          >
+                            <button
+                              onClick={() => {
+                                setWidth(s.width);
+                                setHeight(s.height);
+                                setCustomSizesOpen(false);
+                              }}
+                              className="flex-1 text-left text-xs text-foreground/80 font-mono cursor-pointer"
+                            >
+                              {s.width} × {s.height}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const next = customSizes.filter(
+                                  (_, j) => j !== i,
+                                );
+                                setCustomSizes(next);
+                                saveCustomSizes(next);
+                              }}
+                              className="text-muted-foreground/60 hover:text-destructive transition-colors"
+                              aria-label="삭제"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                      <div className="border-t border-border/40 px-2 py-2 flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={customSizeAddW}
+                          onChange={(e) => setCustomSizeAddW(e.target.value)}
+                          placeholder="W"
+                          className="w-0 flex-1 min-w-0 bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center focus:outline-none focus:border-primary/50 cursor-text"
+                        />
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          ×
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={customSizeAddH}
+                          onChange={(e) => setCustomSizeAddH(e.target.value)}
+                          placeholder="H"
+                          className="w-0 flex-1 min-w-0 bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center focus:outline-none focus:border-primary/50 cursor-text"
+                        />
+                        <button
+                          onClick={() => {
+                            const w = parseInt(customSizeAddW, 10);
+                            const h = parseInt(customSizeAddH, 10);
+                            if (!w || !h || w <= 0 || h <= 0) return;
+                            const already = customSizes.some(
+                              (s) => s.width === w && s.height === h,
+                            );
+                            if (!already) {
+                              const next = [
+                                ...customSizes,
+                                { width: w, height: h },
+                              ];
+                              setCustomSizes(next);
+                              saveCustomSizes(next);
+                            }
+                            setCustomSizeAddW("");
+                            setCustomSizeAddH("");
+                          }}
+                          className="shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors cursor-pointer"
+                          aria-label="추가"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2 mt-2">
                 <DeferredNumberInput
