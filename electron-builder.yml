@@ -19,6 +19,16 @@ files:
   - '!node_modules/better-sqlite3/src/**'
   - '!node_modules/better-sqlite3/README.md'
   - '!node_modules/better-sqlite3/binding.gyp'
+  - '!node_modules/@prisma/client/generator-build/**'
+  - '!node_modules/@prisma/client/scripts/**'
+  - '!node_modules/@prisma/client/runtime/*.map'
+  - '!node_modules/@prisma/client/runtime/wasm-compiler-edge.*'
+  - '!node_modules/@prisma/client/runtime/index-browser.*'
+  - '!node_modules/@prisma/client/runtime/query_compiler_fast_bg.cockroachdb.*'
+  - '!node_modules/@prisma/client/runtime/query_compiler_fast_bg.mysql.*'
+  - '!node_modules/@prisma/client/runtime/query_compiler_fast_bg.postgresql.*'
+  - '!node_modules/@prisma/client/runtime/query_compiler_fast_bg.sqlserver.*'
+  - '!node_modules/@prisma/client/runtime/query_compiler_small_bg.*'
 
 extraResources:
   - from: resources
