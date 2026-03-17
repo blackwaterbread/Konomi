@@ -15,6 +15,10 @@ files:
   - '!{docs/**,examples/**,example_datas/**,.claude/**,scripts/**}'
   - '!out/*.db'
   - '!resources/prompts.db'
+  - '!node_modules/better-sqlite3/deps/**'
+  - '!node_modules/better-sqlite3/src/**'
+  - '!node_modules/better-sqlite3/README.md'
+  - '!node_modules/better-sqlite3/binding.gyp'
 
 extraResources:
   - from: resources
