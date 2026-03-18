@@ -384,20 +384,53 @@ function Select({
   className?: string;
 }) {
   return (
-    <div className={cn("relative", className)}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full appearance-none bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 pr-7 text-sm text-foreground focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors cursor-pointer"
+    <RadixSelect value={value} onValueChange={onChange}>
+      <SelectTrigger
+        className={cn(
+          "w-full justify-between rounded-lg border-border/60 bg-secondary/60 px-3 py-1.5 text-sm text-foreground shadow-none transition-colors focus-visible:border-primary/60 focus-visible:bg-secondary focus-visible:ring-0 [&_svg]:size-3 [&_svg]:text-muted-foreground/60",
+          className,
+        )}
       >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <SelectItem key={o.value} value={o.value}>
             {o.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground/60 pointer-events-none" />
-    </div>
+      </SelectContent>
+    </RadixSelect>
+  );
+}
+
+const INLINE_SELECT_TRIGGER_CLS =
+  "h-auto data-[size=default]:h-auto p-0 border-none bg-transparent dark:bg-transparent hover:bg-transparent dark:hover:bg-transparent shadow-none text-sm font-semibold text-foreground gap-1 focus-visible:ring-0 [&_svg]:size-3.5 cursor-pointer";
+
+function InlineSelect({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  return (
+    <RadixSelect value={value} onValueChange={onChange}>
+      <SelectTrigger className={cn(INLINE_SELECT_TRIGGER_CLS, className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </RadixSelect>
   );
 }
 
@@ -791,18 +824,12 @@ function AdvancedParamsSection({
             <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
               Sampler
             </span>
-            <RadixSelect value={sampler} onValueChange={setSampler}>
-              <SelectTrigger className="h-auto data-[size=default]:h-auto p-0 border-none bg-transparent dark:bg-transparent hover:bg-transparent dark:hover:bg-transparent shadow-none text-sm font-semibold text-foreground gap-1 focus-visible:ring-0 max-w-37.5 [&_svg]:size-3.5 cursor-pointer">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SAMPLERS.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </RadixSelect>
+            <InlineSelect
+              value={sampler}
+              onChange={setSampler}
+              options={SAMPLERS.map((s) => ({ value: s, label: s }))}
+              className="max-w-37.5"
+            />
           </span>
         </div>
         {/* 펼치기 버튼 */}
