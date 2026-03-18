@@ -4,9 +4,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   PointerSensor,
@@ -34,7 +36,6 @@ import { GroupChip } from "./group-chip";
 import { WildcardChip } from "./wildcard-chip";
 
 type EditableToken = AnyToken & { id: string };
-type PromptInputEditorMode = "simple" | "advanced";
 const INPUT_WRAP_SPACE_THRESHOLD_PX = 120;
 const INPUT_WRAP_CARET_BUFFER_PX = 18;
 const INPUT_WRAP_TOKEN_GAP_PX = 6;
@@ -49,7 +50,6 @@ function formatTagSuggestionCount(count: number): string {
 interface PromptInputProps {
   value: string;
   onChange: (value: string) => void;
-  mode?: PromptInputEditorMode;
   placeholder?: string;
   className?: string;
   resizable?: boolean;
@@ -94,7 +94,6 @@ function serializePrompt(tokens: EditableToken[], draft: string): string {
 export function PromptInput({
   value,
   onChange,
-  mode = "simple",
   placeholder = "tag, tag, tag...",
   className,
   resizable = true,
@@ -104,12 +103,12 @@ export function PromptInput({
   allowExternalDrop = false,
 }: PromptInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputAnchorRef = useRef<HTMLDivElement | null>(null);
   const measureCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const tokenRowRef = useRef<HTMLDivElement | null>(null);
   const tokenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inlineEditTokenIdRef = useRef<string | null>(null);
   const chipCursorIndexRef = useRef<number | null>(null);
-  const previousModeRef = useRef<PromptInputEditorMode>(mode);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const undoStackRef = useRef<{ tokens: EditableToken[]; draft: string }[]>([]);
   const isUndoingRef = useRef(false);
@@ -130,6 +129,9 @@ export function PromptInput({
   const [chipCursorIndex, setChipCursorIndex] = useState<number | null>(null);
   const [shouldWrapInput, setShouldWrapInput] = useState(false);
   const [tokenRowWidth, setTokenRowWidth] = useState(0);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [autocompleteStyle, setAutocompleteStyle] =
+    useState<CSSProperties | null>(null);
 
   // @ group autocomplete
   const [groups, setGroups] = useState<PromptGroup[]>(groupsProp ?? []);
@@ -173,6 +175,9 @@ export function PromptInput({
       ),
     [groups, groupSearch],
   );
+  const showGroupDropdown = groupDropdownOpen && filteredGroups.length > 0;
+  const showTagSuggestionDropdown =
+    !groupDropdownOpen && tagSuggestionOpen && tagSuggestions.length > 0;
 
   const promptTagExclusions = useMemo(
     () =>
@@ -187,7 +192,7 @@ export function PromptInput({
   );
 
   useEffect(() => {
-    if (mode !== "simple" || groupDropdownOpen) {
+    if (groupDropdownOpen) {
       setTagSuggestions([]);
       setTagSuggestionOpen(false);
       setTagSuggestionIndex(0);
@@ -245,7 +250,7 @@ export function PromptInput({
         tagSuggestDebounceRef.current = null;
       }
     };
-  }, [draft, groupDropdownOpen, mode, promptTagExclusions]);
+  }, [draft, groupDropdownOpen, promptTagExclusions]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -257,24 +262,11 @@ export function PromptInput({
   );
 
   useEffect(() => {
-    if (mode !== "simple") return;
     if (value === serialized) return;
     if (value === lastEmittedRef.current) return;
     setTokens(toEditableTokens(parsePromptTokens(value)));
     setDraft("");
-  }, [mode, value, serialized]);
-
-  useEffect(() => {
-    const previousMode = previousModeRef.current;
-    if (
-      previousMode === "simple" &&
-      mode === "advanced" &&
-      value !== serialized
-    ) {
-      onChange(serialized);
-    }
-    previousModeRef.current = mode;
-  }, [mode, onChange, serialized, value]);
+  }, [value, serialized]);
 
   useEffect(() => {
     inlineEditTokenIdRef.current = inlineEditTokenId;
@@ -294,17 +286,6 @@ export function PromptInput({
   }, [tokens]);
 
   useEffect(() => {
-    if (mode === "advanced") {
-      setInlineEditTokenId(null);
-      setPopoverTokenId(null);
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode !== "simple") {
-      setTokenRowWidth(0);
-      return;
-    }
     const tokenRow = tokenRowRef.current;
     if (!tokenRow) return;
     const updateTokenRowWidth = () => {
@@ -320,7 +301,7 @@ export function PromptInput({
       observer.disconnect();
       window.removeEventListener("resize", updateTokenRowWidth);
     };
-  }, [mode, tokens.length]);
+  }, [tokens.length]);
 
   // Auto-focus input when it moves to cursor-insert position
   useEffect(() => {
@@ -330,7 +311,7 @@ export function PromptInput({
   }, [insertIndex]);
 
   useEffect(() => {
-    if (mode !== "simple" || tokens.length === 0 || insertIndex !== null) {
+    if (tokens.length === 0 || insertIndex !== null) {
       setShouldWrapInput(false);
       return;
     }
@@ -393,9 +374,53 @@ export function PromptInput({
       observer.disconnect();
       window.removeEventListener("resize", updateInputWrap);
     };
-  }, [draft, insertIndex, mode, tokens]);
+  }, [draft, insertIndex, tokens]);
+
+  useEffect(() => {
+    if (!showGroupDropdown && !showTagSuggestionDropdown) {
+      setAutocompleteStyle(null);
+      return;
+    }
+
+    const updateAutocompletePosition = () => {
+      const anchor = inputAnchorRef.current;
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const desiredWidth = showGroupDropdown ? 176 : 288;
+      const width = Math.min(desiredWidth, viewportWidth - 16);
+      const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
+
+      setAutocompleteStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width,
+        zIndex: 3200,
+      });
+    };
+
+    const raf = window.requestAnimationFrame(updateAutocompletePosition);
+    window.addEventListener("resize", updateAutocompletePosition);
+    window.addEventListener("scroll", updateAutocompletePosition, true);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updateAutocompletePosition);
+      window.removeEventListener("scroll", updateAutocompletePosition, true);
+    };
+  }, [
+    draft,
+    insertIndex,
+    showGroupDropdown,
+    showTagSuggestionDropdown,
+    shouldWrapInput,
+    tokens.length,
+  ]);
 
   const emit = (nextTokens: EditableToken[], nextDraft: string) => {
+    const currentSerialized = serializePrompt(tokens, draft);
+    const nextSerialized = serializePrompt(nextTokens, nextDraft);
     const tokensChanged =
       nextTokens.length !== tokens.length ||
       nextTokens.some(
@@ -411,12 +436,10 @@ export function PromptInput({
     }
     setTokens(nextTokens);
     setDraft(nextDraft);
-    if (tokensChanged) {
-      const nextSerialized = serializePrompt(nextTokens, nextDraft);
+    if (nextSerialized !== currentSerialized) {
       lastEmittedRef.current = nextSerialized;
       onChange(nextSerialized);
     }
-    // draft-only: no onChange — parent update deferred to blur
   };
 
   const handleUndo = () => {
@@ -482,7 +505,7 @@ export function PromptInput({
       setGroupSearch(groupPrefixMatch[1]);
       setGroupDropdownOpen(true);
       setGroupDropdownIndex(0);
-      setDraft(nextValue);
+      emit(tokens, nextValue);
       return;
     }
 
@@ -590,7 +613,44 @@ export function PromptInput({
     }
   };
 
+  const focusChipCursorAtIndex = (index: number) => {
+    const token = tokens[index];
+    if (!token) return;
+    setInlineEditTokenId(null);
+    setChipCursorIndex(index);
+    requestAnimationFrame(() => {
+      tokenRefs.current.get(token.id)?.focus();
+    });
+  };
+
+  const cancelComposingToken = () => {
+    const targetIndex =
+      insertIndex !== null ? insertIndex - 1 : tokens.length - 1;
+    setGroupDropdownOpen(false);
+    setGroupSearch("");
+    setTagSuggestions([]);
+    setTagSuggestionOpen(false);
+    setTagSuggestionIndex(0);
+    if (draft.length > 0) {
+      emit(tokens, "");
+    } else {
+      setDraft("");
+    }
+    setInsertIndex(null);
+    if (targetIndex >= 0) {
+      focusChipCursorAtIndex(targetIndex);
+      return;
+    }
+    requestAnimationFrame(() => inputRef.current?.blur());
+  };
+
   const handleInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelComposingToken();
+      return;
+    }
+
     // Group dropdown navigation
     if (groupDropdownOpen && filteredGroups.length > 0) {
       if (e.key === "ArrowDown") {
@@ -611,10 +671,6 @@ export function PromptInput({
         if (selected) insertGroupToken(selected.name);
         return;
       }
-      if (e.key === "Escape") {
-        setGroupDropdownOpen(false);
-        return;
-      }
     }
 
     if (tagSuggestionOpen && tagSuggestions.length > 0) {
@@ -632,13 +688,9 @@ export function PromptInput({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        applyTagSuggestion(tagSuggestions[tagSuggestionIndex] ?? tagSuggestions[0]);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setTagSuggestionOpen(false);
-        setTagSuggestionIndex(0);
+        applyTagSuggestion(
+          tagSuggestions[tagSuggestionIndex] ?? tagSuggestions[0],
+        );
         return;
       }
     }
@@ -674,17 +726,7 @@ export function PromptInput({
 
     if (e.key === "Backspace" && draft.length === 0 && tokens.length > 0) {
       e.preventDefault();
-      const deleteAt =
-        insertIndex !== null ? insertIndex - 1 : tokens.length - 1;
-      if (deleteAt < 0) return;
-      const nextTokens = tokens.filter((_, i) => i !== deleteAt);
-      if (insertIndex !== null) {
-        // If no tokens remain, exit insert mode (input returns to trailing position)
-        setInsertIndex(
-          nextTokens.length === 0 ? null : Math.max(0, insertIndex - 1),
-        );
-      }
-      emit(nextTokens, "");
+      cancelComposingToken();
     }
   };
 
@@ -774,8 +816,7 @@ export function PromptInput({
       e.preventDefault();
       setInsertIndex(index + 1);
       setChipCursorIndex(null);
-      setDraft(e.key);
-      onChange(serializePrompt(tokens, e.key));
+      emit(tokens, e.key);
       return;
     }
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
@@ -824,102 +865,127 @@ export function PromptInput({
     }
   };
 
-  // Shared input + autocomplete content, rendered either at insertIndex position or at the end
   const inputInner = (
     <>
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => handleDraftChange(e.target.value)}
-        onKeyDown={handleInputKeyDown}
-        onPaste={handleInputPaste}
-        onFocus={() => {
-          setInlineEditTokenId(null);
-          setChipCursorIndex(null);
-        }}
-        onBlur={() => {
-          setTimeout(() => {
-            setGroupDropdownOpen(false);
-            setTagSuggestionOpen(false);
-          }, 150);
-          if (draft.trim()) {
-            const serializedWithDraft = serializePrompt(tokens, draft);
-            lastEmittedRef.current = serializedWithDraft;
-            onChange(serializedWithDraft);
-          }
-        }}
-        placeholder={tokens.length > 0 ? "" : placeholder}
-        className="h-7 w-full bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
-      />
-      {groupDropdownOpen && filteredGroups.length > 0 && (
-        <div
-          ref={dropdownRef}
-          className="absolute top-full left-0 mt-1 w-44 rounded-lg border border-border bg-popover shadow-lg z-50 overflow-hidden"
-        >
-          {filteredGroups.map((g, i) => (
-            <button
-              key={g.id}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                insertGroupToken(g.name);
-              }}
-              className={cn(
-                "w-full text-left px-3 py-1.5 text-xs transition-colors",
-                i === groupDropdownIndex
-                  ? "bg-primary/15 text-primary"
-                  : "text-foreground/80 hover:bg-secondary",
-              )}
-            >
-              <span className="font-semibold text-group">@</span>
-              {`{${g.name}}`}
-            </button>
-          ))}
-        </div>
-      )}
-      {!groupDropdownOpen && tagSuggestionOpen && tagSuggestions.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 w-72 rounded-lg border border-border bg-popover shadow-lg z-50 overflow-hidden">
-          {tagSuggestions.map((suggestion, index) => (
-            <button
-              key={`${suggestion.tag}-${suggestion.count}`}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                applyTagSuggestion(suggestion);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
-                index === tagSuggestionIndex
-                  ? "bg-primary/15 text-primary"
-                  : "text-foreground/85 hover:bg-secondary",
-              )}
-            >
-              <span className="truncate">{suggestion.tag}</span>
-              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                {formatTagSuggestionCount(suggestion.count)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      <div
+        ref={inputAnchorRef}
+        className={cn(
+          "relative min-h-7 rounded-sm transition-colors",
+          isInputFocused && "bg-background/35",
+        )}
+      >
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => handleDraftChange(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onPaste={handleInputPaste}
+          onFocus={() => {
+            setIsInputFocused(true);
+            setInlineEditTokenId(null);
+            setChipCursorIndex(null);
+          }}
+          onBlur={() => {
+            setIsInputFocused(false);
+            setTimeout(() => {
+              setGroupDropdownOpen(false);
+              setTagSuggestionOpen(false);
+            }, 150);
+          }}
+          aria-label={placeholder}
+          placeholder={tokens.length === 0 ? placeholder : ""}
+          className="h-7 w-full bg-transparent px-1 text-sm leading-7 outline-none placeholder:text-muted-foreground/40"
+          style={{
+            color: "transparent",
+            caretColor: "var(--color-primary)",
+            textShadow:
+              draft.length > 0 ? "0 0 0 var(--color-foreground)" : undefined,
+          }}
+        />
+      </div>
     </>
   );
 
-  if (mode === "advanced") {
-    return (
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={cn(
-          "w-full rounded-lg border border-border/60 bg-secondary/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/60",
-          resizable && "resize-y",
-          className,
-        )}
-        style={{ minHeight, maxHeight }}
-      />
-    );
-  }
+  const autocompletePortal =
+    (showGroupDropdown || showTagSuggestionDropdown) &&
+    typeof document !== "undefined"
+      ? createPortal(
+          showGroupDropdown ? (
+            <div
+              ref={dropdownRef}
+              style={
+                autocompleteStyle ?? {
+                  position: "fixed",
+                  top: 8,
+                  left: 8,
+                  width: 176,
+                  zIndex: 3200,
+                  visibility: "hidden",
+                }
+              }
+              className="max-h-56 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover shadow-lg"
+            >
+              {filteredGroups.map((g, i) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertGroupToken(g.name);
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-xs transition-colors",
+                    i === groupDropdownIndex
+                      ? "bg-primary/15 text-primary"
+                      : "text-foreground/80 hover:bg-secondary",
+                  )}
+                >
+                  <span className="font-semibold text-group">@</span>
+                  {`{${g.name}}`}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div
+              ref={dropdownRef}
+              style={
+                autocompleteStyle ?? {
+                  position: "fixed",
+                  top: 8,
+                  left: 8,
+                  width: 288,
+                  zIndex: 3200,
+                  visibility: "hidden",
+                }
+              }
+              className="max-h-56 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover shadow-lg"
+            >
+              {tagSuggestions.map((suggestion, index) => (
+                <button
+                  key={`${suggestion.tag}-${suggestion.count}`}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applyTagSuggestion(suggestion);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
+                    index === tagSuggestionIndex
+                      ? "bg-primary/15 text-primary"
+                      : "text-foreground/85 hover:bg-secondary",
+                  )}
+                >
+                  <span className="truncate">{suggestion.tag}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {formatTagSuggestionCount(suggestion.count)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ),
+          document.body,
+        )
+      : null;
 
   return (
     <div
@@ -1226,6 +1292,7 @@ export function PromptInput({
           </div>
         </SortableContext>
       </DndContext>
+      {autocompletePortal}
     </div>
   );
 }

@@ -68,7 +68,6 @@ type RefImage = {
 };
 
 type CharacterPromptMode = "prompt" | "negativePrompt";
-type PromptEditorMode = "simple" | "advanced";
 
 type CharacterPosition =
   | "global"
@@ -1151,7 +1150,6 @@ export function GenerationView({
   const [promptInputMode, setPromptInputMode] = useState<
     "prompt" | "negativePrompt"
   >("prompt");
-  const promptEditorMode: PromptEditorMode = "simple";
   const [characterPrompts, setCharacterPrompts] = useState<
     CharacterPromptInput[]
   >(() => loadLastGenParams()?.characterPrompts ?? []);
@@ -2219,7 +2217,6 @@ export function GenerationView({
                     ? setPrompt(nextValue)
                     : setNegativePrompt(nextValue)
                 }
-                mode={promptEditorMode}
                 placeholder={
                   promptInputMode === "prompt"
                     ? "1girl, beautiful, masterpiece, ..."
@@ -2413,7 +2410,6 @@ export function GenerationView({
                             }),
                           )
                         }
-                        mode={promptEditorMode}
                         placeholder={
                           character.inputMode === "prompt"
                             ? `캐릭터 ${i + 1} 프롬프트`

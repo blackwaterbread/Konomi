@@ -166,6 +166,8 @@ function TokenChipCore({
   const tagSuggestRequestSeqRef = useRef(0);
   const [internalEditorOpen, setInternalEditorOpen] = useState(false);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
+  const [inlineSuggestionStyle, setInlineSuggestionStyle] =
+    useState<CSSProperties | null>(null);
   const [draftText, setDraftText] = useState(token.text);
   const [draftWeight, setDraftWeight] = useState(clampWeight(token.weight));
   const [draftExpression, setDraftExpression] = useState<TokenWeightExpression>(
@@ -176,6 +178,8 @@ function TokenChipCore({
   );
   const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
   const [tagSuggestionIndex, setTagSuggestionIndex] = useState(0);
+  const showInlineSuggestions =
+    inlineEditOpen && tagSuggestionOpen && tagSuggestions.length > 0;
 
   useEffect(() => {
     setDraftText(token.text);
@@ -362,6 +366,44 @@ function TokenChipCore({
     });
     return () => window.cancelAnimationFrame(raf);
   }, [inlineEditOpen]);
+
+  useEffect(() => {
+    if (!showInlineSuggestions) {
+      setInlineSuggestionStyle(null);
+      return;
+    }
+
+    const updateInlineSuggestionPosition = () => {
+      const anchor = triggerRef.current;
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const width = Math.min(288, viewportWidth - 16);
+      const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
+
+      setInlineSuggestionStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width,
+        zIndex: 3200,
+      });
+    };
+
+    const raf = window.requestAnimationFrame(updateInlineSuggestionPosition);
+    window.addEventListener("resize", updateInlineSuggestionPosition);
+    window.addEventListener("scroll", updateInlineSuggestionPosition, true);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updateInlineSuggestionPosition);
+      window.removeEventListener(
+        "scroll",
+        updateInlineSuggestionPosition,
+        true,
+      );
+    };
+  }, [draftText, showInlineSuggestions]);
 
   const applyInlineEdit = (advance = false) => {
     if (inlineHandlingRef.current !== null) return;
@@ -780,33 +822,50 @@ function TokenChipCore({
           {copied ? <Copy className="h-3 w-3 shrink-0" /> : null}
         </div>
       )}
-      {inlineEditOpen && tagSuggestionOpen && tagSuggestions.length > 0 ? (
-        <div className="absolute top-full left-0 z-40 mt-1 w-72 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-          {tagSuggestions.map((suggestion, index) => (
-            <button
-              key={`${suggestion.tag}-${suggestion.count}`}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                applyTagSuggestion(suggestion);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
-                index === tagSuggestionIndex
-                  ? "bg-primary/15 text-primary"
-                  : "text-foreground/85 hover:bg-secondary",
-              )}
-            >
-              <span className="truncate">{suggestion.tag}</span>
-              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                {formatTagSuggestionCount(suggestion.count)}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
+
+  const inlineSuggestionDropdown =
+    showInlineSuggestions && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            style={
+              inlineSuggestionStyle ?? {
+                position: "fixed",
+                top: 8,
+                left: 8,
+                width: 288,
+                zIndex: 3200,
+                visibility: "hidden",
+              }
+            }
+            className="max-h-56 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover shadow-lg"
+          >
+            {tagSuggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.tag}-${suggestion.count}`}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyTagSuggestion(suggestion);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
+                  index === tagSuggestionIndex
+                    ? "bg-primary/15 text-primary"
+                    : "text-foreground/85 hover:bg-secondary",
+                )}
+              >
+                <span className="truncate">{suggestion.tag}</span>
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  {formatTagSuggestionCount(suggestion.count)}
+                </span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
 
   const popover =
     isEditable && resolvedEditorOpen && typeof document !== "undefined"
@@ -1008,6 +1067,7 @@ function TokenChipCore({
       ) : (
         chip
       )}
+      {inlineSuggestionDropdown}
       {popover}
     </>
   );
