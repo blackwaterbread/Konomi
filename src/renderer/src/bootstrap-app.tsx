@@ -9,7 +9,8 @@ import type { ThemeId } from "@/lib/themes";
 import { readStoredSettings } from "@/hooks/useSettings";
 
 const log = createLogger("renderer/BootstrapApp");
-const APP_SPLASH_MIN_VISIBLE_MS = 520;
+const APP_SPLASH_MIN_VISIBLE_MS = 1900;
+const APP_SPLASH_COMPLETION_HOLD_MS = 180;
 const APP_SPLASH_FADE_OUT_MS = 240;
 const FOLDER_ORDER_STORAGE_KEY = "konomi-folder-order";
 
@@ -114,6 +115,7 @@ export function BootstrapApp() {
   const [bootstrapReady, setBootstrapReady] = useState(bootstrapCompleted);
   const [renderSplash, setRenderSplash] = useState(!bootstrapCompleted);
   const [splashFadingOut, setSplashFadingOut] = useState(false);
+  const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const splashShownAtRef = useRef<number | null>(null);
   const splashMinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const splashFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,6 +151,7 @@ export function BootstrapApp() {
       setFolderCount(bootstrappedFolderCount);
       setMountApp(true);
       setBootstrapReady(true);
+      setProgressPercent(100);
       setRenderSplash(false);
       setSplashFadingOut(false);
       return;
@@ -156,6 +159,14 @@ export function BootstrapApp() {
 
     let cancelled = false;
     const offScanProgress = window.image.onScanProgress((data) => {
+      const nextProgress =
+        data.total > 0
+          ? Math.min(99, Math.round((data.done / data.total) * 100))
+          : 0;
+      setProgressPercent((prev) => {
+        if (prev === null) return nextProgress;
+        return Math.max(prev, nextProgress);
+      });
       setScanProgress(data.done >= data.total ? null : data);
     });
     const offScanFolder = window.image.onScanFolder(
@@ -172,6 +183,11 @@ export function BootstrapApp() {
     void ensureInitialFolderCount().then((count) => {
       if (!cancelled) {
         setFolderCount(count);
+        if (count === 0) {
+          setProgressPercent(100);
+        } else if (count !== null) {
+          setProgressPercent((prev) => prev ?? 8);
+        }
       }
     });
 
@@ -180,9 +196,13 @@ export function BootstrapApp() {
 
       setFolderCount(count);
       setBootstrapReady(true);
+      setProgressPercent(100);
       const shownAt = splashShownAtRef.current ?? Date.now();
       const elapsedMs = Date.now() - shownAt;
-      const waitMs = Math.max(0, APP_SPLASH_MIN_VISIBLE_MS - elapsedMs);
+      const waitMs = Math.max(
+        APP_SPLASH_COMPLETION_HOLD_MS,
+        APP_SPLASH_MIN_VISIBLE_MS - elapsedMs,
+      );
 
       splashMinTimerRef.current = setTimeout(() => {
         setMountApp(true);
@@ -253,6 +273,7 @@ export function BootstrapApp() {
           fadingOut={splashFadingOut}
           statusText={statusText}
           detailText={detailText}
+          progressPercent={progressPercent}
         />
       )}
     </>

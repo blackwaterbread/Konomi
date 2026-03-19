@@ -6,14 +6,21 @@ interface AppSplashProps {
   fadingOut?: boolean;
   statusText: string;
   detailText: string;
+  progressPercent?: number | null;
 }
 
 export function AppSplash({
   fadingOut = false,
   statusText,
   detailText,
+  progressPercent = null,
 }: AppSplashProps) {
   const { t } = useTranslation();
+  const clampedProgress =
+    typeof progressPercent === "number"
+      ? Math.max(0, Math.min(100, progressPercent))
+      : null;
+  const isIndeterminate = clampedProgress === null;
 
   return (
     <div
@@ -38,9 +45,9 @@ export function AppSplash({
           </div>
 
           <div className="space-y-3">
-            <p className="text-xs font-medium uppercase tracking-[0.32em] text-primary/70">
+            {/* <p className="text-xs font-medium uppercase tracking-[0.32em] text-primary/70">
               Konomi
-            </p>
+            </p> */}
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-tight text-foreground">
                 {t("app.splash.title")}
@@ -53,12 +60,28 @@ export function AppSplash({
 
           <div className="mt-8 space-y-4">
             <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
-              <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+              {isIndeterminate ? (
+                <div className="h-full w-1/3 rounded-full bg-primary/90 animate-pulse" />
+              ) : (
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                  style={{ width: `${clampedProgress}%` }}
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/65 px-4 py-3">
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-              <p className="text-sm text-foreground/90">{detailText}</p>
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                <p className="min-w-0 text-sm text-foreground/90">
+                  {detailText}
+                </p>
+                {clampedProgress !== null && (
+                  <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                    {Math.round(clampedProgress)}%
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
