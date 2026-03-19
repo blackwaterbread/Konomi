@@ -6,13 +6,12 @@ import {
   useRef,
   startTransition,
 } from "react";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
 import { ImageGallery } from "@/components/image-gallery";
 import { ImageDetail } from "@/components/image-detail";
-import { AppSplash } from "@/components/app-splash";
 import { SettingsView } from "@/components/settings-view";
 import { CategoryDialog } from "@/components/category-dialog";
 import { GenerationView } from "@/components/generation-view";
@@ -49,8 +48,6 @@ const log = createLogger("renderer/App");
 const CATEGORY_ORDER_STORAGE_KEY = "konomi-category-order";
 const INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY =
   "konomi-initial-language-selection-completed";
-const APP_SPLASH_MIN_VISIBLE_MS = 520;
-const APP_SPLASH_FADE_OUT_MS = 240;
 const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
   "similarityThreshold",
   "useAdvancedSimilarityThresholds",
@@ -122,7 +119,11 @@ function getBuiltinCategoryKind(
   return category.order === 1 ? "random" : "favorites";
 }
 
-export default function App() {
+interface AppProps {
+  initialFolderCount?: number | null;
+}
+
+export default function App({ initialFolderCount = null }: AppProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { t } = useTranslation();
   const { outputFolder, setOutputFolder } = useNaiGenSettings();
@@ -147,10 +148,9 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<
     "gallery" | "generator" | "settings"
   >("gallery");
-  const [folderCount, setFolderCount] = useState<number | null>(null);
-  const [startupScanPending, setStartupScanPending] = useState(true);
-  const [renderSplash, setRenderSplash] = useState(true);
-  const [splashFadingOut, setSplashFadingOut] = useState(false);
+  const [folderCount, setFolderCount] = useState<number | null>(
+    initialFolderCount,
+  );
   const [folderDialogRequest, setFolderDialogRequest] = useState(0);
   const [tourOpen, setTourOpen] = useState(
     () => localStorage.getItem("konomi-tour-completed") !== "true",
@@ -172,9 +172,6 @@ export default function App() {
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const currentSidebarWidth = useRef(sidebarWidth);
-  const splashShownAtRef = useRef(Date.now());
-  const splashMinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const splashFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -343,11 +340,8 @@ export default function App() {
     galleryPage,
     setGalleryPage,
     galleryTotalPages,
-    hasLoadedOnce,
     schedulePageRefresh,
-  } = useGalleryImages(listBaseQuery, {
-    enabled: !startupScanPending,
-  });
+  } = useGalleryImages(listBaseQuery);
 
   const loadSearchPresetStats = useCallback(async () => {
     try {
@@ -483,6 +477,8 @@ export default function App() {
 
   useEffect(() => {
     log.info("App mounted: loading initial data and starting watchers");
+    void loadSearchPresetStats();
+    scheduleAnalysis(0);
 
     const offBatch = window.image.onBatch((rows) => {
       if (rows.length === 0) return;
@@ -527,28 +523,6 @@ export default function App() {
         ),
       );
 
-    let bootstrapCancelled = false;
-    void (async () => {
-      try {
-        const ok = await runScan({
-          detectDuplicates: true,
-          refreshPage: false,
-          refreshSearchPresetStats: false,
-        });
-        if (bootstrapCancelled) return;
-        setStartupScanPending(false);
-        await loadSearchPresetStats();
-        if (bootstrapCancelled) return;
-        if (ok) {
-          scheduleAnalysis(0);
-        }
-      } finally {
-        if (!bootstrapCancelled) {
-          setStartupScanPending(false);
-        }
-      }
-    })();
-
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -570,7 +544,6 @@ export default function App() {
 
     return () => {
       log.info("App unmount cleanup");
-      bootstrapCancelled = true;
       watchCancelled = true;
       if (watchRetryTimer) {
         clearTimeout(watchRetryTimer);
@@ -590,7 +563,6 @@ export default function App() {
     };
   }, [
     loadSearchPresetStats,
-    runScan,
     scanningRef,
     scheduleAnalysis,
     schedulePageRefresh,
@@ -1048,95 +1020,8 @@ export default function App() {
     setIsDetailOpen(true);
   }, []);
 
-  const isAppInitializing =
-    images.length === 0 &&
-    (folderCount === null || !hasLoadedOnce || startupScanPending);
-
-  const clearSplashTimers = useCallback(() => {
-    if (splashMinTimerRef.current) {
-      clearTimeout(splashMinTimerRef.current);
-      splashMinTimerRef.current = null;
-    }
-    if (splashFadeTimerRef.current) {
-      clearTimeout(splashFadeTimerRef.current);
-      splashFadeTimerRef.current = null;
-    }
-  }, []);
-
-  const splashStatusText = useMemo(() => {
-    if (folderCount === null) {
-      return t("app.splash.status.checkingFolders");
-    }
-    if (folderCount === 0) {
-      return t("app.splash.status.preparingOnboarding");
-    }
-    if (startupScanPending) {
-      return t("app.splash.status.syncingLibrary");
-    }
-    return t("app.splash.status.finalizing");
-  }, [folderCount, startupScanPending, t]);
-
-  const splashDetailText = useMemo(() => {
-    if (scanProgress && scanProgress.total > 0) {
-      const folderNames = Array.from(scanningFolderNames.values());
-      const folderLabel =
-        folderNames.length <= 1
-          ? folderNames[0]
-          : t("appStatus.folderSummary", {
-              first: folderNames[0],
-              count: folderNames.length - 1,
-            });
-      return folderLabel
-        ? t("app.splash.detail.scanFolders", {
-            folderLabel,
-            done: scanProgress.done,
-            total: scanProgress.total,
-          })
-        : t("app.splash.detail.scanImages", {
-            done: scanProgress.done,
-            total: scanProgress.total,
-          });
-    }
-    if (folderCount === null) {
-      return t("app.splash.detail.loadingFolders");
-    }
-    if (folderCount === 0) {
-      return t("app.splash.detail.preparingOnboarding");
-    }
-    return t("app.splash.detail.loadingLibraryState");
-  }, [folderCount, scanProgress, scanningFolderNames, t]);
-
-  useEffect(() => {
-    if (isAppInitializing) {
-      clearSplashTimers();
-      if (!renderSplash) {
-        splashShownAtRef.current = Date.now();
-      }
-      setRenderSplash(true);
-      setSplashFadingOut(false);
-      return;
-    }
-
-    if (!renderSplash) return;
-
-    const elapsedMs = Date.now() - splashShownAtRef.current;
-    const waitMs = Math.max(0, APP_SPLASH_MIN_VISIBLE_MS - elapsedMs);
-
-    splashMinTimerRef.current = setTimeout(() => {
-      setSplashFadingOut(true);
-      splashFadeTimerRef.current = setTimeout(() => {
-        setRenderSplash(false);
-      }, APP_SPLASH_FADE_OUT_MS);
-    }, waitMs);
-
-    return clearSplashTimers;
-  }, [clearSplashTimers, isAppInitializing, renderSplash]);
-
-  useEffect(() => clearSplashTimers, [clearSplashTimers]);
-
   return (
     <div className="h-screen bg-background flex flex-col">
-      <Toaster richColors position="bottom-right" />
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -1288,7 +1173,6 @@ export default function App() {
               onClearSearch={() => setSearchQuery("")}
               hasFolders={folderCount === null || folderCount > 0}
               onAddFolder={() => setFolderDialogRequest((n) => n + 1)}
-              isInitializing={isAppInitializing}
             />
           </div>
         </div>
@@ -1379,19 +1263,11 @@ export default function App() {
       />
 
       <InitialLanguageScreen
-        open={!renderSplash && initialLanguageScreenOpen}
+        open={initialLanguageScreenOpen}
         language={settings.language}
         onLanguageChange={(language) => handleSettingsUpdate({ language })}
         onContinue={handleInitialLanguageContinue}
       />
-
-      {renderSplash && (
-        <AppSplash
-          fadingOut={splashFadingOut}
-          statusText={splashStatusText}
-          detailText={splashDetailText}
-        />
-      )}
     </div>
   );
 }

@@ -77,17 +77,19 @@ function migrateStoredSettings(raw: LegacyStoredSettings): Partial<Settings> {
   return migrated;
 }
 
+export function readStoredSettings(): Settings {
+  try {
+    const stored = localStorage.getItem(KEY);
+    if (!stored) return DEFAULTS;
+    const parsed = JSON.parse(stored) as LegacyStoredSettings;
+    return { ...DEFAULTS, ...migrateStoredSettings(parsed) };
+  } catch {
+    return DEFAULTS;
+  }
+}
+
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(() => {
-    try {
-      const stored = localStorage.getItem(KEY);
-      if (!stored) return DEFAULTS;
-      const parsed = JSON.parse(stored) as LegacyStoredSettings;
-      return { ...DEFAULTS, ...migrateStoredSettings(parsed) };
-    } catch {
-      return DEFAULTS;
-    }
-  });
+  const [settings, setSettings] = useState<Settings>(readStoredSettings);
 
   const updateSettings = (patch: Partial<Settings>) => {
     setSettings((prev) => {
