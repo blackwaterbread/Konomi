@@ -59,7 +59,6 @@ npmRebuild: false
 electronLanguages:
   - en-US
   - ko
-  - ja
 
 publish:
   provider: generic

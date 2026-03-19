@@ -230,8 +230,8 @@ const en = {
       continue: "Continue",
       options: {
         system: "Follow your system language",
-        ko: "Use Korean for the app UI",
-        en: "Use English for the app UI",
+        ko: "앱을 한국어로 사용합니다",
+        en: "Use English for the app",
       },
     },
     title: "Welcome",

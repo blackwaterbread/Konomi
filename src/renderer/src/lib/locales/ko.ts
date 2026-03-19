@@ -231,8 +231,8 @@ const ko = {
       continue: "계속",
       options: {
         system: "시스템 언어를 따릅니다",
-        ko: "앱 UI를 한국어로 사용합니다",
-        en: "앱 UI를 영어로 사용합니다",
+        ko: "앱을 한국어로 사용합니다",
+        en: "Use English for the app",
       },
     },
     title: "환영합니다",

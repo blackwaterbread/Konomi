@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Compass, FolderGit2, Github, Loader2, Sparkles } from "lucide-react";
+import { Compass, FolderGit2, Github, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import infoImageUrl from "@/assets/images/info.webp";
 import type { AppInfo } from "@preload/index.d";
 
 interface AppInfoDialogProps {
@@ -233,9 +234,12 @@ export function AppInfoDialog({
           <section className="relative bg-gradient-to-br from-primary/15 via-background to-secondary/40 p-8 sm:p-10">
             <DialogHeader className="mb-8">
               <div className="flex items-center gap-4">
-                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/20">
-                  <Sparkles className="h-7 w-7 text-primary" />
-                </div>
+                <img
+                  src={infoImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-14 w-14 rounded-2xl border border-primary/30 object-cover shadow-sm"
+                />
                 <div>
                   <DialogTitle className="text-2xl tracking-tight">
                     Konomi

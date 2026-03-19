@@ -28,6 +28,7 @@ const log = createLogger("main/index");
 
 const BOUNDS_FILE = join(app.getPath("userData"), "window-bounds.json");
 const DEVTOOLS_OPEN_FLAGS = new Set(["-d", "--dev"]);
+const APP_ID = "com.electron.konomi";
 
 function configureAppDataPaths(): void {
   if (app.isPackaged) {
@@ -269,7 +270,7 @@ app
       }
     });
 
-    electronApp.setAppUserModelId("com.dayrain.konomi");
+    electronApp.setAppUserModelId(APP_ID);
 
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
