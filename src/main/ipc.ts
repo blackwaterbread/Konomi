@@ -102,6 +102,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("folder:rename", (_, id: number, name: string) =>
     bridge.request("folder:rename", { id, name }),
   );
+  ipcMain.handle("folder:revealInExplorer", async (_, id: number) => {
+    const folders = (await bridge.request("folder:list")) as Array<{
+      id: number;
+      path: string;
+    }>;
+    const folder = folders.find((item) => item.id === id);
+    if (!folder) {
+      throw new Error("Folder not found");
+    }
+    const result = await shell.openPath(folder.path);
+    if (result) {
+      throw new Error(result);
+    }
+  });
 
   ipcMain.handle("image:list", () => bridge.request("image:list"));
   ipcMain.handle("image:getSearchPresetStats", () =>

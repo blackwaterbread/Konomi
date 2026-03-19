@@ -7,6 +7,7 @@
   Trash2,
   Loader2,
   Eye,
+  ExternalLink,
   Star,
   Tag,
   Shuffle,
@@ -230,6 +231,21 @@ export function Sidebar({
       }
     },
     [duplicateResolution, t],
+  );
+
+  const handleRevealFolderInExplorer = useCallback(
+    async (folderId: number) => {
+      try {
+        await window.folder.revealInExplorer(folderId);
+      } catch (e: unknown) {
+        toast.error(
+          t("error.folderRevealFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
+    },
+    [t],
   );
 
   useEffect(() => {
@@ -507,6 +523,15 @@ export function Sidebar({
                           </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-48">
+                          <ContextMenuItem
+                            onSelect={() => {
+                              void handleRevealFolderInExplorer(f.id);
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            {t("sidebar.folders.openInExplorer")}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
                           <ContextMenuItem
                             disabled={scanning || isAnalyzing}
                             onSelect={() => {

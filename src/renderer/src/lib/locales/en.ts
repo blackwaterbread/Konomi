@@ -343,6 +343,7 @@ const en = {
     favoriteSetFailed: "Failed to update favorite: {{message}}",
     imageDeleteFailed: "Failed to delete image: {{message}}",
     hashResetFailed: "Failed to reset hashes: {{message}}",
+    folderRevealFailed: "Failed to open folder in Explorer: {{message}}",
   },
   appStatus: {
     folderSummary: "{{first}} and {{count}} more folders",
@@ -675,6 +676,7 @@ const en = {
       addByPrompt: "Add by Prompt",
     },
     folders: {
+      openInExplorer: "Open in Explorer",
       rescan: "Rescan Folder",
       rename: "Rename Folder",
       delete: "Delete Folder",

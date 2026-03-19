@@ -254,4 +254,6 @@ contextBridge.exposeInMainWorld("folder", {
   delete: (id: number) => ipcRenderer.invoke("folder:delete", id),
   rename: (id: number, name: string) =>
     ipcRenderer.invoke("folder:rename", id, name),
+  revealInExplorer: (id: number) =>
+    ipcRenderer.invoke("folder:revealInExplorer", id),
 });

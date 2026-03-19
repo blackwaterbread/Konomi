@@ -342,6 +342,7 @@ const ko = {
     favoriteSetFailed: "즐겨찾기 설정 실패: {{message}}",
     imageDeleteFailed: "이미지 삭제 실패: {{message}}",
     hashResetFailed: "해시 초기화 실패: {{message}}",
+    folderRevealFailed: "Explorer에서 폴더 열기 실패: {{message}}",
   },
   appStatus: {
     folderSummary: "{{first}} 외 {{count}}개 폴더",
@@ -669,6 +670,7 @@ const ko = {
       addByPrompt: "프롬프트로 추가",
     },
     folders: {
+      openInExplorer: "Explorer에서 열기",
       rescan: "폴더 재스캔",
       rename: "폴더 이름 변경",
       delete: "폴더 삭제",
