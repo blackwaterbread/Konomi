@@ -89,6 +89,7 @@ interface ImageDetailProps {
   onNext: () => void;
   similarImages?: ImageData[];
   similarReasons?: Record<string, SimilarityReason>;
+  similarImagesLoading?: boolean;
   onSimilarImageClick?: (image: ImageData) => void;
   similarPageSize?: number;
 }
@@ -107,6 +108,7 @@ export function ImageDetail({
   onNext,
   similarImages,
   similarReasons,
+  similarImagesLoading = false,
   onSimilarImageClick,
   similarPageSize = 10,
 }: ImageDetailProps) {
@@ -277,7 +279,12 @@ export function ImageDetail({
             {t("imageDetail.similarImages")}
           </p>
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {hasSimilar ? (
+            {similarImagesLoading ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-muted-foreground/70">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <p className="text-[10px]">{t("common.loading")}</p>
+              </div>
+            ) : hasSimilar ? (
               <div className="p-2 space-y-1.5">
                 {pagedSimilar.map((img) => (
                   <SimilarThumb

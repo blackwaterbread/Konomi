@@ -255,6 +255,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const [similarReasons, setSimilarReasons] = useState<
     Record<string, SimilarityReason>
   >({});
+  const [similarImagesLoading, setSimilarImagesLoading] = useState(false);
   const [appendPromptTagRequest, setAppendPromptTagRequest] = useState<{
     id: number;
     tag: string;
@@ -271,6 +272,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     null,
   );
   const appendPromptTagRequestSeqRef = useRef(0);
+  const similarRequestSeqRef = useRef(0);
 
   const selectedCategory = useMemo(
     () => categories.find((cat) => cat.id === selectedCategoryId),
@@ -946,19 +948,24 @@ export default function App({ initialFolderCount = null }: AppProps) {
   }, []);
 
   useEffect(() => {
+    const requestId = ++similarRequestSeqRef.current;
+    setSimilarImages([]);
+    setSimilarReasons({});
+
     if (!selectedImageId) {
-      setSimilarImages([]);
-      setSimilarReasons({});
+      setSimilarImagesLoading(false);
       return;
     }
+
     const imageId = parseInt(selectedImageId, 10);
     const group = similarGroups.find((g) => g.imageIds.includes(imageId));
     if (!group || group.imageIds.length === 0) {
-      setSimilarImages([]);
-      setSimilarReasons({});
+      setSimilarImagesLoading(false);
       return;
     }
+
     let cancelled = false;
+    setSimilarImagesLoading(true);
     const candidateIds = group.imageIds.filter((id) => id !== imageId);
     Promise.all([
       window.image.listByIds(group.imageIds),
@@ -970,7 +977,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       ),
     ])
       .then(([rows, reasons]) => {
-        if (cancelled) return;
+        if (cancelled || requestId !== similarRequestSeqRef.current) return;
         const scoreMap = new Map(
           reasons.map((item) => [item.imageId, item.score]),
         );
@@ -986,13 +993,15 @@ export default function App({ initialFolderCount = null }: AppProps) {
             reasons.map((item) => [String(item.imageId), item.reason]),
           ),
         );
+        setSimilarImagesLoading(false);
       })
       .catch(() => {
-        if (!cancelled) {
-          setSimilarImages([]);
-          setSimilarReasons({});
-        }
+        if (cancelled || requestId !== similarRequestSeqRef.current) return;
+        setSimilarImages([]);
+        setSimilarReasons({});
+        setSimilarImagesLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -1251,6 +1260,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
         onNext={handleNext}
         similarImages={similarImages}
         similarReasons={similarReasons}
+        similarImagesLoading={similarImagesLoading}
         onSimilarImageClick={setSelectedImage}
         similarPageSize={settings.similarPageSize}
       />
