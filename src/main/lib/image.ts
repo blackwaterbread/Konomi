@@ -8,10 +8,7 @@ import { getFolders } from "./folder";
 import { scanPngFiles, withConcurrency } from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
-import {
-  deleteSimilarityCacheForImageIds,
-  refreshSimilarityCacheForImageIds,
-} from "./phash";
+import { deleteSimilarityCacheForImageIds } from "./phash";
 import type { NovelAIMeta } from "@/types/nai";
 import type { Prisma } from "../../generated/prisma/client";
 
@@ -1747,62 +1744,6 @@ export async function setImageFavorite(
   isFavorite: boolean,
 ): Promise<void> {
   await getDB().image.update({ where: { id }, data: { isFavorite } });
-}
-
-export async function backfillPromptTokens(): Promise<void> {
-  const db = getDB();
-  const touchedImageIds: number[] = [];
-  // Re-process images that are in old string[] format (new format always contains '"text"')
-  const images = await db.image.findMany({
-    where: { NOT: { promptTokens: { contains: '"text"' } } },
-    select: {
-      id: true,
-      width: true,
-      height: true,
-      model: true,
-      prompt: true,
-      negativePrompt: true,
-      characterPrompts: true,
-      promptTokens: true,
-      negativePromptTokens: true,
-      characterPromptTokens: true,
-    },
-  });
-  for (const img of images) {
-    const charPrompts = JSON.parse(img.characterPrompts) as string[];
-    const nextPromptTokens = JSON.stringify(parsePromptTokens(img.prompt));
-    const nextNegativePromptTokens = JSON.stringify(
-      parsePromptTokens(img.negativePrompt),
-    );
-    const nextCharacterPromptTokens = JSON.stringify(
-      charPrompts.flatMap(parsePromptTokens),
-    );
-    if (
-      img.promptTokens === nextPromptTokens &&
-      img.negativePromptTokens === nextNegativePromptTokens &&
-      img.characterPromptTokens === nextCharacterPromptTokens
-    ) {
-      continue;
-    }
-    await db.image.update({
-      where: { id: img.id },
-      data: {
-        promptTokens: nextPromptTokens,
-        negativePromptTokens: nextNegativePromptTokens,
-        characterPromptTokens: nextCharacterPromptTokens,
-      },
-    });
-    touchedImageIds.push(img.id);
-    await applyImageSearchStatsMutation(img, {
-      ...img,
-      promptTokens: nextPromptTokens,
-      negativePromptTokens: nextNegativePromptTokens,
-      characterPromptTokens: nextCharacterPromptTokens,
-    });
-  }
-  if (touchedImageIds.length > 0) {
-    await refreshSimilarityCacheForImageIds(touchedImageIds);
-  }
 }
 
 export async function syncAllFolders(

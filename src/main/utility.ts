@@ -22,7 +22,6 @@ import {
   decrementImageSearchStatsForRows,
   syncAllFolders,
   setImageFavorite,
-  backfillPromptTokens,
   findFolderDuplicateImages,
   resolveFolderDuplicates,
   listIgnoredDuplicatePaths,
@@ -395,19 +394,12 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
   }
 }
 
-// Seed builtins + deferred prompt backfill on startup
+// Seed builtins on startup
 seedBuiltinCategories()
   .then(() => log.info("Seeded builtin categories"))
   .catch((error) =>
     log.errorWithStack("Failed to seed builtin categories", error),
   );
-setTimeout(() => {
-  backfillPromptTokens()
-    .then(() => log.info("Backfilled prompt tokens"))
-    .catch((error) =>
-      log.errorWithStack("Failed to backfill prompt tokens", error),
-    );
-}, 8000);
 
 process.parentPort.on("message", async (e: Electron.MessageEvent) => {
   const { id, type, payload } = e.data as {

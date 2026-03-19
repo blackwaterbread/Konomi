@@ -51,8 +51,32 @@ function parseMidjourneyDescription(
 }
 
 function extractXmpGuid(xmp: string): string {
-  const match = xmp.match(/DigImageGUID=\"([^\"]+)\"/i);
+  const match = xmp.match(/DigImageGUID="([^"]+)"/i);
   return match?.[1]?.trim() ?? "";
+}
+
+function hasMidjourneySignals(
+  author: string,
+  xmp: string,
+  parsed: MidjourneyParsedDescription,
+  jobId: string,
+): boolean {
+  const hasAuthorSignal = /^u\d+$/i.test(author);
+  const hasJobSignal = Boolean(jobId);
+  const hasParamSignal = /(?:^|\s)--(?:ar|v(?:ersion)?|niji|seed|stylize|chaos|quality|q|weird|iw|sref|oref|cref|no|tile|raw)\b/i.test(
+    parsed.paramsText,
+  );
+  const hasXmpSignal =
+    Boolean(extractXmpGuid(xmp)) || /trainedAlgorithmicMedia/i.test(xmp);
+
+  const signalCount = [
+    hasAuthorSignal,
+    hasJobSignal,
+    hasParamSignal,
+    hasXmpSignal,
+  ].filter(Boolean).length;
+
+  return signalCount >= 2;
 }
 
 function resolveModel(parsed: MidjourneyParsedDescription): string {
@@ -70,12 +94,16 @@ function buildMidjourneyMeta(
   if (!description) return null;
 
   const parsed = parseMidjourneyDescription(description);
+  const author = chunks["Author"]?.trim() ?? "";
   const xmp = chunks["XML:com.adobe.xmp"] ?? "";
   const guid = extractXmpGuid(xmp);
   const jobId = parsed.jobId || guid;
 
-  // Midjourney PNG downloads currently store the prompt in Description text.
-  if (!parsed.prompt) return null;
+  // Require multiple Midjourney-specific signals to avoid misclassifying
+  // arbitrary PNG Description text as Midjourney metadata.
+  if (!parsed.prompt || !hasMidjourneySignals(author, xmp, parsed, jobId)) {
+    return null;
+  }
 
   return {
     source: "midjourney",
@@ -95,7 +123,7 @@ function buildMidjourneyMeta(
     width,
     height,
     raw: {
-      author: chunks["Author"] ?? "",
+      author,
       creationTime: chunks["Creation Time"] ?? "",
       description,
       parameters: parsed.paramsText,
