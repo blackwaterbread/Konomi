@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Settings,
-  Sparkles,
   Info,
   X,
   Loader2,
@@ -10,6 +9,7 @@ import {
   Images,
   SlidersHorizontal,
 } from "lucide-react";
+import infoImageUrl from "@/assets/images/info.webp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -359,8 +359,13 @@ export function Header({
             <span className="text-xl font-extrabold text-foreground select-none">
               Konomi
             </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-primary/10">
+              <img
+                src={infoImageUrl}
+                alt="Konomi"
+                className="h-full w-full object-cover"
+                draggable={false}
+              />
             </div>
             {(scanning ||
               isAnalyzing ||
