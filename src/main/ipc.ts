@@ -2,12 +2,11 @@ import { app, ipcMain, dialog, shell } from "electron";
 import fs from "fs";
 import path from "path";
 import { unlink, readFile } from "fs/promises";
-import { readImageMeta, readNaiMetaFromBuffer } from "./lib/nai";
+import { readImageMeta, readImageMetaFromBuffer } from "./lib/nai";
 import {
   PROMPTS_DB_FILENAME,
   readPromptsDBSchemaVersion,
 } from "./lib/prompts-db";
-import { readWebuiMetaFromBuffer } from "./lib/webui";
 import { bridge } from "./bridge";
 import { isManagedImagePath, registerTransientPath } from "./lib/path-guard";
 
@@ -51,7 +50,7 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle("image:readMetaFromBuffer", (_, data: Uint8Array) => {
     const buf = Buffer.from(data);
-    return readWebuiMetaFromBuffer(buf) ?? readNaiMetaFromBuffer(buf);
+    return readImageMetaFromBuffer(buf);
   });
   ipcMain.handle("image:readFile", async (_, filePath: string) => {
     await assertManagedImagePath(filePath);

@@ -1,7 +1,8 @@
 import { readFileSync } from "fs";
 import { inflateSync, gunzipSync } from "zlib";
 import type { NovelAIMeta } from "@/types/nai";
-import { readWebuiMeta } from "./webui";
+import { readMidjourneyMetaFromBuffer } from "./midjourney";
+import { readWebuiMetaFromBuffer } from "./webui";
 
 const PAETH = (a: number, b: number, c: number): number => {
   const p = a + b - c;
@@ -242,10 +243,7 @@ function parseNaiComment(raw: Record<string, unknown>): NovelAIMeta | null {
 export function readNaiMeta(filePath: string): NovelAIMeta | null {
   try {
     const buf = readFileSync(filePath);
-    const { px, w, h, ch } = decodePng(buf);
-    const raw = decodeNaiStealth(px, w, h, ch);
-    if (!raw || !isNovelAI(raw)) return null;
-    return parseNaiComment(raw);
+    return readNaiMetaFromBuffer(buf);
   } catch {
     return null;
   }
@@ -262,6 +260,19 @@ export function readNaiMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
   }
 }
 
+export function readImageMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
+  return (
+    readWebuiMetaFromBuffer(buf) ??
+    readMidjourneyMetaFromBuffer(buf) ??
+    readNaiMetaFromBuffer(buf)
+  );
+}
+
 export function readImageMeta(filePath: string): NovelAIMeta | null {
-  return readWebuiMeta(filePath) ?? readNaiMeta(filePath);
+  try {
+    const buf = readFileSync(filePath);
+    return readImageMetaFromBuffer(buf);
+  } catch {
+    return null;
+  }
 }

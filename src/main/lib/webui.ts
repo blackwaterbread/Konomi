@@ -1,26 +1,6 @@
 import { readFileSync } from "fs";
 import type { NovelAIMeta } from "@/types/nai";
-
-function readPngTextChunks(buf: Buffer): Record<string, string> {
-  const chunks: Record<string, string> = {};
-  let off = 8;
-  while (off + 12 <= buf.length) {
-    const len = buf.readUInt32BE(off);
-    const type = buf.subarray(off + 4, off + 8).toString("ascii");
-    if (type === "tEXt") {
-      const data = buf.subarray(off + 8, off + 8 + len);
-      const nullIdx = data.indexOf(0);
-      if (nullIdx !== -1) {
-        const key = data.subarray(0, nullIdx).toString("latin1");
-        const value = data.subarray(nullIdx + 1).toString("latin1");
-        chunks[key] = value;
-      }
-    }
-    if (type === "IEND") break;
-    off += 12 + len;
-  }
-  return chunks;
-}
+import { readPngSize, readPngTextChunks } from "./png-meta";
 
 function parseParameters(
   text: string,
@@ -107,8 +87,7 @@ export function readWebuiMeta(filePath: string): NovelAIMeta | null {
 
 export function readWebuiMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
   try {
-    const w = buf.readUInt32BE(16);
-    const h = buf.readUInt32BE(20);
+    const { width: w, height: h } = readPngSize(buf);
     const chunks = readPngTextChunks(buf);
     const params = chunks["parameters"];
     if (!params) return null;
