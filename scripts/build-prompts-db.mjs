@@ -7,7 +7,7 @@ const PROMPTS_SCHEMA_VERSION = 3;
 const TAG_COUNT_BUCKET_PERCENTILES = [0.8, 0.95, 0.99, 0.999];
 const DEFAULT_OUTPUT_PATH = path.resolve(
   process.cwd(),
-  "resources",
+  "database",
   PROMPTS_DB_FILENAME,
 );
 

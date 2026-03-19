@@ -22,10 +22,11 @@
     "build:win": "npm run build && npm run verify:prompts-db && electron-builder --win",
     "build:mac": "electron-vite build && npm run verify:prompts-db && electron-builder --mac",
     "build:linux": "electron-vite build && npm run verify:prompts-db && electron-builder --linux",
-    "db:generate": "cross-env DATABASE_URL=file:./prisma/dev.db prisma generate",
-    "db:migrate": "cross-env DATABASE_URL=file:./prisma/dev.db prisma migrate dev",
+    "db:prepare-dir": "node ./scripts/ensure-database-dir.mjs",
+    "db:generate": "npm run db:prepare-dir && cross-env DATABASE_URL=file:./database/konomi.db prisma generate",
+    "db:migrate": "npm run db:prepare-dir && cross-env DATABASE_URL=file:./database/konomi.db prisma migrate dev",
     "db:init": "node ./scripts/reset-dev-user-data.mjs",
-    "db:init:prisma": "cross-env DATABASE_URL=file:./prisma/dev.db prisma migrate reset --force",
+    "db:init:prisma": "npm run db:prepare-dir && cross-env DATABASE_URL=file:./database/konomi.db prisma migrate reset --force",
     "db:prompts": "node ./scripts/run-electron-node.mjs ./scripts/build-prompts-db.mjs"
   },
   "dependencies": {

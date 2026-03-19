@@ -21,12 +21,8 @@ docs
 examples
 example_datas
 /src/generated/prisma
-prisma/dev.db
-prisma/dev.db-journal
 prisma/migrations
 debug.ts
-dev.db
-dev.db-journal
-resources/prompts.db
-resources/prompts.db-wal
-resources/prompts.db-shm
+database/*.db-journal
+database/*.db-shm
+database/*.db-wal

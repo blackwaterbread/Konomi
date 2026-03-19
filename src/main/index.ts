@@ -53,8 +53,8 @@ function resolveBundledPromptsDBPath(): string | null {
 
   const candidates = [
     join(process.resourcesPath, PROMPTS_DB_FILENAME),
-    join(app.getAppPath(), "resources", PROMPTS_DB_FILENAME),
-    join(process.cwd(), "resources", PROMPTS_DB_FILENAME),
+    join(app.getAppPath(), "database", PROMPTS_DB_FILENAME),
+    join(process.cwd(), "database", PROMPTS_DB_FILENAME),
   ];
 
   for (const candidate of candidates) {

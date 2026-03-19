@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 
-const promptsDBPath = path.resolve(process.cwd(), "resources", "prompts.db");
+const promptsDBPath = path.resolve(
+  process.cwd(),
+  "database",
+  "prompts.db",
+);
 
 if (!fs.existsSync(promptsDBPath)) {
   console.error(`Missing prompts DB: ${promptsDBPath}`);
