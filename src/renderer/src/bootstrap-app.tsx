@@ -9,7 +9,7 @@ import type { ThemeId } from "@/lib/themes";
 import { readStoredSettings } from "@/hooks/useSettings";
 
 const log = createLogger("renderer/BootstrapApp");
-const APP_SPLASH_MIN_VISIBLE_MS = 1900;
+const APP_SPLASH_MIN_VISIBLE_MS = 1900; // 사용자가 최소 1.9초는 Splash를 보기를 원해
 const APP_SPLASH_COMPLETION_HOLD_MS = 180;
 const APP_SPLASH_FADE_OUT_MS = 240;
 const FOLDER_ORDER_STORAGE_KEY = "konomi-folder-order";
