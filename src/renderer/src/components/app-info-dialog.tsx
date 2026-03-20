@@ -231,86 +231,106 @@ export function AppInfoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(94vw,72rem)] max-w-4xl overflow-hidden p-0">
         <div className="flex flex-col">
-          <section className="relative bg-gradient-to-br from-primary/15 via-background to-secondary/40 p-8 sm:p-10">
-            <DialogHeader className="mb-8">
-              <div className="flex items-center gap-4">
-                <img
-                  src={infoImageUrl}
-                  alt=""
-                  aria-hidden="true"
-                  className="h-14 w-14 rounded-2xl border border-primary/30 object-cover shadow-sm"
-                />
-                <div>
-                  <DialogTitle className="text-2xl tracking-tight">
-                    Konomi
-                  </DialogTitle>
-                  <DialogDescription className="text-sm leading-relaxed">
-                    {t("appInfoDialog.tagline")}
-                  </DialogDescription>
-                </div>
-              </div>
-            </DialogHeader>
+          <section className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-background to-secondary/40 p-8 sm:p-10">
+            <div className="pointer-events-none absolute inset-0">
+              <div
+                className="absolute inset-0 opacity-45 blur-xl"
+                style={{
+                  backgroundImage: `url(${infoImageUrl})`,
+                  backgroundPosition: "left top",
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: "108% auto",
+                  transform: "scale(1.02)",
+                  WebkitMaskImage:
+                    "linear-gradient(135deg, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.82) 36%, rgba(0,0,0,0.42) 70%, rgba(0,0,0,0.08) 100%)",
+                  maskImage:
+                    "linear-gradient(135deg, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.82) 36%, rgba(0,0,0,0.42) 70%, rgba(0,0,0,0.08) 100%)",
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-background/22 to-secondary/10" />
+            </div>
 
-            <div className="mt-6 border-t border-border/60 pt-5">
-              <div className="flex flex-col items-start gap-2">
-                <a
-                  href={PROJECT_REPO_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Open project GitHub repository"
-                  title="Repository GitHub"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                >
-                  <FolderGit2 className="h-5 w-5" />
-                  <span className="text-sm font-medium">
-                    {t("appInfoDialog.repository")}
-                  </span>
-                </a>
-                <a
-                  href={CREATOR_GITHUB_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Open creator GitHub profile"
-                  title="Creator GitHub"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                >
-                  <Github className="h-5 w-5" />
-                  <span className="text-sm font-medium">
-                    {t("appInfoDialog.author")}
-                  </span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setLicenseOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
-                >
-                  <FolderGit2 className="h-5 w-5" />
-                  <span className="text-sm font-medium">
-                    {t("appInfoDialog.licenses")}
-                  </span>
-                </button>
-                {onStartTour && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenChange(false);
-                      onStartTour();
-                    }}
+            <div className="relative z-10">
+              <DialogHeader className="mb-8">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={infoImageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-14 w-14 rounded-2xl border border-primary/30 object-cover shadow-sm"
+                  />
+                  <div>
+                    <DialogTitle className="text-2xl tracking-tight">
+                      Konomi
+                    </DialogTitle>
+                    <DialogDescription className="text-sm leading-relaxed">
+                      {t("appInfoDialog.tagline")}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="mt-6 border-t border-border/60 pt-5">
+                <div className="flex flex-col items-start gap-2">
+                  <a
+                    href={PROJECT_REPO_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open project GitHub repository"
+                    title="Repository GitHub"
                     className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
                   >
-                    <Compass className="h-5 w-5" />
+                    <FolderGit2 className="h-5 w-5" />
                     <span className="text-sm font-medium">
-                      {t("appInfoDialog.featureTour")}
+                      {t("appInfoDialog.repository")}
+                    </span>
+                  </a>
+                  <a
+                    href={CREATOR_GITHUB_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open creator GitHub profile"
+                    title="Creator GitHub"
+                    className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                  >
+                    <Github className="h-5 w-5" />
+                    <span className="text-sm font-medium">
+                      {t("appInfoDialog.author")}
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLicenseOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                  >
+                    <FolderGit2 className="h-5 w-5" />
+                    <span className="text-sm font-medium">
+                      {t("appInfoDialog.licenses")}
                     </span>
                   </button>
+                  {onStartTour && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onStartTour();
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                      <Compass className="h-5 w-5" />
+                      <span className="text-sm font-medium">
+                        {t("appInfoDialog.featureTour")}
+                      </span>
+                    </button>
+                  )}
+                </div>
+                {loading && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>{t("appInfoDialog.loadingInfo")}</span>
+                  </div>
                 )}
               </div>
-              {loading && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>{t("appInfoDialog.loadingInfo")}</span>
-                </div>
-              )}
             </div>
           </section>
 
