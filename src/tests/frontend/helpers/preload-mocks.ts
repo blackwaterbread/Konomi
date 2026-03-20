@@ -1,0 +1,280 @@
+import { vi } from "vitest";
+
+type Listener<T> = (payload: T) => void;
+
+function createEventChannel<T>() {
+  const listeners = new Set<Listener<T>>();
+  const subscribe = vi.fn((listener: Listener<T>) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  });
+
+  return {
+    subscribe,
+    emit(payload: T) {
+      for (const listener of [...listeners]) {
+        listener(payload);
+      }
+    },
+    reset() {
+      listeners.clear();
+      subscribe.mockClear();
+    },
+  };
+}
+
+const imageBatch = createEventChannel<Window["image"] extends { onBatch: (cb: infer T) => unknown } ? T extends (payload: infer P) => unknown ? P : never : never>();
+const imageRemoved = createEventChannel<number[]>();
+const imageWatchDuplicate = createEventChannel<Parameters<Parameters<Window["image"]["onWatchDuplicate"]>[0]>[0]>();
+const imageHashProgress = createEventChannel<{ done: number; total: number }>();
+const imageSimilarityProgress = createEventChannel<{ done: number; total: number }>();
+const imageScanProgress = createEventChannel<{ done: number; total: number }>();
+const imageSearchStatsProgress = createEventChannel<{ done: number; total: number }>();
+const imageScanFolder = createEventChannel<{
+  folderId: number;
+  folderName?: string;
+  active: boolean;
+}>();
+const naiGeneratePreview = createEventChannel<string>();
+
+export const preloadEvents = {
+  image: {
+    batch: imageBatch,
+    removed: imageRemoved,
+    watchDuplicate: imageWatchDuplicate,
+    hashProgress: imageHashProgress,
+    similarityProgress: imageSimilarityProgress,
+    scanProgress: imageScanProgress,
+    searchStatsProgress: imageSearchStatsProgress,
+    scanFolder: imageScanFolder,
+  },
+  nai: {
+    generatePreview: naiGeneratePreview,
+  },
+};
+
+export const preloadMocks = {
+  appInfo: {
+    get: vi.fn().mockResolvedValue({
+      appName: "Konomi",
+      appVersion: "0.1.0",
+      electronVersion: "39.0.0",
+      chromeVersion: "139.0.0.0",
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    }),
+    getLocale: vi.fn().mockResolvedValue("en"),
+    getDbFileSize: vi.fn().mockResolvedValue(null),
+    getPromptsDbSchemaVersion: vi.fn().mockResolvedValue(null),
+  },
+  promptBuilder: {
+    listCategories: vi.fn().mockResolvedValue([]),
+    suggestTags: vi.fn().mockResolvedValue({
+      suggestions: [],
+      stats: { totalTags: 0, maxCount: 0, bucketThresholds: [] },
+    }),
+    createCategory: vi.fn(),
+    renameCategory: vi.fn(),
+    deleteCategory: vi.fn(),
+    resetCategories: vi.fn(),
+    createGroup: vi.fn(),
+    deleteGroup: vi.fn(),
+    renameGroup: vi.fn(),
+    createToken: vi.fn(),
+    deleteToken: vi.fn(),
+    reorderTokens: vi.fn(),
+  },
+  image: {
+    readNaiMeta: vi.fn().mockResolvedValue(null),
+    readMetaFromBuffer: vi.fn().mockResolvedValue(null),
+    readFile: vi.fn(),
+    list: vi.fn().mockResolvedValue([]),
+    getSearchPresetStats: vi.fn().mockResolvedValue({
+      availableResolutions: [],
+      availableModels: [],
+    }),
+    suggestTags: vi.fn().mockResolvedValue([]),
+    listPage: vi.fn().mockResolvedValue({
+      rows: [],
+      totalCount: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    }),
+    listMatching: vi.fn().mockResolvedValue([]),
+    listByIds: vi.fn().mockResolvedValue([]),
+    scan: vi.fn().mockResolvedValue(undefined),
+    setFavorite: vi.fn().mockResolvedValue(undefined),
+    watch: vi.fn().mockResolvedValue(undefined),
+    listIgnoredDuplicates: vi.fn().mockResolvedValue([]),
+    clearIgnoredDuplicates: vi.fn().mockResolvedValue(0),
+    onBatch: imageBatch.subscribe,
+    onRemoved: imageRemoved.subscribe,
+    onWatchDuplicate: imageWatchDuplicate.subscribe,
+    revealInExplorer: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    computeHashes: vi.fn().mockResolvedValue(0),
+    resetHashes: vi.fn().mockResolvedValue(undefined),
+    similarGroups: vi.fn().mockResolvedValue([]),
+    similarReasons: vi.fn().mockResolvedValue([]),
+    onHashProgress: imageHashProgress.subscribe,
+    onSimilarityProgress: imageSimilarityProgress.subscribe,
+    onScanProgress: imageScanProgress.subscribe,
+    onSearchStatsProgress: imageSearchStatsProgress.subscribe,
+    cancelScan: vi.fn().mockResolvedValue(undefined),
+    onScanFolder: imageScanFolder.subscribe,
+  },
+  dialog: {
+    selectDirectory: vi.fn().mockResolvedValue(null),
+  },
+  folder: {
+    list: vi.fn().mockResolvedValue([]),
+    create: vi.fn(),
+    findDuplicates: vi.fn().mockResolvedValue([]),
+    resolveDuplicates: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn(),
+    revealInExplorer: vi.fn().mockResolvedValue(undefined),
+  },
+  nai: {
+    validateApiKey: vi.fn().mockResolvedValue({ valid: true, tier: "Scroll" }),
+    getConfig: vi.fn().mockResolvedValue({ id: 1, apiKey: "" }),
+    updateConfig: vi.fn().mockResolvedValue({ id: 1, apiKey: "" }),
+    generate: vi.fn().mockResolvedValue("C:/output/generated.png"),
+    onGeneratePreview: naiGeneratePreview.subscribe,
+  },
+  category: {
+    list: vi.fn().mockResolvedValue([]),
+    create: vi.fn(),
+    delete: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn(),
+    addImage: vi.fn().mockResolvedValue(undefined),
+    removeImage: vi.fn().mockResolvedValue(undefined),
+    addImages: vi.fn().mockResolvedValue(undefined),
+    removeImages: vi.fn().mockResolvedValue(undefined),
+    addByPrompt: vi.fn().mockResolvedValue(0),
+    imageIds: vi.fn().mockResolvedValue([]),
+    forImage: vi.fn().mockResolvedValue([]),
+    commonForImages: vi.fn().mockResolvedValue([]),
+  },
+};
+
+function installPreloadMocks(): void {
+  Object.assign(window, preloadMocks);
+}
+
+export function resetPreloadMocks(): void {
+  preloadEvents.image.batch.reset();
+  preloadEvents.image.removed.reset();
+  preloadEvents.image.watchDuplicate.reset();
+  preloadEvents.image.hashProgress.reset();
+  preloadEvents.image.similarityProgress.reset();
+  preloadEvents.image.scanProgress.reset();
+  preloadEvents.image.searchStatsProgress.reset();
+  preloadEvents.image.scanFolder.reset();
+  preloadEvents.nai.generatePreview.reset();
+
+  preloadMocks.appInfo.get.mockReset().mockResolvedValue({
+    appName: "Konomi",
+    appVersion: "0.1.0",
+    electronVersion: "39.0.0",
+    chromeVersion: "139.0.0.0",
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+  });
+  preloadMocks.appInfo.getLocale.mockReset().mockResolvedValue("en");
+  preloadMocks.appInfo.getDbFileSize.mockReset().mockResolvedValue(null);
+  preloadMocks.appInfo.getPromptsDbSchemaVersion
+    .mockReset()
+    .mockResolvedValue(null);
+
+  preloadMocks.promptBuilder.listCategories.mockReset().mockResolvedValue([]);
+  preloadMocks.promptBuilder.suggestTags.mockReset().mockResolvedValue({
+    suggestions: [],
+    stats: { totalTags: 0, maxCount: 0, bucketThresholds: [] },
+  });
+  preloadMocks.promptBuilder.createCategory.mockReset();
+  preloadMocks.promptBuilder.renameCategory.mockReset();
+  preloadMocks.promptBuilder.deleteCategory.mockReset();
+  preloadMocks.promptBuilder.resetCategories.mockReset();
+  preloadMocks.promptBuilder.createGroup.mockReset();
+  preloadMocks.promptBuilder.deleteGroup.mockReset();
+  preloadMocks.promptBuilder.renameGroup.mockReset();
+  preloadMocks.promptBuilder.createToken.mockReset();
+  preloadMocks.promptBuilder.deleteToken.mockReset();
+  preloadMocks.promptBuilder.reorderTokens.mockReset();
+
+  preloadMocks.image.readNaiMeta.mockReset().mockResolvedValue(null);
+  preloadMocks.image.readMetaFromBuffer.mockReset().mockResolvedValue(null);
+  preloadMocks.image.readFile.mockReset();
+  preloadMocks.image.list.mockReset().mockResolvedValue([]);
+  preloadMocks.image.getSearchPresetStats.mockReset().mockResolvedValue({
+    availableResolutions: [],
+    availableModels: [],
+  });
+  preloadMocks.image.suggestTags.mockReset().mockResolvedValue([]);
+  preloadMocks.image.listPage.mockReset().mockResolvedValue({
+    rows: [],
+    totalCount: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+  });
+  preloadMocks.image.listMatching.mockReset().mockResolvedValue([]);
+  preloadMocks.image.listByIds.mockReset().mockResolvedValue([]);
+  preloadMocks.image.scan.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.setFavorite.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.watch.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.listIgnoredDuplicates.mockReset().mockResolvedValue([]);
+  preloadMocks.image.clearIgnoredDuplicates.mockReset().mockResolvedValue(0);
+  preloadMocks.image.revealInExplorer.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.delete.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.computeHashes.mockReset().mockResolvedValue(0);
+  preloadMocks.image.resetHashes.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.similarGroups.mockReset().mockResolvedValue([]);
+  preloadMocks.image.similarReasons.mockReset().mockResolvedValue([]);
+  preloadMocks.image.cancelScan.mockReset().mockResolvedValue(undefined);
+
+  preloadMocks.dialog.selectDirectory.mockReset().mockResolvedValue(null);
+
+  preloadMocks.folder.list.mockReset().mockResolvedValue([]);
+  preloadMocks.folder.create.mockReset();
+  preloadMocks.folder.findDuplicates.mockReset().mockResolvedValue([]);
+  preloadMocks.folder.resolveDuplicates.mockReset().mockResolvedValue(undefined);
+  preloadMocks.folder.delete.mockReset().mockResolvedValue(undefined);
+  preloadMocks.folder.rename.mockReset();
+  preloadMocks.folder.revealInExplorer.mockReset().mockResolvedValue(undefined);
+
+  preloadMocks.nai.validateApiKey.mockReset().mockResolvedValue({
+    valid: true,
+    tier: "Scroll",
+  });
+  preloadMocks.nai.getConfig.mockReset().mockResolvedValue({ id: 1, apiKey: "" });
+  preloadMocks.nai.updateConfig
+    .mockReset()
+    .mockResolvedValue({ id: 1, apiKey: "" });
+  preloadMocks.nai.generate
+    .mockReset()
+    .mockResolvedValue("C:/output/generated.png");
+
+  preloadMocks.category.list.mockReset().mockResolvedValue([]);
+  preloadMocks.category.create.mockReset();
+  preloadMocks.category.delete.mockReset().mockResolvedValue(undefined);
+  preloadMocks.category.rename.mockReset();
+  preloadMocks.category.addImage.mockReset().mockResolvedValue(undefined);
+  preloadMocks.category.removeImage.mockReset().mockResolvedValue(undefined);
+  preloadMocks.category.addImages.mockReset().mockResolvedValue(undefined);
+  preloadMocks.category.removeImages.mockReset().mockResolvedValue(undefined);
+  preloadMocks.category.addByPrompt.mockReset().mockResolvedValue(0);
+  preloadMocks.category.imageIds.mockReset().mockResolvedValue([]);
+  preloadMocks.category.forImage.mockReset().mockResolvedValue([]);
+  preloadMocks.category.commonForImages.mockReset().mockResolvedValue([]);
+
+  installPreloadMocks();
+}
+
+installPreloadMocks();

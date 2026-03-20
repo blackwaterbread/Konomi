@@ -79,3 +79,9 @@ export function getDB(): PrismaClient {
   }
   return client;
 }
+
+export async function disconnectDB(): Promise<void> {
+  if (!client) return;
+  await client.$disconnect();
+  client = null;
+}

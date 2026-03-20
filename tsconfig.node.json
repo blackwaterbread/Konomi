@@ -1,6 +1,6 @@
 {
   "extends": "./node_modules/@electron-toolkit/tsconfig/tsconfig.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/renderer/src/types/**/*", "src/generated/prisma/**/*"],
+  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/renderer/src/types/**/*", "src/generated/prisma/**/*", "src/tests/**/*"],
   "compilerOptions": {
     "composite": true,
     "types": ["node", "electron-vite/node"],
