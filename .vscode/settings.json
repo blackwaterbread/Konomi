@@ -1,0 +1,9 @@
+{
+  "vitest.runtime": "node",
+  "vitest.shellType": "child_process",
+  "vitest.nodeExecutable": "node_modules/electron/dist/electron.exe",
+  "vitest.nodeEnv": {
+    "ELECTRON_RUN_AS_NODE": "1"
+  },
+  "vitest.vitestPackagePath": "node_modules/vitest/package.json"
+}
