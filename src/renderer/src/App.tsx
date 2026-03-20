@@ -938,6 +938,33 @@ export default function App({ initialFolderCount = null }: AppProps) {
     schedulePageRefresh(0);
   }, [schedulePageRefresh]);
 
+  const handleClearPendingGeneratorImport = useCallback(() => {
+    setPendingGeneratorImport(null);
+  }, []);
+
+  const handleClearPendingGeneratorSourceImport = useCallback(() => {
+    setPendingGeneratorSource(null);
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  const handleAddFolderRequest = useCallback(() => {
+    setFolderDialogRequest((n) => n + 1);
+  }, []);
+
+  const handleHeaderPanelChange = useCallback(
+    (panel: "gallery" | "generator" | "settings") => {
+      void handlePanelChange(panel);
+    },
+    [handlePanelChange],
+  );
+
+  const handleStartTour = useCallback(() => {
+    setTourOpen(true);
+  }, []);
+
   const handleTourClose = useCallback(() => {
     setTourOpen(false);
     setActivePanel("gallery");
@@ -1048,7 +1075,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         activePanel={activePanel}
-        onPanelChange={(panel) => void handlePanelChange(panel)}
+        onPanelChange={handleHeaderPanelChange}
         scanning={scanning}
         isAnalyzing={isAnalyzing}
         hashProgress={hashProgress}
@@ -1061,7 +1088,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
         onAdvancedFiltersChange={setAdvancedFilters}
         availableResolutions={availableResolutions}
         availableModels={availableModels}
-        onStartTour={() => setTourOpen(true)}
+        onStartTour={handleStartTour}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -1072,9 +1099,9 @@ export default function App({ initialFolderCount = null }: AppProps) {
         >
           <GenerationView
             pendingImport={pendingGeneratorImport}
-            onClearPendingImport={() => setPendingGeneratorImport(null)}
+            onClearPendingImport={handleClearPendingGeneratorImport}
             pendingSourceImport={pendingGeneratorSource}
-            onClearPendingSourceImport={() => setPendingGeneratorSource(null)}
+            onClearPendingSourceImport={handleClearPendingGeneratorSourceImport}
             outputFolder={outputFolder}
             onOutputFolderChange={setOutputFolder}
             appendPromptTagRequest={appendPromptTagRequest}
@@ -1192,9 +1219,9 @@ export default function App({ initialFolderCount = null }: AppProps) {
               totalPages={galleryTotalPages}
               onPageChange={setGalleryPage}
               searchQuery={searchQuery || undefined}
-              onClearSearch={() => setSearchQuery("")}
+              onClearSearch={handleClearSearch}
               hasFolders={folderCount === null || folderCount > 0}
-              onAddFolder={() => setFolderDialogRequest((n) => n + 1)}
+              onAddFolder={handleAddFolderRequest}
             />
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Settings,
@@ -122,7 +122,7 @@ interface HeaderProps {
   onStartTour?: () => void;
 }
 
-export function Header({
+export const Header = memo(function Header({
   searchQuery,
   onSearchChange,
   activePanel,
@@ -677,4 +677,6 @@ export function Header({
       />
     </header>
   );
-}
+});
+
+Header.displayName = "Header";

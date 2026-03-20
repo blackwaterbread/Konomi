@@ -2918,28 +2918,26 @@ const LeftPanel = memo(function LeftPanel({
       />
 
       <div className="relative flex flex-1 min-h-0 flex-col">
-        {isNovelAIService &&
-          (!hasApiKey || !outputFolder) &&
-          !tourActive && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 backdrop-blur-sm bg-sidebar/60 select-none">
-              <Settings className="h-8 w-8 text-muted-foreground/60" />
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-sm font-medium text-foreground/80">
-                  {t("generation.state.configurationRequired")}
-                </span>
-                <span className="text-[11px] text-muted-foreground text-center leading-relaxed">
-                  {t("generation.state.configurationMessage", {
-                    target:
-                      !hasApiKey && !outputFolder
-                        ? t("generation.state.configurationApiKeyAndOutput")
-                        : !hasApiKey
-                          ? t("generation.state.configurationApiKey")
-                          : t("generation.state.configurationOutputFolder"),
-                  })}
-                </span>
-              </div>
+        {isNovelAIService && (!hasApiKey || !outputFolder) && !tourActive && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 backdrop-blur-sm bg-sidebar/60 select-none">
+            <Settings className="h-8 w-8 text-muted-foreground/60" />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-sm font-medium text-foreground/80">
+                {t("generation.state.configurationRequired")}
+              </span>
+              <span className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                {t("generation.state.configurationMessage", {
+                  target:
+                    !hasApiKey && !outputFolder
+                      ? t("generation.state.configurationApiKeyAndOutput")
+                      : !hasApiKey
+                        ? t("generation.state.configurationApiKey")
+                        : t("generation.state.configurationOutputFolder"),
+                })}
+              </span>
             </div>
-          )}
+          </div>
+        )}
 
         {isNovelAIService ? (
           <>
@@ -3602,7 +3600,7 @@ function DropImportModal({
   );
 }
 
-export function GenerationView({
+export const GenerationView = memo(function GenerationView({
   pendingImport,
   onClearPendingImport,
   pendingSourceImport,
@@ -4787,4 +4785,6 @@ export function GenerationView({
       )}
     </div>
   );
-}
+});
+
+GenerationView.displayName = "GenerationView";

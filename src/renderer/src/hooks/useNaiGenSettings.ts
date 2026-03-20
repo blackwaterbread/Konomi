@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 const NAI_GEN_KEY = "konomi-nai-gen-settings";
 
@@ -34,12 +34,15 @@ export function useNaiGenSettings() {
     loadOutputFolder(),
   );
 
-  const setOutputFolder = (nextOutputFolder: string) => {
+  const setOutputFolder = useCallback((nextOutputFolder: string) => {
     setOutputFolderState(nextOutputFolder);
     persistOutputFolder(nextOutputFolder);
-  };
+  }, []);
 
-  const resetOutputFolder = () => setOutputFolder("");
+  const resetOutputFolder = useCallback(
+    () => setOutputFolder(""),
+    [setOutputFolder],
+  );
 
   return { outputFolder, setOutputFolder, resetOutputFolder };
 }

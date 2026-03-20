@@ -76,24 +76,33 @@ export function useFolders() {
     load();
   }, [load]);
 
-  const addFolder = async (name: string, path: string) => {
-    log.info("Creating folder", { name, path });
-    const folder = await window.folder.create(name, path);
-    await load();
-    return folder;
-  };
+  const addFolder = useCallback(
+    async (name: string, path: string) => {
+      log.info("Creating folder", { name, path });
+      const folder = await window.folder.create(name, path);
+      await load();
+      return folder;
+    },
+    [load],
+  );
 
-  const removeFolder = async (id: number) => {
-    log.info("Removing folder", { id });
-    await window.folder.delete(id);
-    await load();
-  };
+  const removeFolder = useCallback(
+    async (id: number) => {
+      log.info("Removing folder", { id });
+      await window.folder.delete(id);
+      await load();
+    },
+    [load],
+  );
 
-  const renameFolder = async (id: number, name: string) => {
-    log.info("Renaming folder", { id, name });
-    await window.folder.rename(id, name);
-    await load();
-  };
+  const renameFolder = useCallback(
+    async (id: number, name: string) => {
+      log.info("Renaming folder", { id, name });
+      await window.folder.rename(id, name);
+      await load();
+    },
+    [load],
+  );
 
   const reorderFolders = useCallback((ids: number[]) => {
     setFolders((prev) => applyFolderOrder(prev, ids));

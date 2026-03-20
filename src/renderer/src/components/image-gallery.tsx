@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Grid3X3,
   LayoutGrid,
@@ -139,11 +139,14 @@ export const ImageGallery = memo(function ImageGallery({
     [images, controlledPagination, currentPage, pageSize],
   );
 
-  const updatePage = (nextPage: number) => {
-    const clamped = Math.max(1, Math.min(computedTotalPages, nextPage));
-    if (controlledPagination) onPageChange?.(clamped);
-    else setInternalPage(clamped);
-  };
+  const updatePage = useCallback(
+    (nextPage: number) => {
+      const clamped = Math.max(1, Math.min(computedTotalPages, nextPage));
+      if (controlledPagination) onPageChange?.(clamped);
+      else setInternalPage(clamped);
+    },
+    [computedTotalPages, controlledPagination, onPageChange],
+  );
 
   const selectedCount = selectedIds.size;
   const allFilteredSelected =
@@ -151,16 +154,16 @@ export const ImageGallery = memo(function ImageGallery({
   const allPageSelected =
     paged.length > 0 && paged.every((img) => selectedIds.has(img.id));
 
-  const handleSelectImage = (id: string, selected: boolean) => {
+  const handleSelectImage = useCallback((id: string, selected: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (selected) next.add(id);
       else next.delete(id);
       return next;
     });
-  };
+  }, []);
 
-  const handleSelectCurrentPage = () => {
+  const handleSelectCurrentPage = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allPageSelected) {
@@ -170,22 +173,22 @@ export const ImageGallery = memo(function ImageGallery({
       }
       return next;
     });
-  };
+  }, [allPageSelected, paged]);
 
-  const handleSelectAllFiltered = () => {
+  const handleSelectAllFiltered = useCallback(() => {
     if (allFilteredSelected) {
       setSelectedIds(new Set());
       return;
     }
     setSelectedIds(new Set(images.map((img) => img.id)));
-  };
+  }, [allFilteredSelected, images]);
 
-  const handleBulkCategory = () => {
+  const handleBulkCategory = useCallback(() => {
     if (selectedIds.size === 0) return;
     const selected = images.filter((img) => selectedIds.has(img.id));
     if (selected.length === 0) return;
     onBulkChangeCategory(selected);
-  };
+  }, [images, onBulkChangeCategory, selectedIds]);
 
   return (
     <div className="relative flex-1 flex flex-col">
