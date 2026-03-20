@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronsLeft,
+  ChevronsRight,
   Grid3X3,
   LayoutGrid,
   List,
@@ -18,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ImageCard, type ImageData } from "./image-card";
 import { OnboardingView } from "./onboarding-view";
@@ -85,6 +88,7 @@ export const ImageGallery = memo(function ImageGallery({
 }: ImageGalleryProps) {
   const { t } = useTranslation();
   const [internalPage, setInternalPage] = useState(1);
+  const [pageJumpValue, setPageJumpValue] = useState("1");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -106,6 +110,10 @@ export const ImageGallery = memo(function ImageGallery({
       "[data-radix-scroll-area-viewport]",
     );
     if (viewport) viewport.scrollTop = 0;
+  }, [currentPage]);
+
+  useEffect(() => {
+    setPageJumpValue(String(currentPage));
   }, [currentPage]);
 
   useEffect(() => {
@@ -191,6 +199,15 @@ export const ImageGallery = memo(function ImageGallery({
     if (selected.length === 0) return;
     onBulkChangeCategory(selected);
   }, [images, onBulkChangeCategory, selectedIds]);
+
+  const handleJumpToPage = useCallback(() => {
+    const parsed = Number.parseInt(pageJumpValue, 10);
+    if (!Number.isFinite(parsed)) {
+      setPageJumpValue(String(currentPage));
+      return;
+    }
+    updatePage(parsed);
+  }, [currentPage, pageJumpValue, updatePage]);
 
   return (
     <div
@@ -406,11 +423,24 @@ export const ImageGallery = memo(function ImageGallery({
       )}
 
       {computedTotalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 p-4 border-t border-border">
+        <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border p-4">
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            title={t("gallery.firstPage")}
+            aria-label={t("gallery.firstPage")}
+            disabled={currentPage === 1}
+            onClick={() => updatePage(1)}
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={t("gallery.previousPage")}
+            aria-label={t("gallery.previousPage")}
             disabled={currentPage === 1}
             onClick={() => updatePage(currentPage - 1)}
           >
@@ -420,14 +450,53 @@ export const ImageGallery = memo(function ImageGallery({
             <span className="text-foreground font-medium">{currentPage}</span> /{" "}
             {computedTotalPages}
           </span>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/35 px-2 py-1">
+            <Input
+              type="number"
+              min={1}
+              max={computedTotalPages}
+              inputMode="numeric"
+              value={pageJumpValue}
+              onChange={(e) => setPageJumpValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleJumpToPage();
+                }
+              }}
+              aria-label={t("gallery.jumpToPage")}
+              className="h-8 w-20 border-border bg-background px-2 text-center text-sm"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3"
+              onClick={handleJumpToPage}
+            >
+              {t("gallery.goToPage")}
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            title={t("gallery.nextPage")}
+            aria-label={t("gallery.nextPage")}
             disabled={currentPage === computedTotalPages}
             onClick={() => updatePage(currentPage + 1)}
           >
             <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={t("gallery.lastPage")}
+            aria-label={t("gallery.lastPage")}
+            disabled={currentPage === computedTotalPages}
+            onClick={() => updatePage(computedTotalPages)}
+          >
+            <ChevronsRight className="h-4 w-4" />
           </Button>
         </div>
       )}

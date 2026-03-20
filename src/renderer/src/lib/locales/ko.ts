@@ -118,6 +118,12 @@ const ko = {
     deselectAllResults: "검색 결과 전체 선택 해제",
     clearSelection: "선택 초기화",
     changeCategoryForSelection: "카테고리 일괄 변경",
+    firstPage: "첫 페이지",
+    previousPage: "이전 페이지",
+    nextPage: "다음 페이지",
+    lastPage: "마지막 페이지",
+    jumpToPage: "페이지로 이동",
+    goToPage: "이동",
     initializingTitle: "라이브러리 준비 중",
     initializingDescription:
       "등록된 폴더를 확인하고 이미지를 불러오고 있습니다.",
