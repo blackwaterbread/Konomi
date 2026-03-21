@@ -2471,7 +2471,6 @@ const GenerateActionsSection = memo(function GenerateActionsSection({
 interface ResultViewportProps {
   generating: boolean;
   pendingResultSelected: boolean;
-  previewSrc: string | null;
   error: string | null;
   resultSrc: string | null;
   recentSeeds: Map<string, number>;
@@ -2481,7 +2480,6 @@ interface ResultViewportProps {
 const ResultViewport = memo(function ResultViewport({
   generating,
   pendingResultSelected,
-  previewSrc,
   error,
   resultSrc,
   recentSeeds,
@@ -2489,9 +2487,23 @@ const ResultViewport = memo(function ResultViewport({
 }: ResultViewportProps) {
   const { t } = useTranslation();
   const [seedDropdownOpen, setSeedDropdownOpen] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const seedDropdownRef = useRef<HTMLDivElement | null>(null);
+  const generatingRef = useLatestRef(generating);
   const showGeneratingPreview =
     generating && (pendingResultSelected || !resultSrc);
+
+  useEffect(() => {
+    return window.nai.onGeneratePreview((dataUrl) => {
+      if (!generatingRef.current) return;
+      setPreviewSrc((current) => (current === dataUrl ? current : dataUrl));
+    });
+  }, [generatingRef]);
+
+  useEffect(() => {
+    if (generating) return;
+    setPreviewSrc((current) => (current === null ? current : null));
+  }, [generating]);
 
   useEffect(() => {
     if (!seedDropdownOpen) return;
@@ -2673,7 +2685,6 @@ interface ResultAreaProps {
   onDrop: (event: React.DragEvent) => void;
   generating: boolean;
   pendingResultSelected: boolean;
-  previewSrc: string | null;
   error: string | null;
   resultSrc: string | null;
   recentSeeds: Map<string, number>;
@@ -2691,7 +2702,6 @@ const ResultArea = memo(function ResultArea({
   onDrop,
   generating,
   pendingResultSelected,
-  previewSrc,
   error,
   resultSrc,
   recentSeeds,
@@ -2734,7 +2744,6 @@ const ResultArea = memo(function ResultArea({
         <ResultViewport
           generating={generating}
           pendingResultSelected={pendingResultSelected}
-          previewSrc={previewSrc}
           error={error}
           resultSrc={resultSrc}
           recentSeeds={recentSeeds}
@@ -3759,7 +3768,6 @@ export const GenerationView = memo(
 
     const [generating, setGenerating] = useState(false);
     const [resultSrc, setResultSrc] = useState<string | null>(null);
-    const [previewSrc, setPreviewSrc] = useState<string | null>(null);
     const [pendingResultSelected, setPendingResultSelected] = useState(false);
     const [recentImages, setRecentImages] = useState<string[]>([]);
     const [recentSeeds, setRecentSeeds] = useState<Map<string, number>>(
@@ -3889,10 +3897,6 @@ export const GenerationView = memo(
       };
       window.addEventListener("beforeunload", onUnload);
       return () => window.removeEventListener("beforeunload", onUnload);
-    }, []);
-
-    useEffect(() => {
-      return window.nai.onGeneratePreview((dataUrl) => setPreviewSrc(dataUrl));
     }, []);
 
     // Resizable panel
@@ -4374,7 +4378,6 @@ export const GenerationView = memo(
         setPendingResultSelected(true);
         setGenerating(true);
         setError(null);
-        setPreviewSrc(null);
         try {
           const params: GenerateParams = {
             prompt: expandGroupRefs(current.prompt),
@@ -4446,13 +4449,14 @@ export const GenerationView = memo(
           setError(e instanceof Error ? e.message : String(e));
         } finally {
           setGenerating(false);
-          setPreviewSrc(null);
         }
       },
       [
         buildGenerateParamsKey,
         latestViewStateRef,
+        pendingResultSelectedRef,
         resolveSeedForGeneration,
+        resultSrcRef,
         saveLastGenParams,
       ],
     );
@@ -4499,7 +4503,6 @@ export const GenerationView = memo(
         setPendingResultSelected(true);
         setGenerating(true);
         setError(null);
-        setPreviewSrc(null);
 
         try {
           const params: GenerateParams = {
@@ -4567,7 +4570,6 @@ export const GenerationView = memo(
           break;
         } finally {
           setGenerating(false);
-          setPreviewSrc(null);
         }
 
         if (
@@ -4582,7 +4584,13 @@ export const GenerationView = memo(
 
       setAutoGenProgress(null);
       setAutoCancelPending(false);
-    }, [latestViewStateRef, resolveSeedForGeneration, saveLastGenParams]);
+    }, [
+      latestViewStateRef,
+      pendingResultSelectedRef,
+      resolveSeedForGeneration,
+      resultSrcRef,
+      saveLastGenParams,
+    ]);
 
     const handleCancelAutoGenerate = useCallback(() => {
       autoCancelRef.current.cancelled = true;
@@ -4925,7 +4933,6 @@ export const GenerationView = memo(
               onDrop={handleDrop}
               generating={generating}
               pendingResultSelected={pendingResultSelected}
-              previewSrc={previewSrc}
               error={error}
               resultSrc={resultSrc}
               recentSeeds={recentSeeds}

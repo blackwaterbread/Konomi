@@ -13,7 +13,7 @@ import {
   GenerationView,
   type GenerationViewHandle,
 } from "@/components/generation-view";
-import { preloadMocks } from "../helpers/preload-mocks";
+import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 import { createGalleryImage } from "../helpers/gallery-image";
 
 function renderGenerationView(
@@ -206,6 +206,50 @@ describe("GenerationView", () => {
         noiseSchedule: "karras",
         seed: undefined,
       }),
+    );
+  });
+
+  it("renders live preview frames while generation is in progress", async () => {
+    const user = userEvent.setup();
+    let resolveGenerate: ((value: string) => void) | null = null;
+
+    preloadMocks.nai.generate.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveGenerate = resolve;
+        }),
+    );
+    preloadMocks.image.readNaiMeta.mockResolvedValueOnce(null);
+
+    renderGenerationView();
+
+    fireEvent.change(
+      screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+      {
+        target: { value: "preview prompt" },
+      },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    act(() => {
+      preloadEvents.nai.generatePreview.emit("data:image/png;base64,preview");
+    });
+
+    expect(await screen.findByAltText("Generation preview")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,preview",
+    );
+
+    await act(async () => {
+      resolveGenerate?.("C:/output/generated.png");
+      await flushMicrotasks();
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Generation preview"),
+      ).not.toBeInTheDocument(),
     );
   });
 
