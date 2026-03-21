@@ -5,7 +5,6 @@ import {
   useRef,
   useDeferredValue,
 } from "react";
-import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
@@ -29,7 +28,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useSettings, type Settings } from "@/hooks/useSettings";
+import { useSettings } from "@/hooks/useSettings";
 import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import { useAppAppearance } from "@/hooks/useAppAppearance";
 import { useGalleryController } from "@/hooks/useGalleryController";
@@ -42,26 +41,10 @@ import { useImageActions } from "@/hooks/useImageActions";
 import { useSearchPresetStats } from "@/hooks/useSearchPresetStats";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import { useSimilarImages } from "@/hooks/useSimilarImages";
+import { useSettingsAnalysisController } from "@/hooks/useSettingsAnalysisController";
 import { useAppShellState, type ActivePanel } from "@/hooks/useAppShellState";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { useTranslation } from "react-i18next";
-const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
-  "similarityThreshold",
-  "useAdvancedSimilarityThresholds",
-  "visualSimilarityThreshold",
-  "promptSimilarityThreshold",
-]);
-
-function isSimilaritySettingsPatch(patch: Partial<Settings>): boolean {
-  return (Object.keys(patch) as Array<keyof Settings>).some((key) =>
-    SIMILARITY_SETTING_KEYS.has(key),
-  );
-}
-
-function includesSimilaritySettingsReset(keys?: (keyof Settings)[]): boolean {
-  if (!keys || keys.length === 0) return true;
-  return keys.some((key) => SIMILARITY_SETTING_KEYS.has(key));
-}
 
 interface AppProps {
   initialFolderCount?: number | null;
@@ -191,26 +174,16 @@ export default function App({ initialFolderCount = null }: AppProps) {
     setActiveScanFolderIds,
     setRollbackFolderIds,
   });
-
-  const handleSettingsUpdate = useCallback(
-    (patch: Partial<Settings>) => {
-      updateSettings(patch);
-      if (isSimilaritySettingsPatch(patch)) {
-        pendingSimilarityRecalcRef.current = true;
-      }
-    },
-    [updateSettings, pendingSimilarityRecalcRef],
-  );
-
-  const handleSettingsReset = useCallback(
-    (keys?: (keyof Settings)[]) => {
-      resetSettings(keys);
-      if (includesSimilaritySettingsReset(keys)) {
-        pendingSimilarityRecalcRef.current = true;
-      }
-    },
-    [resetSettings, pendingSimilarityRecalcRef],
-  );
+  const { handleSettingsUpdate, handleSettingsReset, handleResetHashes } =
+    useSettingsAnalysisController({
+      updateSettings,
+      resetSettings,
+      scanningRef,
+      analyzeTimerRef,
+      pendingSimilarityRecalcRef,
+      suspendAutoAnalysisRef,
+      runAnalysisNow,
+    });
 
   const {
     activePanel,
@@ -428,30 +401,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
               onUpdate={handleSettingsUpdate}
               onReset={handleSettingsReset}
               onClose={() => void handlePanelChange("gallery")}
-              onResetHashes={async () => {
-                try {
-                  if (scanningRef.current) {
-                    toast.error(t("error.scanInProgressForHashReset"));
-                    return;
-                  }
-                  suspendAutoAnalysisRef.current = true;
-                  pendingSimilarityRecalcRef.current = false;
-                  if (analyzeTimerRef.current) {
-                    clearTimeout(analyzeTimerRef.current);
-                    analyzeTimerRef.current = null;
-                  }
-                  await window.image.resetHashes();
-                  await runAnalysisNow();
-                } catch (e: unknown) {
-                  toast.error(
-                    t("error.hashResetFailed", {
-                      message: e instanceof Error ? e.message : String(e),
-                    }),
-                  );
-                } finally {
-                  suspendAutoAnalysisRef.current = false;
-                }
-              }}
+              onResetHashes={handleResetHashes}
               isAnalyzing={isAnalyzing}
             />
           )}
