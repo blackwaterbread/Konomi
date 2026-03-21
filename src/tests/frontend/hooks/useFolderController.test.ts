@@ -1,10 +1,21 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useFolderSelection } from "@/hooks/useFolderSelection";
-import { useSidebarFolders } from "@/hooks/useSidebarFolders";
+import { useFolderController } from "@/hooks/useFolderController";
+import { preloadMocks } from "../helpers/preload-mocks";
+import type { Folder } from "@preload/index.d";
 
 function sortedIds(ids: Set<number>): number[] {
   return [...ids].sort((a, b) => a - b);
+}
+
+function createFolder(id: number, name = `Folder ${id}`): Folder {
+  return {
+    id,
+    name,
+    path: `C:\\images\\folder-${id}`,
+    createdAt: new Date("2026-03-20T12:00:00.000Z"),
+  };
 }
 
 describe("useFolderSelection", () => {
@@ -28,23 +39,28 @@ describe("useFolderSelection", () => {
   });
 });
 
-describe("useSidebarFolders", () => {
-  it("tracks folder count helpers alongside selection state", async () => {
+describe("useFolderController", () => {
+  it("combines folder loading with persisted selection state", async () => {
     localStorage.setItem("konomi-selected-folders", JSON.stringify([3]));
+    preloadMocks.folder.list.mockResolvedValue([
+      createFolder(1, "Primary"),
+      createFolder(2, "Reference"),
+    ]);
 
-    const { result } = renderHook(() => useSidebarFolders(5));
+    const { result } = renderHook(() => useFolderController(5));
 
     expect(result.current.folderCount).toBe(5);
     expect(sortedIds(result.current.selectedFolderIds)).toEqual([3]);
 
+    await waitFor(() =>
+      expect(result.current.folders.map((folder) => folder.id)).toEqual([1, 2]),
+    );
+    expect(result.current.folderCount).toBe(2);
+
     act(() => {
-      result.current.incrementFolderCount();
-      result.current.incrementFolderCount();
-      result.current.decrementFolderCount();
       result.current.toggleFolder(9);
     });
 
-    expect(result.current.folderCount).toBe(6);
     expect(sortedIds(result.current.selectedFolderIds)).toEqual([3, 9]);
     await waitFor(() =>
       expect(localStorage.getItem("konomi-selected-folders")).toBe("[3,9]"),

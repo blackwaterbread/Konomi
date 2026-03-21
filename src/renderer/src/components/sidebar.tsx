@@ -25,7 +25,6 @@ import {
 import { toast } from "sonner";
 import { useFolderDialog } from "@/hooks/useFolderDialog";
 import { useDuplicateResolutionDialog } from "@/hooks/useDuplicateResolutionDialog";
-import { useFolders } from "@/hooks/useFolders";
 import { Button } from "@/components/ui/button";
 import { DuplicateResolutionDialog } from "@/components/duplicate-resolution-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,6 +54,7 @@ interface SidebarViewState {
 }
 
 interface SidebarFolderState {
+  folders: FolderRecord[];
   selectedFolderIds?: Set<number>;
   rollbackRequest?: { id: number; folderIds: number[] } | null;
   scanningFolderIds?: Set<number>;
@@ -62,6 +62,10 @@ interface SidebarFolderState {
 }
 
 interface SidebarFolderActions {
+  createFolder: (name: string, path: string) => Promise<FolderRecord>;
+  deleteFolder: (id: number) => Promise<void>;
+  renameFolder: (id: number, name: string) => Promise<void>;
+  reorderFolders: (ids: number[]) => void;
   onFolderToggle?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
@@ -1036,12 +1040,17 @@ export const Sidebar = memo(
     const { t } = useTranslation();
     const { activeView, onViewChange } = view;
     const {
+      folders,
       selectedFolderIds,
       rollbackRequest,
       scanningFolderIds,
       scanning,
     } = folderState;
     const {
+      createFolder,
+      deleteFolder,
+      renameFolder,
+      reorderFolders,
       onFolderToggle,
       onFolderRemoved,
       onFolderAdded,
@@ -1058,13 +1067,6 @@ export const Sidebar = memo(
       onCategoryAddByPrompt,
       onRandomRefresh,
     } = categoryActions;
-    const {
-      folders,
-      addFolder,
-      removeFolder,
-      renameFolder,
-      reorderFolders,
-    } = useFolders();
     const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
     const [addByPromptCategoryId, setAddByPromptCategoryId] = useState<
       number | null
@@ -1089,379 +1091,384 @@ export const Sidebar = memo(
       number | null
     >(null);
 
-  const {
-    dialog: duplicateResolutionDialog,
-    folderAddResolvedSeq,
-    handleFolderAddWithDuplicateCheck,
-    handleFolderRescanWithDuplicateCheck,
-  } = useDuplicateResolutionDialog({
-    addFolder,
-    onFolderAdded,
-    onFolderRescan,
-  });
+    const {
+      dialog: duplicateResolutionDialog,
+      folderAddResolvedSeq,
+      handleFolderAddWithDuplicateCheck,
+      handleFolderRescanWithDuplicateCheck,
+    } = useDuplicateResolutionDialog({
+      addFolder: createFolder,
+      onFolderAdded,
+      onFolderRescan,
+    });
 
-  const handleRemoveFolder = async (id: number) => {
-    try {
-      await removeFolder(id);
-      onFolderRemoved?.(id);
-      return true;
-    } catch (e: unknown) {
-      toast.error(
-        t("sidebar.errors.folderDeleteFailed", {
-          message: e instanceof Error ? e.message : String(e),
-        }),
-      );
-      return false;
-    }
-  };
-
-  const handleDeleteFolderDialogOpenChange = (open: boolean) => {
-    if (!open && !deleteFolderPending) {
-      setDeleteFolderTarget(null);
-    }
-  };
-
-  const handleConfirmDeleteFolder = async () => {
-    if (!deleteFolderTarget || deleteFolderPending) return;
-    setDeleteFolderPending(true);
-    const deleted = await handleRemoveFolder(deleteFolderTarget.id);
-    if (deleted) {
-      setDeleteFolderTarget(null);
-    }
-    setDeleteFolderPending(false);
-  };
-
-  const handleCancelFolder = useCallback(
-    async (id: number) => {
+    const handleRemoveFolder = async (id: number) => {
       try {
-        await removeFolder(id);
-        onFolderCancelled?.(id);
+        await deleteFolder(id);
+        onFolderRemoved?.(id);
+        return true;
       } catch (e: unknown) {
         toast.error(
-          t("sidebar.errors.folderCancelFailed", {
+          t("sidebar.errors.folderDeleteFailed", {
             message: e instanceof Error ? e.message : String(e),
           }),
         );
+        return false;
       }
-    },
-    [onFolderCancelled, removeFolder, t],
-  );
+    };
 
-  const handleFolderRescanRequest = useCallback(
-    async (folderToRescan: FolderRecord) => {
-      try {
-        await handleFolderRescanWithDuplicateCheck(folderToRescan);
-      } catch (e: unknown) {
-        toast.error(
-          t("error.scanFailed", {
-            message: e instanceof Error ? e.message : String(e),
-          }),
-        );
+    const handleDeleteFolderDialogOpenChange = (open: boolean) => {
+      if (!open && !deleteFolderPending) {
+        setDeleteFolderTarget(null);
       }
-    },
-    [handleFolderRescanWithDuplicateCheck, t],
-  );
+    };
 
-  const handleRevealFolderInExplorer = useCallback(
-    async (folderId: number) => {
-      try {
-        await window.folder.revealInExplorer(folderId);
-      } catch (e: unknown) {
-        toast.error(
-          t("error.folderRevealFailed", {
-            message: e instanceof Error ? e.message : String(e),
-          }),
-        );
+    const handleConfirmDeleteFolder = async () => {
+      if (!deleteFolderTarget || deleteFolderPending) return;
+      setDeleteFolderPending(true);
+      const deleted = await handleRemoveFolder(deleteFolderTarget.id);
+      if (deleted) {
+        setDeleteFolderTarget(null);
       }
-    },
-    [t],
-  );
+      setDeleteFolderPending(false);
+    };
 
-  useEffect(() => {
-    if (!rollbackRequest) return;
-    if (processedRollbackRequestIdRef.current === rollbackRequest.id) return;
-    processedRollbackRequestIdRef.current = rollbackRequest.id;
+    const handleCancelFolder = useCallback(
+      async (id: number) => {
+        try {
+          await deleteFolder(id);
+          onFolderCancelled?.(id);
+        } catch (e: unknown) {
+          toast.error(
+            t("sidebar.errors.folderCancelFailed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      },
+      [deleteFolder, onFolderCancelled, t],
+    );
 
-    void (async () => {
-      for (const folderId of rollbackRequest.folderIds) {
-        await handleCancelFolder(folderId);
-      }
-    })();
-  }, [handleCancelFolder, rollbackRequest]);
+    const handleFolderRescanRequest = useCallback(
+      async (folderToRescan: FolderRecord) => {
+        try {
+          await handleFolderRescanWithDuplicateCheck(folderToRescan);
+        } catch (e: unknown) {
+          toast.error(
+            t("error.scanFailed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      },
+      [handleFolderRescanWithDuplicateCheck, t],
+    );
 
-  const handleOpenFolderDialog = useCallback(() => {
-    setFolderOpenRequest((current) => current + 1);
-  }, []);
+    const handleRevealFolderInExplorer = useCallback(
+      async (folderId: number) => {
+        try {
+          await window.folder.revealInExplorer(folderId);
+        } catch (e: unknown) {
+          toast.error(
+            t("error.folderRevealFailed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      },
+      [t],
+    );
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      openFolderDialog: handleOpenFolderDialog,
-    }),
-    [handleOpenFolderDialog],
-  );
+    useEffect(() => {
+      if (!rollbackRequest) return;
+      if (processedRollbackRequestIdRef.current === rollbackRequest.id) return;
+      processedRollbackRequestIdRef.current = rollbackRequest.id;
 
-  const handleCloseNewCategoryDialog = useCallback(() => {
-    setIsNewCategoryOpen(false);
-  }, []);
+      void (async () => {
+        for (const folderId of rollbackRequest.folderIds) {
+          await handleCancelFolder(folderId);
+        }
+      })();
+    }, [handleCancelFolder, rollbackRequest]);
 
-  const handleCreateCategory = useCallback(
-    (name: string) => {
-      const trimmedName = name.trim();
-      if (!trimmedName) return;
-      onCategoryCreate(trimmedName);
+    const handleOpenFolderDialog = useCallback(() => {
+      setFolderOpenRequest((current) => current + 1);
+    }, []);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        openFolderDialog: handleOpenFolderDialog,
+      }),
+      [handleOpenFolderDialog],
+    );
+
+    const handleCloseNewCategoryDialog = useCallback(() => {
       setIsNewCategoryOpen(false);
-    },
-    [onCategoryCreate],
-  );
+    }, []);
 
-  const handleCloseAddByPromptDialog = useCallback(() => {
-    setAddByPromptCategoryId(null);
-  }, []);
+    const handleCreateCategory = useCallback(
+      (name: string) => {
+        const trimmedName = name.trim();
+        if (!trimmedName) return;
+        onCategoryCreate(trimmedName);
+        setIsNewCategoryOpen(false);
+      },
+      [onCategoryCreate],
+    );
 
-  const handleAddByPromptSubmit = useCallback(
-    (categoryId: number, query: string) => {
-      const trimmedQuery = query.trim();
-      if (!trimmedQuery) return;
-      onCategoryAddByPrompt(categoryId, trimmedQuery);
+    const handleCloseAddByPromptDialog = useCallback(() => {
       setAddByPromptCategoryId(null);
-    },
-    [onCategoryAddByPrompt],
-  );
+    }, []);
 
-  const handleFolderRename = useCallback(
-    async (id: number, name: string) => {
-      await renameFolder(id, name);
-    },
-    [renameFolder],
-  );
+    const handleAddByPromptSubmit = useCallback(
+      (categoryId: number, query: string) => {
+        const trimmedQuery = query.trim();
+        if (!trimmedQuery) return;
+        onCategoryAddByPrompt(categoryId, trimmedQuery);
+        setAddByPromptCategoryId(null);
+      },
+      [onCategoryAddByPrompt],
+    );
 
-  const handleDeleteFolderRequest = useCallback(
-    (target: { id: number; name: string }) => {
-      setDeleteFolderTarget(target);
-    },
-    [],
-  );
+    const handleFolderRename = useCallback(
+      async (id: number, name: string) => {
+        await renameFolder(id, name);
+      },
+      [renameFolder],
+    );
 
-  const handleOpenAddByPromptDialog = useCallback((id: number) => {
-    setAddByPromptCategoryId(id);
-  }, []);
+    const handleDeleteFolderRequest = useCallback(
+      (target: { id: number; name: string }) => {
+        setDeleteFolderTarget(target);
+      },
+      [],
+    );
 
-  const handleOpenNewCategoryDialog = useCallback(() => {
-    setIsNewCategoryOpen(true);
-  }, []);
+    const handleOpenAddByPromptDialog = useCallback((id: number) => {
+      setAddByPromptCategoryId(id);
+    }, []);
 
-  const handleFolderDragStart = useCallback((id: number) => {
-    setDraggingFolderId(id);
-  }, []);
+    const handleOpenNewCategoryDialog = useCallback(() => {
+      setIsNewCategoryOpen(true);
+    }, []);
 
-  const handleFolderDragOver = useCallback(
-    (id: number) => {
-      if (draggingFolderId === null || draggingFolderId === id) return;
-      setFolderDropTargetId((prev) => (prev === id ? prev : id));
-    },
-    [draggingFolderId],
-  );
+    const handleFolderDragStart = useCallback((id: number) => {
+      setDraggingFolderId(id);
+    }, []);
 
-  const handleFolderDragEnd = useCallback(() => {
-    setDraggingFolderId(null);
-    setFolderDropTargetId(null);
-  }, []);
+    const handleFolderDragOver = useCallback(
+      (id: number) => {
+        if (draggingFolderId === null || draggingFolderId === id) return;
+        setFolderDropTargetId((prev) => (prev === id ? prev : id));
+      },
+      [draggingFolderId],
+    );
 
-  const handleFolderDrop = useCallback(
-    (targetId: number) => {
-      if (draggingFolderId === null || draggingFolderId === targetId) {
+    const handleFolderDragEnd = useCallback(() => {
+      setDraggingFolderId(null);
+      setFolderDropTargetId(null);
+    }, []);
+
+    const handleFolderDrop = useCallback(
+      (targetId: number) => {
+        if (draggingFolderId === null || draggingFolderId === targetId) {
+          handleFolderDragEnd();
+          return;
+        }
+
+        const currentIds = folders.map((folder) => folder.id);
+        const from = currentIds.indexOf(draggingFolderId);
+        const to = currentIds.indexOf(targetId);
+        if (from < 0 || to < 0) {
+          handleFolderDragEnd();
+          return;
+        }
+
+        const nextIds = [...currentIds];
+        const [moved] = nextIds.splice(from, 1);
+        nextIds.splice(to, 0, moved);
+        reorderFolders(nextIds);
         handleFolderDragEnd();
-        return;
-      }
+      },
+      [draggingFolderId, folders, handleFolderDragEnd, reorderFolders],
+    );
 
-      const currentIds = folders.map((folder) => folder.id);
-      const from = currentIds.indexOf(draggingFolderId);
-      const to = currentIds.indexOf(targetId);
-      if (from < 0 || to < 0) {
-        handleFolderDragEnd();
-        return;
-      }
+    const handleCategoryDragStart = useCallback((id: number) => {
+      setDraggingCategoryId(id);
+    }, []);
 
-      const nextIds = [...currentIds];
-      const [moved] = nextIds.splice(from, 1);
-      nextIds.splice(to, 0, moved);
-      reorderFolders(nextIds);
-      handleFolderDragEnd();
-    },
-    [draggingFolderId, folders, handleFolderDragEnd, reorderFolders],
-  );
+    const handleCategoryDragOver = useCallback(
+      (id: number) => {
+        if (draggingCategoryId === null || draggingCategoryId === id) return;
+        setCategoryDropTargetId((prev) => (prev === id ? prev : id));
+      },
+      [draggingCategoryId],
+    );
 
-  const handleCategoryDragStart = useCallback((id: number) => {
-    setDraggingCategoryId(id);
-  }, []);
+    const handleCategoryDragEnd = useCallback(() => {
+      setDraggingCategoryId(null);
+      setCategoryDropTargetId(null);
+    }, []);
 
-  const handleCategoryDragOver = useCallback(
-    (id: number) => {
-      if (draggingCategoryId === null || draggingCategoryId === id) return;
-      setCategoryDropTargetId((prev) => (prev === id ? prev : id));
-    },
-    [draggingCategoryId],
-  );
+    const handleCategoryDrop = useCallback(
+      (targetId: number) => {
+        if (draggingCategoryId === null || draggingCategoryId === targetId) {
+          handleCategoryDragEnd();
+          return;
+        }
 
-  const handleCategoryDragEnd = useCallback(() => {
-    setDraggingCategoryId(null);
-    setCategoryDropTargetId(null);
-  }, []);
+        const customIds = categories
+          .filter((cat) => !cat.isBuiltin)
+          .map((cat) => cat.id);
+        const from = customIds.indexOf(draggingCategoryId);
+        const to = customIds.indexOf(targetId);
+        if (from < 0 || to < 0) {
+          handleCategoryDragEnd();
+          return;
+        }
 
-  const handleCategoryDrop = useCallback(
-    (targetId: number) => {
-      if (draggingCategoryId === null || draggingCategoryId === targetId) {
+        const nextIds = [...customIds];
+        const [moved] = nextIds.splice(from, 1);
+        nextIds.splice(to, 0, moved);
+        onCategoryReorder(nextIds);
         handleCategoryDragEnd();
-        return;
-      }
+      },
+      [
+        categories,
+        draggingCategoryId,
+        handleCategoryDragEnd,
+        onCategoryReorder,
+      ],
+    );
 
-      const customIds = categories
-        .filter((cat) => !cat.isBuiltin)
-        .map((cat) => cat.id);
-      const from = customIds.indexOf(draggingCategoryId);
-      const to = customIds.indexOf(targetId);
-      if (from < 0 || to < 0) {
-        handleCategoryDragEnd();
-        return;
-      }
+    return (
+      <>
+        <aside className="w-full h-full border-r border-border bg-sidebar flex flex-col">
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-4 space-y-6">
+              {/* Views */}
+              <div className="space-y-1" data-tour="sidebar-views">
+                {views.map((view) => {
+                  const Icon = view.icon;
+                  return (
+                    <Button
+                      key={view.id}
+                      variant="ghost"
+                      className={cn(
+                        "w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
+                        activeView === view.id &&
+                          selectedCategoryId === null &&
+                          "bg-sidebar-accent text-foreground",
+                      )}
+                      onClick={() => {
+                        onViewChange(view.id);
+                        onCategorySelect(null);
+                      }}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {t(`sidebar.views.${view.id}`)}
+                    </Button>
+                  );
+                })}
+              </div>
 
-      const nextIds = [...customIds];
-      const [moved] = nextIds.splice(from, 1);
-      nextIds.splice(to, 0, moved);
-      onCategoryReorder(nextIds);
-      handleCategoryDragEnd();
-    },
-    [categories, draggingCategoryId, handleCategoryDragEnd, onCategoryReorder],
-  );
+              <SidebarFoldersSection
+                folders={folders}
+                selectedFolderIds={selectedFolderIds}
+                scanningFolderIds={scanningFolderIds}
+                draggingFolderId={draggingFolderId}
+                folderDropTargetId={folderDropTargetId}
+                scanning={scanning}
+                isAnalyzing={isAnalyzing}
+                onOpenNewFolder={handleOpenFolderDialog}
+                onToggle={onFolderToggle}
+                onRename={handleFolderRename}
+                onDeleteRequest={handleDeleteFolderRequest}
+                onReveal={handleRevealFolderInExplorer}
+                onRescan={handleFolderRescanRequest}
+                onDragStart={handleFolderDragStart}
+                onDragOver={handleFolderDragOver}
+                onDrop={handleFolderDrop}
+                onDragEnd={handleFolderDragEnd}
+              />
 
-  return (
-    <>
-      <aside className="w-full h-full border-r border-border bg-sidebar flex flex-col">
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="p-4 space-y-6">
-            {/* Views */}
-            <div className="space-y-1" data-tour="sidebar-views">
-              {views.map((view) => {
-                const Icon = view.icon;
-                return (
-                  <Button
-                    key={view.id}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
-                      activeView === view.id &&
-                        selectedCategoryId === null &&
-                        "bg-sidebar-accent text-foreground",
-                    )}
-                    onClick={() => {
-                      onViewChange(view.id);
-                      onCategorySelect(null);
-                    }}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {t(`sidebar.views.${view.id}`)}
-                  </Button>
-                );
-              })}
+              <SidebarCategoriesSection
+                categories={categories}
+                selectedCategoryId={selectedCategoryId}
+                draggingCategoryId={draggingCategoryId}
+                categoryDropTargetId={categoryDropTargetId}
+                onOpenNewCategory={handleOpenNewCategoryDialog}
+                onSelect={onCategorySelect}
+                onRename={onCategoryRename}
+                onDelete={onCategoryDelete}
+                onAddByPrompt={handleOpenAddByPromptDialog}
+                onRandomRefresh={onRandomRefresh}
+                onDragStart={handleCategoryDragStart}
+                onDragOver={handleCategoryDragOver}
+                onDrop={handleCategoryDrop}
+                onDragEnd={handleCategoryDragEnd}
+              />
             </div>
+          </ScrollArea>
+        </aside>
 
-            <SidebarFoldersSection
-              folders={folders}
-              selectedFolderIds={selectedFolderIds}
-              scanningFolderIds={scanningFolderIds}
-              draggingFolderId={draggingFolderId}
-              folderDropTargetId={folderDropTargetId}
-              scanning={scanning}
-              isAnalyzing={isAnalyzing}
-              onOpenNewFolder={handleOpenFolderDialog}
-              onToggle={onFolderToggle}
-              onRename={handleFolderRename}
-              onDeleteRequest={handleDeleteFolderRequest}
-              onReveal={handleRevealFolderInExplorer}
-              onRescan={handleFolderRescanRequest}
-              onDragStart={handleFolderDragStart}
-              onDragOver={handleFolderDragOver}
-              onDrop={handleFolderDrop}
-              onDragEnd={handleFolderDragEnd}
-            />
+        <SidebarNewCategoryDialog
+          open={isNewCategoryOpen}
+          onClose={handleCloseNewCategoryDialog}
+          onCreate={handleCreateCategory}
+        />
 
-            <SidebarCategoriesSection
-              categories={categories}
-              selectedCategoryId={selectedCategoryId}
-              draggingCategoryId={draggingCategoryId}
-              categoryDropTargetId={categoryDropTargetId}
-              onOpenNewCategory={handleOpenNewCategoryDialog}
-              onSelect={onCategorySelect}
-              onRename={onCategoryRename}
-              onDelete={onCategoryDelete}
-              onAddByPrompt={handleOpenAddByPromptDialog}
-              onRandomRefresh={onRandomRefresh}
-              onDragStart={handleCategoryDragStart}
-              onDragOver={handleCategoryDragOver}
-              onDrop={handleCategoryDrop}
-              onDragEnd={handleCategoryDragEnd}
-            />
-          </div>
-        </ScrollArea>
-      </aside>
+        <SidebarAddByPromptDialog
+          key={addByPromptCategoryId ?? "closed"}
+          categoryId={addByPromptCategoryId}
+          onClose={handleCloseAddByPromptDialog}
+          onSubmit={handleAddByPromptSubmit}
+        />
 
-      <SidebarNewCategoryDialog
-        open={isNewCategoryOpen}
-        onClose={handleCloseNewCategoryDialog}
-        onCreate={handleCreateCategory}
-      />
+        <DuplicateResolutionDialog {...duplicateResolutionDialog} />
 
-      <SidebarAddByPromptDialog
-        key={addByPromptCategoryId ?? "closed"}
-        categoryId={addByPromptCategoryId}
-        onClose={handleCloseAddByPromptDialog}
-        onSubmit={handleAddByPromptSubmit}
-      />
-
-      <DuplicateResolutionDialog {...duplicateResolutionDialog} />
-
-      <Dialog
-        open={deleteFolderTarget !== null}
-        onOpenChange={handleDeleteFolderDialogOpenChange}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("sidebar.dialog.deleteFolderTitle")}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {t("sidebar.dialog.deleteFolderDescription", {
-              name: deleteFolderTarget?.name ?? "",
-            })}
-          </p>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost" disabled={deleteFolderPending}>
-                {t("common.cancel")}
+        <Dialog
+          open={deleteFolderTarget !== null}
+          onOpenChange={handleDeleteFolderDialogOpenChange}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("sidebar.dialog.deleteFolderTitle")}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {t("sidebar.dialog.deleteFolderDescription", {
+                name: deleteFolderTarget?.name ?? "",
+              })}
+            </p>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost" disabled={deleteFolderPending}>
+                  {t("common.cancel")}
+                </Button>
+              </DialogClose>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDeleteFolder}
+                disabled={deleteFolderPending}
+              >
+                {deleteFolderPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : null}
+                {deleteFolderPending
+                  ? t("sidebar.dialog.deleting")
+                  : t("common.delete")}
               </Button>
-            </DialogClose>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDeleteFolder}
-              disabled={deleteFolderPending}
-            >
-              {deleteFolderPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-              ) : null}
-              {deleteFolderPending
-                ? t("sidebar.dialog.deleting")
-                : t("common.delete")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      <SidebarNewFolderDialog
-        openRequest={folderOpenRequest}
-        closeRequest={folderAddResolvedSeq}
-        onSubmit={handleFolderAddWithDuplicateCheck}
-      />
-    </>
+        <SidebarNewFolderDialog
+          openRequest={folderOpenRequest}
+          closeRequest={folderAddResolvedSeq}
+          onSubmit={handleFolderAddWithDuplicateCheck}
+        />
+      </>
     );
   }),
 );

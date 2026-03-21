@@ -8,14 +8,10 @@ function renderSidebarFolderActions(options?: {
   scanning?: boolean;
   runScanResult?: boolean;
 }) {
-  const runScan = vi
-    .fn()
-    .mockResolvedValue(options?.runScanResult ?? true);
+  const runScan = vi.fn().mockResolvedValue(options?.runScanResult ?? true);
   const scheduleAnalysis = vi.fn();
   const schedulePageRefresh = vi.fn();
   const scanningRef = { current: options?.scanning ?? false };
-  const incrementFolderCount = vi.fn();
-  const decrementFolderCount = vi.fn();
 
   const { result } = renderHook(() => {
     const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(
@@ -44,8 +40,6 @@ function renderSidebarFolderActions(options?: {
       isAnalyzing: options?.isAnalyzing ?? false,
       addSelectedFolder,
       removeSelectedFolder,
-      incrementFolderCount,
-      decrementFolderCount,
       runScan,
       scanningRef,
       scheduleAnalysis,
@@ -67,20 +61,13 @@ function renderSidebarFolderActions(options?: {
     runScan,
     scheduleAnalysis,
     schedulePageRefresh,
-    incrementFolderCount,
-    decrementFolderCount,
   };
 }
 
 describe("useSidebarFolderActions", () => {
   it("adds a folder into selection and clears rollback state after a successful scan", async () => {
-    const {
-      result,
-      runScan,
-      scheduleAnalysis,
-      schedulePageRefresh,
-      incrementFolderCount,
-    } = renderSidebarFolderActions();
+    const { result, runScan, scheduleAnalysis, schedulePageRefresh } =
+      renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(7);
@@ -90,7 +77,6 @@ describe("useSidebarFolderActions", () => {
     expect(result.current.activeScanFolderIds.has(7)).toBe(true);
     expect(result.current.rollbackFolderIds.has(7)).toBe(true);
     expect(schedulePageRefresh).toHaveBeenCalledWith(0);
-    expect(incrementFolderCount).toHaveBeenCalledTimes(1);
     expect(runScan).toHaveBeenCalledTimes(1);
 
     await waitFor(() => expect(scheduleAnalysis).toHaveBeenCalledWith(0));
@@ -98,19 +84,16 @@ describe("useSidebarFolderActions", () => {
   });
 
   it("removes folders from selection and scan state when cancelled or removed", async () => {
-    const {
-      result,
-      runScan,
-      scheduleAnalysis,
-      schedulePageRefresh,
-      decrementFolderCount,
-    } = renderSidebarFolderActions();
+    const { result, runScan, scheduleAnalysis, schedulePageRefresh } =
+      renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(9);
     });
 
-    await waitFor(() => expect(result.current.selectedFolderIds.has(9)).toBe(true));
+    await waitFor(() =>
+      expect(result.current.selectedFolderIds.has(9)).toBe(true),
+    );
 
     act(() => {
       result.current.handleFolderCancelled(9);
@@ -121,7 +104,6 @@ describe("useSidebarFolderActions", () => {
     expect(result.current.rollbackFolderIds.has(9)).toBe(false);
     expect(schedulePageRefresh).toHaveBeenCalledWith(0);
     expect(scheduleAnalysis).toHaveBeenCalledWith(500);
-    expect(decrementFolderCount).toHaveBeenCalledTimes(1);
 
     act(() => {
       result.current.handleFolderAdded(11);
@@ -145,7 +127,6 @@ describe("useSidebarFolderActions", () => {
     expect(runScan).toHaveBeenCalledTimes(1);
     expect(schedulePageRefresh).toHaveBeenCalledWith(0);
     expect(scheduleAnalysis).toHaveBeenCalledWith(500);
-    expect(decrementFolderCount).toHaveBeenCalledTimes(2);
   });
 
   it("rescans only when neither scanning nor analysis is already running", async () => {

@@ -5,13 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { Sidebar, type SidebarHandle } from "@/components/sidebar";
 import type { Category, Folder } from "@preload/index.d";
 
-const useFoldersMock = vi.fn();
 const useDuplicateResolutionDialogMock = vi.fn();
 const useFolderDialogMock = vi.fn();
-
-vi.mock("@/hooks/useFolders", () => ({
-  useFolders: () => useFoldersMock(),
-}));
 
 vi.mock("@/hooks/useDuplicateResolutionDialog", () => ({
   useDuplicateResolutionDialog: () => useDuplicateResolutionDialogMock(),
@@ -136,9 +131,7 @@ type SidebarOverrides = Partial<
   categoryActions?: Partial<ComponentProps<typeof Sidebar>["categoryActions"]>;
 };
 
-function renderSidebar(
-  overrides: SidebarOverrides = {},
-) {
+function renderSidebar(overrides: SidebarOverrides = {}) {
   const ref = React.createRef<SidebarHandle>();
   const baseProps: ComponentProps<typeof Sidebar> = {
     view: {
@@ -146,12 +139,17 @@ function renderSidebar(
       onViewChange: vi.fn(),
     },
     folderState: {
+      folders: [createFolder(1), createFolder(2)],
       selectedFolderIds: new Set(),
       rollbackRequest: null,
       scanningFolderIds: new Set(),
       scanning: false,
     },
     folderActions: {
+      createFolder: vi.fn(),
+      deleteFolder: vi.fn().mockResolvedValue(undefined),
+      renameFolder: vi.fn().mockResolvedValue(undefined),
+      reorderFolders: vi.fn(),
       onFolderToggle: vi.fn(),
       onFolderRemoved: vi.fn(),
       onFolderAdded: vi.fn(),
@@ -207,26 +205,14 @@ function renderSidebar(
 
 describe("Sidebar", () => {
   beforeEach(() => {
-    const folders = [createFolder(1), createFolder(2)];
-
-    useFoldersMock.mockReset();
-    useFoldersMock.mockReturnValue({
-      folders,
-      hasLoaded: true,
-      addFolder: vi.fn(),
-      removeFolder: vi.fn().mockResolvedValue(undefined),
-      renameFolder: vi.fn().mockResolvedValue(undefined),
-      reorderFolders: vi.fn(),
-    });
-
     useDuplicateResolutionDialogMock.mockReset();
     useDuplicateResolutionDialogMock.mockReturnValue({
       dialog: createDuplicateDialogModel(),
       folderAddResolvedSeq: 0,
       handleFolderAddWithDuplicateCheck: vi.fn().mockResolvedValue(undefined),
-      handleFolderRescanWithDuplicateCheck: vi.fn().mockResolvedValue(
-        undefined,
-      ),
+      handleFolderRescanWithDuplicateCheck: vi
+        .fn()
+        .mockResolvedValue(undefined),
     });
 
     useFolderDialogMock.mockReset();
@@ -234,20 +220,12 @@ describe("Sidebar", () => {
   });
 
   it("processes rollback requests once per request id", async () => {
-    const removeFolder = vi.fn().mockResolvedValue(undefined);
+    const deleteFolder = vi.fn().mockResolvedValue(undefined);
     const onFolderCancelled = vi.fn();
-
-    useFoldersMock.mockReturnValue({
-      folders: [createFolder(1), createFolder(2)],
-      hasLoaded: true,
-      addFolder: vi.fn(),
-      removeFolder,
-      renameFolder: vi.fn().mockResolvedValue(undefined),
-      reorderFolders: vi.fn(),
-    });
 
     const { rerender, props } = renderSidebar({
       folderActions: {
+        deleteFolder,
         onFolderCancelled,
       },
       folderState: {
@@ -255,7 +233,7 @@ describe("Sidebar", () => {
       },
     });
 
-    await waitFor(() => expect(removeFolder).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(deleteFolder).toHaveBeenCalledTimes(2));
     expect(onFolderCancelled).toHaveBeenCalledWith(1);
     expect(onFolderCancelled).toHaveBeenCalledWith(2);
 
@@ -273,7 +251,7 @@ describe("Sidebar", () => {
       />,
     );
 
-    await waitFor(() => expect(removeFolder).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(deleteFolder).toHaveBeenCalledTimes(2));
 
     rerender(
       <Sidebar
@@ -289,7 +267,7 @@ describe("Sidebar", () => {
       />,
     );
 
-    await waitFor(() => expect(removeFolder).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(deleteFolder).toHaveBeenCalledTimes(3));
     expect(onFolderCancelled).toHaveBeenCalledTimes(3);
   });
 
@@ -368,14 +346,6 @@ describe("Sidebar", () => {
       .fn()
       .mockResolvedValue(undefined);
 
-    useFoldersMock.mockReturnValue({
-      folders: [folder],
-      hasLoaded: true,
-      addFolder: vi.fn(),
-      removeFolder: vi.fn().mockResolvedValue(undefined),
-      renameFolder: vi.fn().mockResolvedValue(undefined),
-      reorderFolders: vi.fn(),
-    });
     useDuplicateResolutionDialogMock.mockReturnValue({
       dialog: createDuplicateDialogModel(),
       folderAddResolvedSeq: 0,
@@ -383,7 +353,11 @@ describe("Sidebar", () => {
       handleFolderRescanWithDuplicateCheck,
     });
 
-    renderSidebar();
+    renderSidebar({
+      folderState: {
+        folders: [folder],
+      },
+    });
 
     await user.click(screen.getByRole("button", { name: "Rescan Folder" }));
 

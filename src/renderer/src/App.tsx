@@ -37,7 +37,7 @@ import { useGalleryImages } from "@/hooks/useGalleryImages";
 import { useScanning } from "@/hooks/useScanning";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { useCategories } from "@/hooks/useCategories";
-import { useSidebarFolders } from "@/hooks/useSidebarFolders";
+import { useFolderController } from "@/hooks/useFolderController";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import { useSimilarImages } from "@/hooks/useSimilarImages";
 import type { ImageData } from "@/components/image-card";
@@ -96,14 +96,17 @@ export default function App({ initialFolderCount = null }: AppProps) {
     phase: "queued" | "loading";
   } | null>(null);
   const {
+    folders,
     selectedFolderIds,
     toggleFolder,
     addSelectedFolder,
     removeSelectedFolder,
+    addFolder,
+    removeFolder,
+    renameFolder,
+    reorderFolders,
     folderCount,
-    incrementFolderCount,
-    decrementFolderCount,
-  } = useSidebarFolders(initialFolderCount);
+  } = useFolderController(initialFolderCount);
   const [activeView, setActiveView] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
   const [sortBy, setSortBy] = useState<
@@ -457,8 +460,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     isAnalyzing,
     addSelectedFolder,
     removeSelectedFolder,
-    incrementFolderCount,
-    decrementFolderCount,
     runScan,
     scanningRef,
     scheduleAnalysis,
@@ -887,6 +888,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
 
   const sidebarFolderState = useMemo(
     () => ({
+      folders,
       selectedFolderIds,
       rollbackRequest: folderRollbackRequest,
       scanningFolderIds: activeScanFolderIds,
@@ -894,6 +896,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     }),
     [
       activeScanFolderIds,
+      folders,
       folderRollbackRequest,
       scanning,
       selectedFolderIds,
@@ -902,6 +905,10 @@ export default function App({ initialFolderCount = null }: AppProps) {
 
   const sidebarFolderActions = useMemo(
     () => ({
+      createFolder: addFolder,
+      deleteFolder: removeFolder,
+      renameFolder,
+      reorderFolders,
       onFolderToggle: toggleFolder,
       onFolderRemoved: handleFolderRemoved,
       onFolderAdded: handleFolderAdded,
@@ -909,10 +916,14 @@ export default function App({ initialFolderCount = null }: AppProps) {
       onFolderRescan: handleFolderRescan,
     }),
     [
+      addFolder,
       handleFolderAdded,
       handleFolderCancelled,
       handleFolderRemoved,
       handleFolderRescan,
+      removeFolder,
+      renameFolder,
+      reorderFolders,
       toggleFolder,
     ],
   );
