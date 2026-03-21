@@ -550,13 +550,13 @@ function Checkbox({
 }) {
   return (
     <label
+      onClick={() => !disabled && onChange(!checked)}
       className={cn(
         "flex items-center gap-2.5",
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer group",
       )}
     >
       <div
-        onClick={() => !disabled && onChange(!checked)}
         className={cn(
           "h-4 w-4 rounded border transition-all flex items-center justify-center shrink-0",
           checked && !disabled
@@ -577,12 +577,7 @@ function Checkbox({
           </svg>
         )}
       </div>
-      <span
-        className="text-sm text-foreground/80 select-none"
-        onClick={() => !disabled && onChange(!checked)}
-      >
-        {label}
-      </span>
+      <span className="text-sm text-foreground/80 select-none">{label}</span>
     </label>
   );
 }
@@ -832,6 +827,10 @@ function DeferredNumberInput({
   const [draftValue, setDraftValue] = useState<string | null>(null);
   const inputValue = draftValue ?? String(value);
 
+  useEffect(() => {
+    setDraftValue(null);
+  }, [value]);
+
   const handleCommit = useCallback(() => {
     const parsed = Number(inputValue);
     if (!Number.isFinite(parsed)) {
@@ -974,6 +973,11 @@ const AdvancedSeedSummary = memo(function AdvancedSeedSummary({
   const [seedFocused, setSeedFocused] = useState(false);
   const displayedSeed = draftSeed ?? seedInput;
 
+  useEffect(() => {
+    setDraftSeed(null);
+    setSeedFocused(false);
+  }, [seedInput]);
+
   const commitSeedInput = useCallback(
     (nextValue = displayedSeed) => {
       setSeedFocused(false);
@@ -1035,6 +1039,10 @@ const AdvancedSliderControl = memo(function AdvancedSliderControl({
   const [draftValue, setDraftValue] = useState<number | null>(null);
   const sliderValue = draftValue ?? value;
 
+  useEffect(() => {
+    setDraftValue(null);
+  }, [value]);
+
   const commitValue = useCallback(
     (nextValue: number) => {
       setDraftValue(null);
@@ -1092,6 +1100,10 @@ const AdvancedSeedControl = memo(function AdvancedSeedControl({
   const { t } = useTranslation();
   const [draftSeed, setDraftSeed] = useState<string | null>(null);
   const displayedSeed = draftSeed ?? seedInput;
+
+  useEffect(() => {
+    setDraftSeed(null);
+  }, [seedInput]);
 
   const commitSeedInput = useCallback(
     (nextValue = displayedSeed) => {
@@ -4697,8 +4709,20 @@ export const GenerationView = memo(
       }
     }, [dropItem, getDropItemData, loadingAction, preciseRef, replaceDropItem]);
 
+    const persistImportChecks = useCallback((nextChecks: ImportChecks) => {
+      try {
+        localStorage.setItem(
+          "konomi-import-checks",
+          JSON.stringify(nextChecks),
+        );
+      } catch {
+        /* ignore */
+      }
+    }, []);
+
     const handleImportMetadata = useCallback(async () => {
       if (!dropItem) return;
+      persistImportChecks(importChecks);
       setImporting(true);
       setImportError(null);
       try {
@@ -4782,6 +4806,7 @@ export const GenerationView = memo(
       setHeight,
       setSeedInput,
       replaceDropItem,
+      persistImportChecks,
       t,
     ]);
 
@@ -4790,7 +4815,6 @@ export const GenerationView = memo(
         const next = { ...prev, [key]: !prev[key] };
         if (key === "characters" && !next.characters)
           next.charactersAppend = false;
-        localStorage.setItem("konomi-import-checks", JSON.stringify(next));
         return next;
       });
     }, []);

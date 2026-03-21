@@ -47,6 +47,18 @@ function getAutoGenToggleButton(): HTMLButtonElement {
   return toggleButton;
 }
 
+function getAdvancedParamsToggleButton(): HTMLButtonElement {
+  const toggleButton = Array.from(document.querySelectorAll("button")).find(
+    (button) => button.querySelector("svg.lucide-chevron-up"),
+  );
+
+  if (!(toggleButton instanceof HTMLButtonElement)) {
+    throw new Error("Failed to find advanced params toggle button");
+  }
+
+  return toggleButton;
+}
+
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -75,6 +87,233 @@ describe("GenerationView", () => {
     expect(
       screen.getByRole("button", { name: "Import Metadata" }),
     ).toBeEnabled();
+  });
+
+  it("refreshes imported seed and numeric displays on repeated metadata imports", async () => {
+    const user = userEvent.setup();
+    const firstImport = createGalleryImage({
+      id: "image-meta-1",
+      path: "C:\\imports\\meta-1.png",
+      src: "konomi://local/C%3A%2Fimports%2Fmeta-1.png",
+    });
+    const secondImport = createGalleryImage({
+      id: "image-meta-2",
+      path: "C:\\imports\\meta-2.png",
+      src: "konomi://local/C%3A%2Fimports%2Fmeta-2.png",
+    });
+
+    localStorage.setItem(
+      "konomi-import-checks",
+      JSON.stringify({
+        prompt: true,
+        negativePrompt: true,
+        characters: false,
+        charactersAppend: false,
+        settings: true,
+        seed: true,
+      }),
+    );
+
+    preloadMocks.image.readNaiMeta
+      .mockResolvedValueOnce({
+        source: "nai",
+        prompt: "first metadata prompt",
+        negativePrompt: "",
+        characterPrompts: [],
+        characterNegativePrompts: [],
+        characterPositions: [],
+        seed: 111,
+        model: "nai-diffusion-4-5-full",
+        sampler: "k_euler_ancestral",
+        steps: 24,
+        cfgScale: 6,
+        cfgRescale: 0.2,
+        noiseSchedule: "karras",
+        varietyPlus: false,
+        width: 640,
+        height: 960,
+        raw: {},
+      })
+      .mockResolvedValueOnce({
+        source: "nai",
+        prompt: "second metadata prompt",
+        negativePrompt: "",
+        characterPrompts: [],
+        characterNegativePrompts: [],
+        characterPositions: [],
+        seed: 222,
+        model: "nai-diffusion-4-5-full",
+        sampler: "k_euler_ancestral",
+        steps: 30,
+        cfgScale: 7,
+        cfgRescale: 0.35,
+        noiseSchedule: "native",
+        varietyPlus: true,
+        width: 768,
+        height: 1024,
+        raw: {},
+      });
+
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.importImage(firstImport);
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Import Metadata" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Image Actions")).not.toBeInTheDocument(),
+    );
+
+    const seedSummary = screen.getByPlaceholderText("-");
+    const stepsSummary = screen.getByDisplayValue("24");
+    const widthInput = screen.getByDisplayValue("640");
+
+    expect(seedSummary).toHaveValue("111");
+    expect(stepsSummary).toHaveValue(24);
+    expect(widthInput).toHaveValue(640);
+
+    fireEvent.mouseDown(seedSummary);
+    fireEvent.change(stepsSummary, { target: { value: "999" } });
+    fireEvent.change(widthInput, { target: { value: "1234" } });
+
+    expect(seedSummary).toHaveValue("");
+    expect(stepsSummary).toHaveValue(999);
+    expect(widthInput).toHaveValue(1234);
+
+    act(() => {
+      ref.current?.importImage(secondImport);
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Import Metadata" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Image Actions")).not.toBeInTheDocument(),
+    );
+
+    expect(screen.getByPlaceholderText("-")).toHaveValue("222");
+    expect(screen.getByDisplayValue("30")).toHaveValue(30);
+    expect(screen.getByDisplayValue("768")).toHaveValue(768);
+  });
+
+  it("refreshes expanded advanced draft controls on repeated metadata imports", async () => {
+    const user = userEvent.setup();
+    const firstImport = createGalleryImage({
+      id: "image-advanced-1",
+      path: "C:\\imports\\advanced-1.png",
+      src: "konomi://local/C%3A%2Fimports%2Fadvanced-1.png",
+    });
+    const secondImport = createGalleryImage({
+      id: "image-advanced-2",
+      path: "C:\\imports\\advanced-2.png",
+      src: "konomi://local/C%3A%2Fimports%2Fadvanced-2.png",
+    });
+
+    localStorage.setItem(
+      "konomi-import-checks",
+      JSON.stringify({
+        prompt: true,
+        negativePrompt: true,
+        characters: false,
+        charactersAppend: false,
+        settings: true,
+        seed: true,
+      }),
+    );
+
+    preloadMocks.image.readNaiMeta
+      .mockResolvedValueOnce({
+        source: "nai",
+        prompt: "advanced metadata prompt 1",
+        negativePrompt: "",
+        characterPrompts: [],
+        characterNegativePrompts: [],
+        characterPositions: [],
+        seed: 333,
+        model: "nai-diffusion-4-5-full",
+        sampler: "k_euler_ancestral",
+        steps: 26,
+        cfgScale: 5.5,
+        cfgRescale: 0.12,
+        noiseSchedule: "karras",
+        varietyPlus: false,
+        width: 832,
+        height: 1216,
+        raw: {},
+      })
+      .mockResolvedValueOnce({
+        source: "nai",
+        prompt: "advanced metadata prompt 2",
+        negativePrompt: "",
+        characterPrompts: [],
+        characterNegativePrompts: [],
+        characterPositions: [],
+        seed: 444,
+        model: "nai-diffusion-4-5-full",
+        sampler: "k_euler_ancestral",
+        steps: 32,
+        cfgScale: 7.5,
+        cfgRescale: 0.48,
+        noiseSchedule: "native",
+        varietyPlus: true,
+        width: 1024,
+        height: 1024,
+        raw: {},
+      });
+
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.importImage(firstImport);
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Import Metadata" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Image Actions")).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(getAdvancedParamsToggleButton());
+
+    const detailedSeed = screen.getByPlaceholderText("Random");
+    const rescaleSection = screen.getByText("Prompt Guidance Rescale")
+      .parentElement?.parentElement;
+    const rescaleSlider = rescaleSection?.querySelector('input[type="range"]');
+
+    if (!(rescaleSlider instanceof HTMLInputElement)) {
+      throw new Error("Failed to find prompt guidance rescale slider");
+    }
+
+    expect(detailedSeed).toHaveValue(333);
+    expect(screen.getByText("0.12")).toBeInTheDocument();
+
+    fireEvent.change(detailedSeed, { target: { value: "9999" } });
+    fireEvent.change(rescaleSlider, { target: { value: "0.91" } });
+
+    expect(detailedSeed).toHaveValue(9999);
+    expect(screen.getByText("0.91")).toBeInTheDocument();
+
+    act(() => {
+      ref.current?.importImage(secondImport);
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Import Metadata" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText("Image Actions")).not.toBeInTheDocument(),
+    );
+
+    expect(screen.getByPlaceholderText("Random")).toHaveValue(444);
+    expect(screen.getByText("0.48")).toBeInTheDocument();
   });
 
   it("shows an imported source image in the reference panel", async () => {
