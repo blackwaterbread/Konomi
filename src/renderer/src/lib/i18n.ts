@@ -18,6 +18,8 @@ void i18n.use(initReactI18next).init({
   resources,
   lng: initialLanguage,
   fallbackLng: "en",
+  // 이거 안꺼놓으면 자꾸 Locize 광고 나옴.
+  showSupportNotice: false,
   interpolation: {
     escapeValue: false,
   },
