@@ -33,7 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettings, type Settings } from "@/hooks/useSettings";
 import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
-import { useGalleryImages } from "@/hooks/useGalleryImages";
+import { useGalleryController } from "@/hooks/useGalleryController";
 import { useScanning } from "@/hooks/useScanning";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { useBrowseScope } from "@/hooks/useBrowseScope";
@@ -41,10 +41,8 @@ import { useFolderController } from "@/hooks/useFolderController";
 import { useImageActions } from "@/hooks/useImageActions";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import { useSimilarImages } from "@/hooks/useSimilarImages";
-import type { ImageListQuery } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
-import { rowToImageData } from "@/lib/image-utils";
 import { applyAppLanguagePreference } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 
@@ -89,11 +87,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { t } = useTranslation();
   const { outputFolder, setOutputFolder } = useNaiGenSettings();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [galleryOverlayState, setGalleryOverlayState] = useState<{
-    reason: "page" | "search";
-    phase: "queued" | "loading";
-  } | null>(null);
   const {
     folders,
     selectedFolderIds,
@@ -106,10 +99,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     reorderFolders,
     folderCount,
   } = useFolderController(initialFolderCount);
-  const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
-  const [sortBy, setSortBy] = useState<
-    "recent" | "oldest" | "favorites" | "name"
-  >("recent");
   const [activePanel, setActivePanel] = useState<
     "gallery" | "generator" | "settings"
   >("gallery");
@@ -207,8 +196,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const galleryOverlayEnterRafRef = useRef<number | null>(null);
-  const galleryOverlayActionRafRef = useRef<number | null>(null);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
   const sidebarRef = useRef<SidebarHandle | null>(null);
   const {
@@ -238,121 +225,25 @@ export default function App({ initialFolderCount = null }: AppProps) {
         .map((f) => f.value),
     [advancedFilters],
   );
-  const listBaseQuery = useMemo<Omit<ImageListQuery, "page">>(
-    () => ({
-      pageSize: settings.pageSize,
-      folderIds: [...selectedFolderIds].sort((a, b) => a - b),
-      searchQuery,
-      sortBy,
-      onlyRecent: queryFragment.onlyRecent,
-      recentDays: settings.recentDays,
-      customCategoryId: queryFragment.customCategoryId,
-      builtinCategory: queryFragment.builtinCategory,
-      randomSeed: queryFragment.randomSeed,
-      resolutionFilters,
-      modelFilters,
-    }),
-    [
-      settings.pageSize,
-      selectedFolderIds,
-      searchQuery,
-      sortBy,
-      queryFragment.onlyRecent,
-      settings.recentDays,
-      queryFragment.customCategoryId,
-      queryFragment.builtinCategory,
-      queryFragment.randomSeed,
-      resolutionFilters,
-      modelFilters,
-    ],
-  );
-
   const {
     images,
     setImages,
-    totalImageCount,
-    galleryPage,
-    setGalleryPage,
-    galleryTotalPages,
-    hasLoadedOnce,
-    isLoading: isGalleryLoading,
+    sortBy,
+    searchQuery,
+    handleSearchChange,
     schedulePageRefresh,
-  } = useGalleryImages(listBaseQuery);
-  const gallerySelectionScopeKey = useMemo(
-    () =>
-      JSON.stringify({
-        folderIds: [...selectedFolderIds].sort((a, b) => a - b),
-        searchQuery,
-        onlyRecent: queryFragment.onlyRecent,
-        recentDays: settings.recentDays,
-        customCategoryId: queryFragment.customCategoryId,
-        builtinCategory: queryFragment.builtinCategory,
-        randomSeed: queryFragment.randomSeed,
-        resolutionFilters,
-        modelFilters,
-        totalImageCount,
-      }),
-    [
-      modelFilters,
-      queryFragment.builtinCategory,
-      queryFragment.customCategoryId,
-      queryFragment.onlyRecent,
-      queryFragment.randomSeed,
-      resolutionFilters,
-      searchQuery,
-      selectedFolderIds,
-      settings.recentDays,
-      totalImageCount,
-    ],
-  );
-
-  const clearPendingGalleryOverlayFrames = useCallback(() => {
-    if (galleryOverlayEnterRafRef.current !== null) {
-      cancelAnimationFrame(galleryOverlayEnterRafRef.current);
-      galleryOverlayEnterRafRef.current = null;
-    }
-    if (galleryOverlayActionRafRef.current !== null) {
-      cancelAnimationFrame(galleryOverlayActionRafRef.current);
-      galleryOverlayActionRafRef.current = null;
-    }
-  }, []);
-
-  const queueGalleryBlockingAction = useCallback(
-    (reason: "page" | "search", action: () => void) => {
-      clearPendingGalleryOverlayFrames();
-      setGalleryOverlayState({ reason, phase: "queued" });
-      galleryOverlayEnterRafRef.current = requestAnimationFrame(() => {
-        galleryOverlayEnterRafRef.current = null;
-        galleryOverlayActionRafRef.current = requestAnimationFrame(() => {
-          galleryOverlayActionRafRef.current = null;
-          action();
-        });
-      });
-    },
-    [clearPendingGalleryOverlayFrames],
-  );
-
-  useEffect(
-    () => () => {
-      clearPendingGalleryOverlayFrames();
-    },
-    [clearPendingGalleryOverlayFrames],
-  );
-
-  useEffect(() => {
-    if (!galleryOverlayState) return;
-    if (isGalleryLoading) {
-      if (galleryOverlayState.phase !== "loading") {
-        setGalleryOverlayState((prev) =>
-          prev ? { ...prev, phase: "loading" } : prev,
-        );
-      }
-      return;
-    }
-    if (galleryOverlayState.phase === "loading") {
-      setGalleryOverlayState(null);
-    }
-  }, [galleryOverlayState, isGalleryLoading]);
+    imageGalleryState,
+    imageGalleryPagination,
+    galleryCommands,
+  } = useGalleryController({
+    pageSize: settings.pageSize,
+    recentDays: settings.recentDays,
+    selectedFolderIds,
+    queryFragment,
+    resolutionFilters,
+    modelFilters,
+    folderCount,
+  });
 
   const loadSearchPresetStats = useCallback(async () => {
     try {
@@ -627,45 +518,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     }
   }, []);
 
-  const handleSearchChange = useCallback(
-    (nextQuery: string) => {
-      if (nextQuery === searchQuery) return;
-      queueGalleryBlockingAction("search", () => {
-        setGalleryPage(1);
-        setSearchQuery(nextQuery);
-      });
-    },
-    [queueGalleryBlockingAction, searchQuery, setGalleryPage],
-  );
-
-  const handleGalleryPageChange = useCallback(
-    (nextPage: number) => {
-      if (nextPage === galleryPage) return;
-      queueGalleryBlockingAction("page", () => {
-        setGalleryPage(nextPage);
-      });
-    },
-    [galleryPage, queueGalleryBlockingAction, setGalleryPage],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    handleSearchChange("");
-  }, [handleSearchChange]);
-
-  const handleLoadAllSelectableImages = useCallback(async () => {
-    try {
-      const rows = await window.image.listMatching(listBaseQuery);
-      return rows.map(rowToImageData);
-    } catch (e: unknown) {
-      toast.error(
-        t("error.imageListLoadFailed", {
-          message: e instanceof Error ? e.message : String(e),
-        }),
-      );
-      throw e;
-    }
-  }, [listBaseQuery, t]);
-
   const handleHeaderPanelChange = useCallback(
     (panel: "gallery" | "generator" | "settings") => {
       void handlePanelChange(panel);
@@ -754,57 +606,13 @@ export default function App({ initialFolderCount = null }: AppProps) {
     [categoryCommands, schedulePageRefresh],
   );
 
-  const imageGalleryState = useMemo(
-    () => ({
-      images,
-      viewMode,
-      sortBy,
-      totalCount: totalImageCount,
-      searchQuery: searchQuery || undefined,
-      hasFolders: folderCount === null || folderCount > 0,
-      isInitializing: !hasLoadedOnce && isGalleryLoading,
-      isRefreshing: galleryOverlayState !== null,
-      selectionScopeKey: gallerySelectionScopeKey,
-    }),
-    [
-      folderCount,
-      galleryOverlayState,
-      gallerySelectionScopeKey,
-      hasLoadedOnce,
-      images,
-      isGalleryLoading,
-      searchQuery,
-      sortBy,
-      totalImageCount,
-      viewMode,
-    ],
-  );
-
   const imageGalleryActions = useMemo(
     () => ({
-      onViewModeChange: setViewMode,
-      onSortChange: setSortBy,
+      ...galleryCommands,
       ...imageActions,
-      onClearSearch: handleClearSearch,
       onAddFolder: () => sidebarRef.current?.openFolderDialog(),
-      onLoadAllSelectableImages: handleLoadAllSelectableImages,
     }),
-    [handleClearSearch, handleLoadAllSelectableImages, imageActions],
-  );
-
-  const imageGalleryPagination = useMemo(
-    () => ({
-      pageSize: settings.pageSize,
-      page: galleryPage,
-      totalPages: galleryTotalPages,
-      onPageChange: handleGalleryPageChange,
-    }),
-    [
-      galleryPage,
-      galleryTotalPages,
-      handleGalleryPageChange,
-      settings.pageSize,
-    ],
+    [galleryCommands, imageActions],
   );
 
   return (
