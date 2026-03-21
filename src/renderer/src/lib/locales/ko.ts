@@ -402,6 +402,9 @@ const ko = {
       prompt: "Prompt",
       negativePrompt: "Negative Prompt",
     },
+    promptDisplay: {
+      rawText: "원문",
+    },
     character: {
       duplicatePosition: "동일한 포지션을 가진 캐릭터가 있습니다",
       empty: "캐릭터 없음 — + 버튼으로 추가",

@@ -403,6 +403,9 @@ const en = {
       prompt: "Prompt",
       negativePrompt: "Negative Prompt",
     },
+    promptDisplay: {
+      rawText: "Raw",
+    },
     character: {
       duplicatePosition: "Some characters share the same position",
       empty: "No characters yet — add one with the + button",

@@ -55,6 +55,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
 import novelAiLogomarkAlt from "@/assets/images/novelai_logomark_alt.png";
 import novelAiLogomarkDark from "@/assets/images/novelai_logomark_dark.png";
 
@@ -1642,6 +1643,7 @@ const PromptSection = memo(function PromptSection({
   promptGroups,
 }: PromptSectionProps) {
   const { t } = useTranslation();
+  const [showRawPromptText, setShowRawPromptText] = useState(false);
   const handlePromptChange = useCallback(
     (nextValue: string) => {
       if (promptInputMode === "prompt") {
@@ -1656,44 +1658,55 @@ const PromptSection = memo(function PromptSection({
   return (
     <div data-tour="gen-prompt-input">
       <SectionHeader label={t("generation.sections.prompt")} />
-      <div
-        className="mb-2 inline-flex items-center gap-1 rounded-lg border border-border/60 bg-secondary/30 p-1"
-        role="radiogroup"
-        aria-label="Prompt input mode"
-      >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={promptInputMode === "prompt"}
-          onClick={() => setPromptInputMode("prompt")}
-          className={cn(
-            "px-2.5 py-1 text-xs rounded-md transition-colors",
-            promptInputMode === "prompt"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-          )}
+      <div className="mb-2 flex items-center gap-3">
+        <div
+          className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-secondary/30 p-1"
+          role="radiogroup"
+          aria-label="Prompt input mode"
         >
-          Prompt
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={promptInputMode === "negativePrompt"}
-          onClick={() => setPromptInputMode("negativePrompt")}
-          className={cn(
-            "px-2.5 py-1 text-xs rounded-md transition-colors",
-            promptInputMode === "negativePrompt"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-          )}
-        >
-          Negative Prompt
-        </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={promptInputMode === "prompt"}
+            onClick={() => setPromptInputMode("prompt")}
+            className={cn(
+              "px-2.5 py-1 text-xs rounded-md transition-colors",
+              promptInputMode === "prompt"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            )}
+          >
+            Prompt
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={promptInputMode === "negativePrompt"}
+            onClick={() => setPromptInputMode("negativePrompt")}
+            className={cn(
+              "px-2.5 py-1 text-xs rounded-md transition-colors",
+              promptInputMode === "negativePrompt"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            )}
+          >
+            Negative Prompt
+          </button>
+        </div>
+        <label className="ml-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{t("generation.promptDisplay.rawText")}</span>
+          <Switch
+            checked={showRawPromptText}
+            onCheckedChange={setShowRawPromptText}
+            aria-label={t("generation.promptDisplay.rawText")}
+          />
+        </label>
       </div>
       <PromptInput
         key={promptInputMode}
         value={promptInputMode === "prompt" ? prompt : negativePrompt}
         onChange={handlePromptChange}
+        displayMode={showRawPromptText ? "raw" : "chips"}
         placeholder={
           promptInputMode === "prompt"
             ? "1girl, beautiful, masterpiece, ..."
@@ -1732,9 +1745,11 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
   onValueChange,
 }: CharacterPromptCardProps) {
   const { t } = useTranslation();
+  const [showRawPromptText, setShowRawPromptText] = useState(false);
 
   return (
     <div
+      data-character-prompt-card="true"
       className={cn(
         "rounded-lg border bg-secondary/20 p-2 space-y-2",
         !aiChoice && hasDuplicatePosition
@@ -1778,6 +1793,14 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
           </button>
         </div>
         <div className="flex-1" />
+        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span>{t("generation.promptDisplay.rawText")}</span>
+          <Switch
+            checked={showRawPromptText}
+            onCheckedChange={setShowRawPromptText}
+            aria-label={t("generation.promptDisplay.rawText")}
+          />
+        </label>
         <button
           onClick={() => onRemove(index)}
           className="shrink-0 h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
@@ -1799,6 +1822,7 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
             : character.negativePrompt
         }
         onChange={(nextValue) => onValueChange(index, nextValue)}
+        displayMode={showRawPromptText ? "raw" : "chips"}
         placeholder={
           character.inputMode === "prompt"
             ? t("generation.character.promptLabel", { index: index + 1 })

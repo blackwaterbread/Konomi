@@ -182,4 +182,29 @@ describe("PromptInput", () => {
     );
     expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
   });
+
+  it("renders a raw-text editor mode that edits the prompt directly", async () => {
+    const onChange = vi.fn();
+
+    renderPromptInput({
+      value: "sparkles, sunset",
+      onChange,
+      displayMode: "raw",
+    });
+
+    const textarea = screen.getByRole("textbox", {
+      name: "tag, tag, tag...",
+    });
+
+    expect(textarea).toHaveValue("sparkles, sunset");
+    expect(
+      screen.queryByRole("button", { name: "sparkles" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "raw prompt text" } });
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith("raw prompt text"),
+    );
+  });
 });

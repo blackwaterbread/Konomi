@@ -61,6 +61,7 @@ interface PromptInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  displayMode?: "chips" | "raw";
   resizable?: boolean;
   minHeight?: number;
   maxHeight?: number;
@@ -113,11 +114,46 @@ function serializePrompt(tokens: EditableToken[], draft: string): string {
   return tokenText ? `${tokenText}, ${cleanDraft}` : cleanDraft;
 }
 
+function appendPromptChunk(prompt: string, chunk: string): string {
+  const cleanChunk = chunk.trim();
+  if (!cleanChunk) return prompt;
+  const cleanPrompt = prompt.trim();
+  return cleanPrompt ? `${cleanPrompt}, ${cleanChunk}` : cleanChunk;
+}
+
+function serializeExternalDrop(data: string): string | null {
+  try {
+    const parsed = JSON.parse(data) as Record<string, unknown>;
+    if (parsed.kind === "group" && typeof parsed.groupName === "string") {
+      return tokenToRawString({
+        kind: "group",
+        groupName: parsed.groupName,
+        ...(Array.isArray(parsed.overrideTags)
+          ? { overrideTags: parsed.overrideTags as string[] }
+          : {}),
+      });
+    }
+
+    if (typeof parsed.text === "string") {
+      if (typeof parsed.raw === "string") return parsed.raw;
+      return tokenToRawString({
+        text: parsed.text,
+        weight: typeof parsed.weight === "number" ? parsed.weight : 1,
+      });
+    }
+  } catch {
+    // ignore invalid data
+  }
+
+  return null;
+}
+
 export const PromptInput = memo(function PromptInput({
   value,
   onChange,
   placeholder,
   className,
+  displayMode = "chips",
   resizable = true,
   minHeight = 112,
   maxHeight = 420,
@@ -126,6 +162,7 @@ export const PromptInput = memo(function PromptInput({
 }: PromptInputProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t("promptInput.placeholder");
+  const rawInputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const inputAnchorRef = useRef<HTMLDivElement | null>(null);
   const measureCanvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -157,6 +194,7 @@ export const PromptInput = memo(function PromptInput({
   const [showTrailingEmptyInput, setShowTrailingEmptyInput] = useState(true);
   const [autocompleteStyle, setAutocompleteStyle] =
     useState<CSSProperties | null>(null);
+  const isRawMode = displayMode === "raw";
 
   // @ group autocomplete
   const [groups, setGroups] = useState<PromptGroup[]>(groupsProp ?? []);
@@ -202,9 +240,13 @@ export const PromptInput = memo(function PromptInput({
       ),
     [groups, groupSearch],
   );
-  const showGroupDropdown = groupDropdownOpen && filteredGroups.length > 0;
+  const showGroupDropdown =
+    !isRawMode && groupDropdownOpen && filteredGroups.length > 0;
   const showTagSuggestionDropdown =
-    !groupDropdownOpen && tagSuggestionOpen && tagSuggestions.length > 0;
+    !isRawMode &&
+    !groupDropdownOpen &&
+    tagSuggestionOpen &&
+    tagSuggestions.length > 0;
 
   const promptTagExclusions = useMemo(
     () =>
@@ -219,7 +261,7 @@ export const PromptInput = memo(function PromptInput({
   );
 
   useEffect(() => {
-    if (groupDropdownOpen) {
+    if (isRawMode || groupDropdownOpen) {
       setTagSuggestions([]);
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
       setTagSuggestionOpen(false);
@@ -283,7 +325,7 @@ export const PromptInput = memo(function PromptInput({
         tagSuggestDebounceRef.current = null;
       }
     };
-  }, [draft, groupDropdownOpen, promptTagExclusions]);
+  }, [draft, groupDropdownOpen, promptTagExclusions, isRawMode]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -955,6 +997,69 @@ export const PromptInput = memo(function PromptInput({
       removeTokenAtIndex(index);
     }
   };
+
+  const handleRawDrop = (data: string) => {
+    const droppedText = serializeExternalDrop(data);
+    if (!droppedText) return;
+    onChange(appendPromptChunk(value, droppedText));
+    requestAnimationFrame(() => rawInputRef.current?.focus());
+  };
+
+  if (isRawMode) {
+    return (
+      <div
+        className={cn(
+          "w-full min-w-0 rounded-lg border bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
+          externalDragOver ? "border-primary/60" : "border-border/60",
+          resizable && "resize-y",
+          className,
+        )}
+        style={{ minHeight, maxHeight }}
+        onDragOver={
+          allowExternalDrop
+            ? (e) => {
+                if (e.dataTransfer.types.includes(DRAG_TOKEN_MIME)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  setExternalDragOver(true);
+                }
+              }
+            : undefined
+        }
+        onDragLeave={
+          allowExternalDrop ? () => setExternalDragOver(false) : undefined
+        }
+        onDrop={
+          allowExternalDrop
+            ? (e) => {
+                setExternalDragOver(false);
+                const data = e.dataTransfer.getData(DRAG_TOKEN_MIME);
+                if (!data) return;
+                e.preventDefault();
+                handleRawDrop(data);
+              }
+            : undefined
+        }
+      >
+        <textarea
+          ref={rawInputRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={resolvedPlaceholder}
+          placeholder={resolvedPlaceholder}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          className="block w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/40"
+          style={{
+            minHeight: Math.max(40, minHeight - 16),
+            maxHeight: Math.max(40, maxHeight - 16),
+          }}
+        />
+      </div>
+    );
+  }
 
   const inputInner = (
     <>

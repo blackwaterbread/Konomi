@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
@@ -361,6 +362,64 @@ describe("GenerationView", () => {
     await waitFor(() =>
       expect(screen.getAllByText("sparkles")).toHaveLength(1),
     );
+  });
+
+  it("toggles the main prompt input into raw-text mode", async () => {
+    const user = userEvent.setup();
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.appendPromptTag("sparkles");
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByText("sparkles")).toHaveLength(1),
+    );
+
+    await user.click(screen.getByRole("switch", { name: "Raw" }));
+
+    expect(await screen.findByDisplayValue("sparkles")).toBeInTheDocument();
+  });
+
+  it("toggles a character prompt card into raw-text mode", async () => {
+    const user = userEvent.setup();
+
+    localStorage.setItem(
+      "konomi-last-gen-params",
+      JSON.stringify({
+        prompt: "",
+        negativePrompt: "",
+        aiChoice: true,
+        seedInput: "",
+        characterPrompts: [
+          {
+            prompt: "char sparkles",
+            negativePrompt: "",
+            inputMode: "prompt",
+            position: "global",
+          },
+        ],
+      }),
+    );
+
+    renderGenerationView();
+
+    const characterGroup = await screen.findByRole("radiogroup", {
+      name: "Character 1 input mode",
+    });
+    const characterCard = characterGroup.closest(
+      '[data-character-prompt-card="true"]',
+    ) as HTMLElement | null;
+
+    expect(characterCard).not.toBeNull();
+
+    await user.click(
+      within(characterCard!).getByRole("switch", { name: "Raw" }),
+    );
+
+    expect(
+      await within(characterCard!).findByDisplayValue("char sparkles"),
+    ).toBeInTheDocument();
   });
 
   it("opens the settings panel with a configuration-required message when api key and output folder are missing", async () => {
