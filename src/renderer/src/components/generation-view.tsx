@@ -136,6 +136,7 @@ type CharacterPosition =
 
 const POSITION_COLS = ["A", "B", "C", "D", "E"] as const;
 const POSITION_ROWS = [1, 2, 3, 4, 5] as const;
+const KONOMI_PATH_MIME = "text/x-konomi-path";
 const GENERATION_SERVICES: Array<{
   id: GenerationService;
   label: string;
@@ -288,6 +289,14 @@ type CharacterPromptInput = {
 
 function releaseDropItemPreview(item: DropItem | null | undefined): void {
   if (item?.kind === "file") item.revokePreviewUrl();
+}
+
+function hasSupportedGenerationDrop(
+  dataTransfer: DataTransfer | null | undefined,
+): boolean {
+  if (!dataTransfer) return false;
+  const types = Array.from(dataTransfer.types ?? []);
+  return types.includes(KONOMI_PATH_MIME) || types.includes("Files");
 }
 
 type CharacterPromptPreset = "female" | "male" | "other";
@@ -744,7 +753,7 @@ function RecentThumb({
 
   const handleDragStart = (e: React.DragEvent) => {
     const path = decodeURIComponent(new URL(src).pathname.slice(1));
-    e.dataTransfer.setData("text/x-konomi-path", path);
+    e.dataTransfer.setData(KONOMI_PATH_MIME, path);
     e.dataTransfer.effectAllowed = "copy";
   };
 
@@ -2678,11 +2687,6 @@ const RecentImagesPanel = memo(function RecentImagesPanel({
 });
 
 interface ResultAreaProps {
-  dragOver: boolean;
-  onDragOver: (event: React.DragEvent) => void;
-  onDragEnter: (event: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (event: React.DragEvent) => void;
   generating: boolean;
   pendingResultSelected: boolean;
   error: string | null;
@@ -2695,11 +2699,6 @@ interface ResultAreaProps {
 }
 
 const ResultArea = memo(function ResultArea({
-  dragOver,
-  onDragOver,
-  onDragEnter,
-  onDragLeave,
-  onDrop,
   generating,
   pendingResultSelected,
   error,
@@ -2710,17 +2709,9 @@ const ResultArea = memo(function ResultArea({
   onSelectPendingResult,
   onSelectResult,
 }: ResultAreaProps) {
-  const { t } = useTranslation();
-
   return (
     <>
-      <div
-        className="flex-1 flex flex-col items-center justify-center overflow-hidden relative"
-        onDragOver={onDragOver}
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
+      <div className="flex-1 flex flex-col items-center justify-center overflow-hidden relative">
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -2729,17 +2720,6 @@ const ResultArea = memo(function ResultArea({
             backgroundSize: "24px 24px",
           }}
         />
-
-        {dragOver && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-primary/5 border-2 border-dashed border-primary/40 rounded-none transition-all">
-            <div className="h-14 w-14 rounded-2xl bg-primary/15 border border-primary/30 flex items-center justify-center mb-3">
-              <ImagePlus className="h-7 w-7 text-primary/70" />
-            </div>
-            <p className="text-sm font-medium text-primary/70">
-              {t("generation.actions.dropHere")}
-            </p>
-          </div>
-        )}
 
         <ResultViewport
           generating={generating}
@@ -4598,16 +4578,19 @@ export const GenerationView = memo(
     }, []);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
+      if (!hasSupportedGenerationDrop(e.dataTransfer)) return;
       e.preventDefault();
     }, []);
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
+      if (!hasSupportedGenerationDrop(e.dataTransfer)) return;
       e.preventDefault();
       dragCountRef.current++;
       setDragOver(true);
     }, []);
 
-    const handleDragLeave = useCallback(() => {
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+      if (!hasSupportedGenerationDrop(e.dataTransfer)) return;
       dragCountRef.current--;
       if (dragCountRef.current <= 0) {
         dragCountRef.current = 0;
@@ -4617,10 +4600,11 @@ export const GenerationView = memo(
 
     const handleDrop = useCallback(
       (e: React.DragEvent) => {
+        if (!hasSupportedGenerationDrop(e.dataTransfer)) return;
         e.preventDefault();
         dragCountRef.current = 0;
         setDragOver(false);
-        const konomiPath = e.dataTransfer.getData("text/x-konomi-path");
+        const konomiPath = e.dataTransfer.getData(KONOMI_PATH_MIME);
         if (konomiPath) {
           replaceDropItem(createPathDropItem(konomiPath));
           setImportError(null);
@@ -4829,7 +4813,13 @@ export const GenerationView = memo(
     const isNovelAIService = selectedService === "novelai";
 
     return (
-      <div className="flex flex-1 overflow-hidden">
+      <div
+        className="relative flex flex-1 overflow-hidden"
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <LeftPanel
           panelWidth={panelWidth}
           selectedService={selectedService}
@@ -4926,11 +4916,6 @@ export const GenerationView = memo(
             />
 
             <ResultArea
-              dragOver={dragOver}
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
               generating={generating}
               pendingResultSelected={pendingResultSelected}
               error={error}
@@ -4944,6 +4929,17 @@ export const GenerationView = memo(
                 setResultSrc(src);
               }}
             />
+
+            {dragOver && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center bg-primary/5 border-2 border-dashed border-primary/40">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/15">
+                  <ImagePlus className="h-7 w-7 text-primary/70" />
+                </div>
+                <p className="text-sm font-medium text-primary/70">
+                  {t("generation.actions.dropHere")}
+                </p>
+              </div>
+            )}
 
             <DuplicateGenerationModal
               open={dupAlert}
