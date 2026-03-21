@@ -6,6 +6,7 @@ import { withConcurrency } from "./scanner";
 const SIMILARITY_THRESHOLD = 10;
 const HASH_WRITE_BATCH_SIZE = 32;
 const CACHE_DELETE_BATCH_SIZE = 400;
+const SIMILARITY_REASON_QUERY_BATCH_SIZE = 400;
 
 const STRICT_COMMON_TOKEN_RATIO = 0.15;
 const LOOSE_COMMON_TOKEN_RATIO = 0.25;
@@ -844,32 +845,43 @@ export async function getSimilarityReasons(
   if (candidates.length === 0) return [];
 
   const db = getDB();
-  const placeholders = candidates.map(() => "?").join(", ");
-  const rows = await db.$queryRawUnsafe<SimilarityCacheRow[]>(
-    `SELECT imageAId, imageBId, phashDistance, textScore
-       FROM ${SIMILARITY_CACHE_TABLE}
-      WHERE (imageAId = ? AND imageBId IN (${placeholders}))
-         OR (imageBId = ? AND imageAId IN (${placeholders}))`,
-    imageId,
-    ...candidates,
-    imageId,
-    ...candidates,
-  );
-
   const config = resolveThresholdConfig(threshold, jaccardThreshold);
   const resultMap = new Map<
     number,
     { reason: SimilarityReason; score: number }
   >();
-  for (const row of rows) {
-    const otherId = row.imageAId === imageId ? row.imageBId : row.imageAId;
-    const reason = classifyReasonAtThreshold(row, threshold, config);
-    if (!reason) continue;
-    const score =
-      row.phashDistance !== null
-        ? computeHybridScore(row.phashDistance, row.textScore)
-        : row.textScore;
-    resultMap.set(otherId, { reason, score });
+  for (
+    let i = 0;
+    i < candidates.length;
+    i += SIMILARITY_REASON_QUERY_BATCH_SIZE
+  ) {
+    const chunk = candidates.slice(i, i + SIMILARITY_REASON_QUERY_BATCH_SIZE);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = await db.$queryRawUnsafe<SimilarityCacheRow[]>(
+      `SELECT imageAId, imageBId, phashDistance, textScore
+         FROM ${SIMILARITY_CACHE_TABLE}
+        WHERE (imageAId = ? AND imageBId IN (${placeholders}))
+           OR (imageBId = ? AND imageAId IN (${placeholders}))`,
+      imageId,
+      ...chunk,
+      imageId,
+      ...chunk,
+    );
+
+    for (const row of rows) {
+      const otherId = row.imageAId === imageId ? row.imageBId : row.imageAId;
+      const reason = classifyReasonAtThreshold(row, threshold, config);
+      if (!reason) continue;
+      const score =
+        row.phashDistance !== null
+          ? computeHybridScore(row.phashDistance, row.textScore)
+          : row.textScore;
+      resultMap.set(otherId, { reason, score });
+    }
+
+    if (i + SIMILARITY_REASON_QUERY_BATCH_SIZE < candidates.length) {
+      await yieldToEventLoop();
+    }
   }
 
   return candidates.map((id) => ({

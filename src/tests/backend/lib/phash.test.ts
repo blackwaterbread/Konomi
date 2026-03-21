@@ -1,3 +1,5 @@
+/* 추후 Mock 데이터 좀 보강할것 */
+
 import fs from "fs";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +43,19 @@ function tokens(values: string[]): string {
   return JSON.stringify(values.map((text) => ({ text, weight: 1 })));
 }
 
-async function seedSimilarityImages() {
+type SimilaritySeedSpec = {
+  name: string;
+  hash: string | null;
+  promptTokens: string[];
+  negativePromptTokens?: string[];
+  characterPromptTokens?: string[];
+};
+
+type SeededSimilarityImage = {
+  id: number;
+};
+
+async function seedConfiguredSimilarityImages(specs: SimilaritySeedSpec[]) {
   const { getDB } = await import("../../../main/lib/db");
   const db = getDB();
   const folderPath = path.join(ctx.userDataDir, "phash-images");
@@ -54,48 +68,58 @@ async function seedSimilarityImages() {
     },
   });
 
-  const imageAPath = path.join(folderPath, "image-a.png");
-  const imageBPath = path.join(folderPath, "image-b.png");
-  const imageCPath = path.join(folderPath, "image-c.png");
-  fs.writeFileSync(imageAPath, "a");
-  fs.writeFileSync(imageBPath, "b");
-  fs.writeFileSync(imageCPath, "c");
+  const images: SeededSimilarityImage[] = [];
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i]!;
+    const imagePath = path.join(folderPath, `${spec.name}.png`);
+    fs.writeFileSync(imagePath, spec.name);
+    if (spec.hash !== null) {
+      workerState.hashes.set(imagePath, spec.hash);
+    } else {
+      workerState.hashes.delete(imagePath);
+    }
 
-  workerState.hashes.set(imageAPath, "0000000000000000");
-  workerState.hashes.set(imageBPath, "0000000000000001");
-  workerState.hashes.set(imageCPath, "ffffffffffffffff");
+    images.push(
+      await db.image.create({
+        data: {
+          path: imagePath,
+          folderId: folder.id,
+          promptTokens: tokens(spec.promptTokens),
+          negativePromptTokens: tokens(spec.negativePromptTokens ?? []),
+          characterPromptTokens: tokens(spec.characterPromptTokens ?? []),
+          fileModifiedAt: new Date(
+            `2026-03-20T00:0${Math.min(i, 9)}:00.000Z`,
+          ),
+        },
+      }),
+    );
+  }
 
-  const imageA = await db.image.create({
-    data: {
-      path: imageAPath,
-      folderId: folder.id,
-      promptTokens: tokens(["sunset", "beach", "golden hour"]),
-      negativePromptTokens: "[]",
-      characterPromptTokens: "[]",
-      fileModifiedAt: new Date("2026-03-20T00:00:00.000Z"),
-    },
-  });
-  const imageB = await db.image.create({
-    data: {
-      path: imageBPath,
-      folderId: folder.id,
-      promptTokens: tokens(["city", "night"]),
-      negativePromptTokens: "[]",
-      characterPromptTokens: "[]",
-      fileModifiedAt: new Date("2026-03-20T00:01:00.000Z"),
-    },
-  });
-  const imageC = await db.image.create({
-    data: {
-      path: imageCPath,
-      folderId: folder.id,
-      promptTokens: tokens(["sunset", "beach", "golden hour"]),
-      negativePromptTokens: "[]",
-      characterPromptTokens: "[]",
-      fileModifiedAt: new Date("2026-03-20T00:02:00.000Z"),
-    },
-  });
+  return { db, images };
+}
 
+async function seedSimilarityImages() {
+  const { db, images } = await seedConfiguredSimilarityImages([
+    {
+      name: "image-a",
+      hash: "0000000000000000",
+      promptTokens: ["sunset", "beach", "golden hour"],
+    },
+    {
+      name: "image-b",
+      hash: "0000000000000001",
+      promptTokens: ["city", "night"],
+    },
+    {
+      name: "image-c",
+      hash: "ffffffffffffffff",
+      promptTokens: ["sunset", "beach", "golden hour"],
+    },
+  ]);
+  const [imageA, imageB, imageC] = images;
+  if (!imageA || !imageB || !imageC) {
+    throw new Error("Failed to seed similarity images");
+  }
   return { db, imageA, imageB, imageC };
 }
 
@@ -179,5 +203,166 @@ describe("phash", () => {
         select: { pHash: true },
       }),
     ).resolves.toEqual([{ pHash: "" }, { pHash: "" }, { pHash: "" }]);
+  });
+
+  it("classifies hybrid-only matches as both when visual and prompt signals combine", async () => {
+    const { images } = await seedConfiguredSimilarityImages([
+      {
+        name: "hybrid-a",
+        hash: "0000000000000000",
+        promptTokens: ["sunset", "beach", "golden hour", "dramatic clouds"],
+      },
+      {
+        name: "hybrid-b",
+        hash: "0000000000000fff",
+        promptTokens: ["sunset", "beach", "golden hour", "city lights"],
+      },
+    ]);
+    const [imageA, imageB] = images;
+    if (!imageA || !imageB) {
+      throw new Error("Failed to seed hybrid similarity images");
+    }
+    const { computeAllHashes, getSimilarGroups, getSimilarityReasons } =
+      await import("../../../main/lib/phash");
+
+    await computeAllHashes();
+
+    await expect(getSimilarGroups()).resolves.toEqual([
+      expect.objectContaining({
+        imageIds: [imageA.id, imageB.id],
+      }),
+    ]);
+
+    const reasons = await getSimilarityReasons(imageA.id, [imageB.id]);
+    expect(reasons).toEqual([
+      expect.objectContaining({
+        imageId: imageB.id,
+        reason: "both",
+      }),
+    ]);
+    expect(reasons[0]!.score).toBeGreaterThan(0.72);
+  });
+
+  it("respects a stricter prompt threshold override for prompt-only matches", async () => {
+    const { images } = await seedConfiguredSimilarityImages([
+      {
+        name: "prompt-a",
+        hash: "0000000000000000",
+        promptTokens: ["sunset", "beach", "golden hour"],
+      },
+      {
+        name: "prompt-b",
+        hash: "ffffffffffffffff",
+        promptTokens: ["sunset", "beach", "golden hour", "warm light"],
+      },
+    ]);
+    const [imageA, imageB] = images;
+    if (!imageA || !imageB) {
+      throw new Error("Failed to seed prompt-only similarity images");
+    }
+    const { computeAllHashes, getSimilarGroups, getSimilarityReasons } =
+      await import("../../../main/lib/phash");
+
+    await computeAllHashes();
+
+    await expect(getSimilarGroups()).resolves.toEqual([
+      expect.objectContaining({
+        imageIds: [imageA.id, imageB.id],
+      }),
+    ]);
+
+    const defaultReasons = await getSimilarityReasons(imageA.id, [imageB.id]);
+    expect(defaultReasons).toEqual([
+      expect.objectContaining({
+        imageId: imageB.id,
+        reason: "prompt",
+      }),
+    ]);
+
+    await expect(getSimilarGroups(10, 0.75)).resolves.toEqual([]);
+  });
+
+  it("drops prompt-only matches after negative prompt conflicts are introduced", async () => {
+    const { db, images } = await seedConfiguredSimilarityImages([
+      {
+        name: "conflict-a",
+        hash: "0000000000000000",
+        promptTokens: ["sunset", "beach", "golden hour"],
+      },
+      {
+        name: "conflict-b",
+        hash: "ffffffffffffffff",
+        promptTokens: ["sunset", "beach", "golden hour", "warm light"],
+      },
+    ]);
+    const [imageA, imageB] = images;
+    if (!imageA || !imageB) {
+      throw new Error("Failed to seed conflict similarity images");
+    }
+    const {
+      computeAllHashes,
+      getSimilarGroups,
+      refreshSimilarityCacheForImageIds,
+    } = await import("../../../main/lib/phash");
+
+    await computeAllHashes();
+    await expect(getSimilarGroups()).resolves.toEqual([
+      expect.objectContaining({
+        imageIds: [imageA.id, imageB.id],
+      }),
+    ]);
+
+    await db.image.update({
+      where: { id: imageB.id },
+      data: {
+        negativePromptTokens: tokens(["sunset", "beach", "golden hour"]),
+      },
+    });
+    await refreshSimilarityCacheForImageIds([imageB.id]);
+
+    await expect(getSimilarGroups()).resolves.toEqual([]);
+  });
+
+  it("batches similarity-reason lookups when a group has hundreds of candidates", async () => {
+    const candidateCount = 520;
+    const { db, images } = await seedConfiguredSimilarityImages([
+      {
+        name: "batch-anchor",
+        hash: "0000000000000000",
+        promptTokens: ["sunset", "beach", "golden hour"],
+      },
+      ...Array.from({ length: candidateCount }, (_, index) => ({
+        name: `batch-candidate-${index + 1}`,
+        hash: "0000000000000001",
+        promptTokens: ["sunset", "beach", "golden hour"],
+      })),
+    ]);
+    const [anchorImage, ...candidateImages] = images;
+    if (!anchorImage || candidateImages.length !== candidateCount) {
+      throw new Error("Failed to seed batched similarity reason images");
+    }
+
+    const { refreshSimilarityCacheForImageIds, getSimilarityReasons } =
+      await import("../../../main/lib/phash");
+
+    await refreshSimilarityCacheForImageIds([anchorImage.id]);
+    await db.$executeRawUnsafe(
+      "UPDATE ImageSimilarityCacheMeta SET primedAt = datetime('now') WHERE id = 1",
+    );
+
+    const reasons = await getSimilarityReasons(
+      anchorImage.id,
+      candidateImages.map((image) => image.id),
+    );
+
+    expect(reasons).toHaveLength(candidateCount);
+    expect(reasons[0]).toMatchObject({
+      imageId: candidateImages[0]?.id,
+      reason: "prompt",
+    });
+    expect(reasons.at(-1)).toMatchObject({
+      imageId: candidateImages.at(-1)?.id,
+      reason: "prompt",
+    });
   });
 });
