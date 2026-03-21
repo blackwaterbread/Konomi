@@ -15,7 +15,10 @@ import { ImageGallery } from "@/components/image-gallery";
 import { ImageDetail } from "@/components/image-detail";
 import { SettingsView } from "@/components/settings-view";
 import { CategoryDialog } from "@/components/category-dialog";
-import { GenerationView } from "@/components/generation-view";
+import {
+  GenerationView,
+  type GenerationViewHandle,
+} from "@/components/generation-view";
 import { FeatureTour } from "@/components/feature-tour";
 import { InitialLanguageScreen } from "@/components/initial-language-screen";
 import {
@@ -182,7 +185,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
       localStorage.getItem("konomi-tour-completed") !== "true" &&
       localStorage.getItem(INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY) !== "true",
   );
-  const [tourAction, setTourAction] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
       return Number(localStorage.getItem("konomi-sidebar-width")) || 288;
@@ -268,20 +270,12 @@ export default function App({ initialFolderCount = null }: AppProps) {
     Array<{ width: number; height: number }>
   >([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [pendingGeneratorImport, setPendingGeneratorImport] =
-    useState<ImageData | null>(null);
-  const [pendingGeneratorSource, setPendingGeneratorSource] =
-    useState<ImageData | null>(null);
   const [generatorTransitioning, setGeneratorTransitioning] = useState(false);
   const [similarImages, setSimilarImages] = useState<ImageData[]>([]);
   const [similarReasons, setSimilarReasons] = useState<
     Record<string, SimilarityReason>
   >({});
   const [similarImagesLoading, setSimilarImagesLoading] = useState(false);
-  const [appendPromptTagRequest, setAppendPromptTagRequest] = useState<{
-    id: number;
-    tag: string;
-  } | null>(null);
   const [searchStatsProgress, setSearchStatsProgress] = useState<{
     done: number;
     total: number;
@@ -293,10 +287,10 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const appendPromptTagRequestSeqRef = useRef(0);
   const similarRequestSeqRef = useRef(0);
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
+  const generationViewRef = useRef<GenerationViewHandle | null>(null);
 
   const selectedCategory = useMemo(
     () => categories.find((cat) => cat.id === selectedCategoryId),
@@ -959,11 +953,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     (tag: string) => {
       const normalizedTag = tag.trim();
       if (!normalizedTag) return;
-      appendPromptTagRequestSeqRef.current += 1;
-      setAppendPromptTagRequest({
-        id: appendPromptTagRequestSeqRef.current,
-        tag: normalizedTag,
-      });
+      generationViewRef.current?.appendPromptTag(normalizedTag);
       void handlePanelChange("generator");
     },
     [handlePanelChange],
@@ -1002,7 +992,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     (image: ImageData) => {
       setGeneratorTransitioning(true);
       requestAnimationFrame(() => {
-        setPendingGeneratorImport(image);
+        generationViewRef.current?.importImage(image);
         void handlePanelChange("generator");
         requestAnimationFrame(() => {
           setGeneratorTransitioning(false);
@@ -1014,7 +1004,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
 
   const handleSendToSource = useCallback(
     (image: ImageData) => {
-      setPendingGeneratorSource(image);
+      generationViewRef.current?.showSourceImage(image);
       void handlePanelChange("generator");
     },
     [handlePanelChange],
@@ -1042,12 +1032,14 @@ export default function App({ initialFolderCount = null }: AppProps) {
     schedulePageRefresh(0);
   }, [schedulePageRefresh]);
 
-  const handleClearPendingGeneratorImport = useCallback(() => {
-    setPendingGeneratorImport(null);
-  }, []);
-
-  const handleClearPendingGeneratorSourceImport = useCallback(() => {
-    setPendingGeneratorSource(null);
+  const handleTourAction = useCallback((action: string) => {
+    if (action === "open-prompt-group-panel") {
+      generationViewRef.current?.openRightPanelTab("prompt-group");
+      return;
+    }
+    if (action === "open-settings-panel") {
+      generationViewRef.current?.openRightPanelTab("settings");
+    }
   }, []);
 
   const handleSearchChange = useCallback(
@@ -1237,16 +1229,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
           inert={activePanel !== "generator" ? true : undefined}
         >
           <GenerationView
-            pendingImport={pendingGeneratorImport}
-            onClearPendingImport={handleClearPendingGeneratorImport}
-            pendingSourceImport={pendingGeneratorSource}
-            onClearPendingSourceImport={handleClearPendingGeneratorSourceImport}
+            ref={generationViewRef}
             outputFolder={outputFolder}
             onOutputFolderChange={setOutputFolder}
-            appendPromptTagRequest={appendPromptTagRequest}
             isDarkTheme={isDarkTheme}
             tourActive={tourOpen && !initialLanguageScreenOpen}
-            tourAction={tourAction}
           />
         </div>
 
@@ -1454,7 +1441,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
         open={tourOpen && !initialLanguageScreenOpen}
         onClose={handleTourClose}
         onPanelChange={setActivePanel}
-        onAction={setTourAction}
+        onAction={handleTourAction}
       />
 
       <InitialLanguageScreen

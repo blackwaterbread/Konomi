@@ -1,4 +1,4 @@
-import React, { type ComponentProps } from "react";
+import React, { createRef, type ComponentPropsWithoutRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -9,16 +9,20 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { GenerationView } from "@/components/generation-view";
+import {
+  GenerationView,
+  type GenerationViewHandle,
+} from "@/components/generation-view";
 import { preloadMocks } from "../helpers/preload-mocks";
 import { createGalleryImage } from "../helpers/gallery-image";
 
 function renderGenerationView(
-  overrides: Partial<ComponentProps<typeof GenerationView>> = {},
+  overrides: Partial<ComponentPropsWithoutRef<typeof GenerationView>> = {},
 ) {
   preloadMocks.nai.getConfig.mockResolvedValue({ id: 1, apiKey: "token" });
+  const ref = createRef<GenerationViewHandle>();
 
-  const props: ComponentProps<typeof GenerationView> = {
+  const props: ComponentPropsWithoutRef<typeof GenerationView> = {
     outputFolder: "C:/output",
     onOutputFolderChange: vi.fn(),
     isDarkTheme: true,
@@ -26,8 +30,9 @@ function renderGenerationView(
   };
 
   return {
-    ...render(<GenerationView {...props} />),
+    ...render(<GenerationView ref={ref} {...props} />),
     props,
+    ref,
   };
 }
 
@@ -48,22 +53,18 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe("GenerationView", () => {
-  it("opens the metadata import modal for a pending gallery image", async () => {
+  it("opens the metadata import modal when importing a gallery image", async () => {
     const pendingImport = createGalleryImage({
       path: "C:\\imports\\source.png",
       src: "konomi://local/C%3A%2Fimports%2Fsource.png",
       prompt: "import me",
     });
-    const onClearPendingImport = vi.fn();
 
-    renderGenerationView({
-      pendingImport,
-      onClearPendingImport,
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.importImage(pendingImport);
     });
-
-    await waitFor(() =>
-      expect(onClearPendingImport).toHaveBeenCalledTimes(1),
-    );
 
     expect(screen.getByText("Image Actions")).toBeInTheDocument();
     expect(screen.getByText("source.png")).toBeInTheDocument();
@@ -76,22 +77,18 @@ describe("GenerationView", () => {
     ).toBeEnabled();
   });
 
-  it("shows a pending source image in the reference panel and clears the request", async () => {
+  it("shows an imported source image in the reference panel", async () => {
     const pendingSourceImport = createGalleryImage({
       src: "konomi://local/C%3A%2Fgallery%2Freference.png",
       prompt: "reference prompt",
       tokens: [{ text: "reference prompt", weight: 1 }],
     });
-    const onClearPendingSourceImport = vi.fn();
 
-    renderGenerationView({
-      pendingSourceImport,
-      onClearPendingSourceImport,
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.showSourceImage(pendingSourceImport);
     });
-
-    await waitFor(() =>
-      expect(onClearPendingSourceImport).toHaveBeenCalledTimes(1),
-    );
 
     expect(await screen.findByAltText("Reference image")).toHaveAttribute(
       "src",
@@ -103,22 +100,18 @@ describe("GenerationView", () => {
     expect(screen.getByText("reference prompt")).toBeInTheDocument();
   });
 
-  it("appends requested prompt tags once and returns focus to prompt mode", async () => {
+  it("appends prompt tags through the imperative api and returns focus to prompt mode", async () => {
     const user = userEvent.setup();
-    const { rerender, props } = renderGenerationView();
+    const { ref } = renderGenerationView();
 
     await user.click(screen.getByRole("radio", { name: "Negative Prompt" }));
-    expect(screen.getByRole("radio", { name: "Negative Prompt" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(
+      screen.getByRole("radio", { name: "Negative Prompt" }),
+    ).toHaveAttribute("aria-checked", "true");
 
-    rerender(
-      <GenerationView
-        {...props}
-        appendPromptTagRequest={{ id: 1, tag: "sparkles" }}
-      />,
-    );
+    act(() => {
+      ref.current?.appendPromptTag("sparkles");
+    });
 
     await waitFor(() =>
       expect(screen.getByRole("radio", { name: "Prompt" })).toHaveAttribute(
@@ -126,17 +119,6 @@ describe("GenerationView", () => {
         "true",
       ),
     );
-    await waitFor(() =>
-      expect(screen.getAllByText("sparkles")).toHaveLength(1),
-    );
-
-    rerender(
-      <GenerationView
-        {...props}
-        appendPromptTagRequest={{ id: 1, tag: "sparkles" }}
-      />,
-    );
-
     await waitFor(() =>
       expect(screen.getAllByText("sparkles")).toHaveLength(1),
     );
@@ -149,7 +131,9 @@ describe("GenerationView", () => {
       outputFolder: "",
     });
 
-    expect(await screen.findByText("Configuration required")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Configuration required"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Please configure your API key and output folder first"),
     ).toBeInTheDocument();
@@ -196,7 +180,9 @@ describe("GenerationView", () => {
 
     renderGenerationView();
 
-    const promptInput = screen.getByLabelText("1girl, beautiful, masterpiece, ...");
+    const promptInput = screen.getByLabelText(
+      "1girl, beautiful, masterpiece, ...",
+    );
 
     fireEvent.change(promptInput, {
       target: { value: "sunset beach masterpiece" },
@@ -340,9 +326,10 @@ describe("GenerationView", () => {
       tokens: [{ text: "reference clear prompt", weight: 1 }],
     });
 
-    renderGenerationView({
-      pendingSourceImport,
-      onClearPendingSourceImport: vi.fn(),
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.showSourceImage(pendingSourceImport);
     });
 
     expect(await screen.findByAltText("Reference image")).toHaveAttribute(
@@ -373,9 +360,10 @@ describe("GenerationView", () => {
       new Uint8Array([1, 2, 3]).buffer,
     );
 
-    renderGenerationView({
-      pendingImport,
-      onClearPendingImport: vi.fn(),
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.importImage(pendingImport);
     });
 
     expect(await screen.findByText("Image Actions")).toBeInTheDocument();
@@ -404,9 +392,10 @@ describe("GenerationView", () => {
       new Uint8Array([4, 5, 6]).buffer,
     );
 
-    renderGenerationView({
-      pendingImport,
-      onClearPendingImport: vi.fn(),
+    const { ref } = renderGenerationView();
+
+    act(() => {
+      ref.current?.importImage(pendingImport);
     });
 
     expect(await screen.findByText("Image Actions")).toBeInTheDocument();
