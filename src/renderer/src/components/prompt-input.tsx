@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -153,6 +154,7 @@ export const PromptInput = memo(function PromptInput({
   const [shouldWrapInput, setShouldWrapInput] = useState(false);
   const [tokenRowWidth, setTokenRowWidth] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [showTrailingEmptyInput, setShowTrailingEmptyInput] = useState(true);
   const [autocompleteStyle, setAutocompleteStyle] =
     useState<CSSProperties | null>(null);
 
@@ -298,6 +300,12 @@ export const PromptInput = memo(function PromptInput({
     setTokens(toEditableTokens(parsePromptTokens(value)));
     setDraft("");
   }, [value, serialized]);
+
+  useEffect(() => {
+    if (tokens.length === 0) {
+      setShowTrailingEmptyInput(true);
+    }
+  }, [tokens.length]);
 
   useEffect(() => {
     inlineEditTokenIdRef.current = inlineEditTokenId;
@@ -625,8 +633,10 @@ export const PromptInput = memo(function PromptInput({
 
   const focusInput = (cursor: "start" | "end" = "end") => {
     setInlineEditTokenId(null);
+    setPopoverTokenId(null);
     setChipCursorIndex(null);
     setInsertIndex(null);
+    setShowTrailingEmptyInput(true);
     // RAF so the input re-mounts at end position before we focus it
     requestAnimationFrame(() => {
       const input = inputRef.current;
@@ -685,6 +695,17 @@ export const PromptInput = memo(function PromptInput({
     });
   };
 
+  const dismissEmptyDraftInput = () => {
+    if (draft.trim().length > 0) return;
+    if (draft.length > 0) {
+      setDraft("");
+    }
+    setInsertIndex(null);
+    if (tokens.length > 0) {
+      setShowTrailingEmptyInput(false);
+    }
+  };
+
   const cancelComposingToken = () => {
     const targetIndex =
       insertIndex !== null ? insertIndex - 1 : tokens.length - 1;
@@ -698,12 +719,34 @@ export const PromptInput = memo(function PromptInput({
     } else {
       setDraft("");
     }
+    if (tokens.length > 0) {
+      setShowTrailingEmptyInput(false);
+    }
     setInsertIndex(null);
     if (targetIndex >= 0) {
       focusChipCursorAtIndex(targetIndex);
       return;
     }
     requestAnimationFrame(() => inputRef.current?.blur());
+  };
+
+  const handleInputBlur = () => {
+    setIsInputFocused(false);
+    requestAnimationFrame(() => {
+      if (document.activeElement === inputRef.current) return;
+      dismissEmptyDraftInput();
+    });
+    setTimeout(() => {
+      setGroupDropdownOpen(false);
+      setTagSuggestionOpen(false);
+    }, 150);
+  };
+
+  const handleContainerMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if (e.target !== e.currentTarget) return;
+    e.preventDefault();
+    focusInput("end");
   };
 
   const handleInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -930,16 +973,11 @@ export const PromptInput = memo(function PromptInput({
           onPaste={handleInputPaste}
           onFocus={() => {
             setIsInputFocused(true);
+            setShowTrailingEmptyInput(true);
             setInlineEditTokenId(null);
             setChipCursorIndex(null);
           }}
-          onBlur={() => {
-            setIsInputFocused(false);
-            setTimeout(() => {
-              setGroupDropdownOpen(false);
-              setTagSuggestionOpen(false);
-            }, 150);
-          }}
+          onBlur={handleInputBlur}
           aria-label={resolvedPlaceholder}
           placeholder={tokens.length === 0 ? resolvedPlaceholder : ""}
           className="h-7 w-full bg-transparent px-1 text-sm leading-7 outline-none placeholder:text-muted-foreground/40"
@@ -1040,7 +1078,11 @@ export const PromptInput = memo(function PromptInput({
     insertIndex === null &&
     chipCursorIndex === null &&
     inlineEditTokenId === null &&
-    popoverTokenId === null;
+    popoverTokenId === null &&
+    (tokens.length === 0 ||
+      isInputFocused ||
+      draft.trim().length > 0 ||
+      showTrailingEmptyInput);
 
   return (
     <div
@@ -1051,6 +1093,7 @@ export const PromptInput = memo(function PromptInput({
         className,
       )}
       style={{ minHeight, maxHeight }}
+      onMouseDown={handleContainerMouseDown}
       onKeyDown={(e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
           if ((e.target as HTMLElement).tagName !== "INPUT") {
@@ -1129,6 +1172,7 @@ export const PromptInput = memo(function PromptInput({
           <div
             ref={tokenRowRef}
             className="flex w-full min-w-0 flex-wrap items-center gap-1.5"
+            onMouseDown={handleContainerMouseDown}
           >
             {insertIndex === 0 && (
               <div className="relative min-w-[3ch] basis-0 flex-1">
