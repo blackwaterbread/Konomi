@@ -86,24 +86,21 @@ const SidebarNewCategoryDialog = memo(function SidebarNewCategoryDialog({
   const { t } = useTranslation();
   const [name, setName] = useState("");
 
-  useEffect(() => {
-    if (!open) {
-      setName("");
-    }
-  }, [open]);
-
   const handleCreate = useCallback(() => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    onCreate(trimmedName);
     setName("");
+    onCreate(trimmedName);
   }, [name, onCreate]);
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) {
+          setName("");
+          onClose();
+        }
       }}
     >
       <DialogContent>
@@ -147,23 +144,22 @@ const SidebarAddByPromptDialog = memo(function SidebarAddByPromptDialog({
   const [query, setQuery] = useState("");
   const open = categoryId !== null;
 
-  useEffect(() => {
-    setQuery("");
-  }, [categoryId]);
-
   const handleSubmit = useCallback(() => {
     if (categoryId === null) return;
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
-    onSubmit(categoryId, trimmedQuery);
     setQuery("");
+    onSubmit(categoryId, trimmedQuery);
   }, [categoryId, onSubmit, query]);
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) {
+          setQuery("");
+          onClose();
+        }
       }}
     >
       <DialogContent>
@@ -397,29 +393,22 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const skipCommitRef = useRef(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingName, setEditingName] = useState(folder.name);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setEditingName(folder.name);
-    }
-  }, [folder.name, isEditing]);
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const isEditing = editingName !== null;
+  const currentEditingName = editingName ?? folder.name;
 
   const handleStartEditing = useCallback(() => {
     if (isScanning) return;
     setEditingName(folder.name);
-    setIsEditing(true);
   }, [folder.name, isScanning]);
 
   const handleCancelEditing = useCallback(() => {
     skipCommitRef.current = true;
-    setEditingName(folder.name);
-    setIsEditing(false);
-  }, [folder.name]);
+    setEditingName(null);
+  }, []);
 
   const handleCommitEditing = useCallback(async () => {
-    const trimmedName = editingName.trim();
+    const trimmedName = currentEditingName.trim();
 
     if (trimmedName && trimmedName !== folder.name) {
       try {
@@ -430,14 +419,11 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
             message: e instanceof Error ? e.message : String(e),
           }),
         );
-        setEditingName(folder.name);
       }
-    } else {
-      setEditingName(folder.name);
     }
 
-    setIsEditing(false);
-  }, [editingName, folder.id, folder.name, onRename, t]);
+    setEditingName(null);
+  }, [currentEditingName, folder.id, folder.name, onRename, t]);
 
   return (
     <ContextMenu>
@@ -471,7 +457,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
             <input
               ref={inputRef}
               className="flex-1 min-w-0 text-sm bg-transparent border-b border-primary outline-none text-foreground"
-              value={editingName}
+              value={currentEditingName}
               autoFocus
               onChange={(e) => setEditingName(e.target.value)}
               onBlur={() => {
@@ -641,38 +627,29 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const skipCommitRef = useRef(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingName, setEditingName] = useState(category.name);
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const isEditing = editingName !== null;
+  const currentEditingName = editingName ?? category.name;
   const isContextRenameEnabled = !category.isBuiltin;
   const isInteractiveDraggable = !category.isBuiltin && !isEditing;
-
-  useEffect(() => {
-    if (!isEditing) {
-      setEditingName(category.name);
-    }
-  }, [category.name, isEditing]);
 
   const handleStartEditing = useCallback(() => {
     if (!isContextRenameEnabled) return;
     setEditingName(category.name);
-    setIsEditing(true);
   }, [category.name, isContextRenameEnabled]);
 
   const handleCancelEditing = useCallback(() => {
     skipCommitRef.current = true;
-    setEditingName(category.name);
-    setIsEditing(false);
-  }, [category.name]);
+    setEditingName(null);
+  }, []);
 
   const handleCommitEditing = useCallback(() => {
-    const trimmedName = editingName.trim();
+    const trimmedName = currentEditingName.trim();
     if (trimmedName && trimmedName !== category.name) {
       onRename(category.id, trimmedName);
-    } else {
-      setEditingName(category.name);
     }
-    setIsEditing(false);
-  }, [category.id, category.name, editingName, onRename]);
+    setEditingName(null);
+  }, [category.id, category.name, currentEditingName, onRename]);
 
   return (
     <ContextMenu>
@@ -731,7 +708,7 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
             <input
               ref={inputRef}
               className="flex-1 min-w-0 text-sm bg-transparent border-b border-primary outline-none text-foreground"
-              value={editingName}
+              value={currentEditingName}
               autoFocus
               onChange={(e) => setEditingName(e.target.value)}
               onBlur={() => {
@@ -1401,6 +1378,7 @@ export const Sidebar = memo(function Sidebar({
       />
 
       <SidebarAddByPromptDialog
+        key={addByPromptCategoryId ?? "closed"}
         categoryId={addByPromptCategoryId}
         onClose={handleCloseAddByPromptDialog}
         onSubmit={handleAddByPromptSubmit}
