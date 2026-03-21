@@ -29,24 +29,22 @@ describe("useFolderSelection", () => {
 });
 
 describe("useSidebarFolders", () => {
-  it("tracks folder count and folder-dialog requests alongside selection state", async () => {
+  it("tracks folder count helpers alongside selection state", async () => {
     localStorage.setItem("konomi-selected-folders", JSON.stringify([3]));
 
     const { result } = renderHook(() => useSidebarFolders(5));
 
     expect(result.current.folderCount).toBe(5);
-    expect(result.current.folderDialogRequest).toBe(0);
     expect(sortedIds(result.current.selectedFolderIds)).toEqual([3]);
 
     act(() => {
-      result.current.requestFolderDialog();
-      result.current.requestFolderDialog();
-      result.current.setFolderCount(8);
+      result.current.incrementFolderCount();
+      result.current.incrementFolderCount();
+      result.current.decrementFolderCount();
       result.current.toggleFolder(9);
     });
 
-    expect(result.current.folderCount).toBe(8);
-    expect(result.current.folderDialogRequest).toBe(2);
+    expect(result.current.folderCount).toBe(6);
     expect(sortedIds(result.current.selectedFolderIds)).toEqual([3, 9]);
     await waitFor(() =>
       expect(localStorage.getItem("konomi-selected-folders")).toBe("[3,9]"),

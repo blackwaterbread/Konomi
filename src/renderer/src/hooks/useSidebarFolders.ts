@@ -11,10 +11,16 @@ export function useSidebarFolders(initialFolderCount: number | null = null) {
   const [folderCount, setFolderCount] = useState<number | null>(
     initialFolderCount,
   );
-  const [folderDialogRequest, setFolderDialogRequest] = useState(0);
 
-  const requestFolderDialog = useCallback(() => {
-    setFolderDialogRequest((request) => request + 1);
+  const incrementFolderCount = useCallback(() => {
+    setFolderCount((count) => (count === null ? count : count + 1));
+  }, []);
+
+  const decrementFolderCount = useCallback(() => {
+    setFolderCount((count) => {
+      if (count === null) return count;
+      return Math.max(0, count - 1);
+    });
   }, []);
 
   return {
@@ -23,8 +29,7 @@ export function useSidebarFolders(initialFolderCount: number | null = null) {
     addSelectedFolder,
     removeSelectedFolder,
     folderCount,
-    setFolderCount,
-    folderDialogRequest,
-    requestFolderDialog,
+    incrementFolderCount,
+    decrementFolderCount,
   };
 }

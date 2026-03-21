@@ -2,7 +2,7 @@ import React, { type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Sidebar } from "@/components/sidebar";
+import { Sidebar, type SidebarHandle } from "@/components/sidebar";
 import type { Category, Folder } from "@preload/index.d";
 
 const useFoldersMock = vi.fn();
@@ -139,6 +139,7 @@ type SidebarOverrides = Partial<
 function renderSidebar(
   overrides: SidebarOverrides = {},
 ) {
+  const ref = React.createRef<SidebarHandle>();
   const baseProps: ComponentProps<typeof Sidebar> = {
     view: {
       activeView: "all",
@@ -149,7 +150,6 @@ function renderSidebar(
       rollbackRequest: null,
       scanningFolderIds: new Set(),
       scanning: false,
-      folderDialogRequest: 0,
     },
     folderActions: {
       onFolderToggle: vi.fn(),
@@ -157,7 +157,6 @@ function renderSidebar(
       onFolderAdded: vi.fn(),
       onFolderCancelled: vi.fn(),
       onFolderRescan: vi.fn(),
-      onFolderCountChange: vi.fn(),
     },
     categoryState: {
       categories: [],
@@ -200,8 +199,9 @@ function renderSidebar(
   };
 
   return {
-    ...render(<Sidebar {...props} />),
+    ...render(<Sidebar ref={ref} {...props} />),
     props,
+    ref,
   };
 }
 
@@ -233,9 +233,8 @@ describe("Sidebar", () => {
     useFolderDialogMock.mockReturnValue(createFolderDialogState());
   });
 
-  it("reports folder count and processes rollback requests once per request id", async () => {
+  it("processes rollback requests once per request id", async () => {
     const removeFolder = vi.fn().mockResolvedValue(undefined);
-    const onFolderCountChange = vi.fn();
     const onFolderCancelled = vi.fn();
 
     useFoldersMock.mockReturnValue({
@@ -249,7 +248,6 @@ describe("Sidebar", () => {
 
     const { rerender, props } = renderSidebar({
       folderActions: {
-        onFolderCountChange,
         onFolderCancelled,
       },
       folderState: {
@@ -257,7 +255,6 @@ describe("Sidebar", () => {
       },
     });
 
-    await waitFor(() => expect(onFolderCountChange).toHaveBeenCalledWith(2));
     await waitFor(() => expect(removeFolder).toHaveBeenCalledTimes(2));
     expect(onFolderCancelled).toHaveBeenCalledWith(1);
     expect(onFolderCancelled).toHaveBeenCalledWith(2);
@@ -267,7 +264,6 @@ describe("Sidebar", () => {
         {...props}
         folderActions={{
           ...props.folderActions,
-          onFolderCountChange,
           onFolderCancelled,
         }}
         folderState={{
@@ -284,7 +280,6 @@ describe("Sidebar", () => {
         {...props}
         folderActions={{
           ...props.folderActions,
-          onFolderCountChange,
           onFolderCancelled,
         }}
         folderState={{
@@ -395,15 +390,13 @@ describe("Sidebar", () => {
     expect(handleFolderRescanWithDuplicateCheck).toHaveBeenCalledWith(folder);
   });
 
-  it("opens the folder dialog when an external folder dialog request arrives", async () => {
+  it("opens the folder dialog through the imperative handle", async () => {
     const folderDialogState = createFolderDialogState();
     useFolderDialogMock.mockReturnValue(folderDialogState);
 
-    renderSidebar({
-      folderState: {
-        folderDialogRequest: 1,
-      },
-    });
+    const { ref } = renderSidebar();
+
+    ref.current?.openFolderDialog();
 
     await waitFor(() =>
       expect(folderDialogState.handleOpenChange).toHaveBeenCalledWith(true),

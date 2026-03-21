@@ -13,7 +13,15 @@
   Shuffle,
   RefreshCw,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { useFolderDialog } from "@/hooks/useFolderDialog";
 import { useDuplicateResolutionDialog } from "@/hooks/useDuplicateResolutionDialog";
@@ -51,7 +59,6 @@ interface SidebarFolderState {
   rollbackRequest?: { id: number; folderIds: number[] } | null;
   scanningFolderIds?: Set<number>;
   scanning?: boolean;
-  folderDialogRequest?: number;
 }
 
 interface SidebarFolderActions {
@@ -60,7 +67,6 @@ interface SidebarFolderActions {
   onFolderAdded?: (folderId: number) => void;
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
-  onFolderCountChange?: (count: number | null) => void;
 }
 
 interface SidebarCategoryState {
@@ -85,6 +91,10 @@ interface SidebarProps {
   categoryState: SidebarCategoryState;
   categoryActions: SidebarCategoryActions;
   isAnalyzing?: boolean;
+}
+
+export interface SidebarHandle {
+  openFolderDialog: () => void;
 }
 
 const views = [
@@ -1011,70 +1021,73 @@ const SidebarCategoriesSection = memo(function SidebarCategoriesSection({
   );
 });
 
-export const Sidebar = memo(function Sidebar({
-  view,
-  folderState,
-  folderActions,
-  categoryState,
-  categoryActions,
-  isAnalyzing,
-}: SidebarProps) {
-  const { t } = useTranslation();
-  const { activeView, onViewChange } = view;
-  const {
-    selectedFolderIds,
-    rollbackRequest,
-    scanningFolderIds,
-    scanning,
-    folderDialogRequest,
-  } = folderState;
-  const {
-    onFolderToggle,
-    onFolderRemoved,
-    onFolderAdded,
-    onFolderCancelled,
-    onFolderRescan,
-    onFolderCountChange,
-  } = folderActions;
-  const { categories, selectedCategoryId } = categoryState;
-  const {
-    onCategorySelect,
-    onCategoryCreate,
-    onCategoryRename,
-    onCategoryDelete,
-    onCategoryReorder,
-    onCategoryAddByPrompt,
-    onRandomRefresh,
-  } = categoryActions;
-  const {
-    folders,
-    hasLoaded,
-    addFolder,
-    removeFolder,
-    renameFolder,
-    reorderFolders,
-  } = useFolders();
-  const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
-  const [addByPromptCategoryId, setAddByPromptCategoryId] = useState<
-    number | null
-  >(null);
-  const [folderOpenRequest, setFolderOpenRequest] = useState(0);
-  const processedRollbackRequestIdRef = useRef<number | null>(null);
-  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{
-    id: number;
-    name: string;
-  } | null>(null);
-  const [deleteFolderPending, setDeleteFolderPending] = useState(false);
-  const [draggingFolderId, setDraggingFolderId] = useState<number | null>(null);
-  const [folderDropTargetId, setFolderDropTargetId] = useState<number | null>(
-    null,
-  );
-  const [draggingCategoryId, setDraggingCategoryId] = useState<number | null>(
-    null,
-  );
-  const [categoryDropTargetId, setCategoryDropTargetId] = useState<
-    number | null
-  >(null);
+export const Sidebar = memo(
+  forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
+    {
+      view,
+      folderState,
+      folderActions,
+      categoryState,
+      categoryActions,
+      isAnalyzing,
+    },
+    ref,
+  ) {
+    const { t } = useTranslation();
+    const { activeView, onViewChange } = view;
+    const {
+      selectedFolderIds,
+      rollbackRequest,
+      scanningFolderIds,
+      scanning,
+    } = folderState;
+    const {
+      onFolderToggle,
+      onFolderRemoved,
+      onFolderAdded,
+      onFolderCancelled,
+      onFolderRescan,
+    } = folderActions;
+    const { categories, selectedCategoryId } = categoryState;
+    const {
+      onCategorySelect,
+      onCategoryCreate,
+      onCategoryRename,
+      onCategoryDelete,
+      onCategoryReorder,
+      onCategoryAddByPrompt,
+      onRandomRefresh,
+    } = categoryActions;
+    const {
+      folders,
+      addFolder,
+      removeFolder,
+      renameFolder,
+      reorderFolders,
+    } = useFolders();
+    const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
+    const [addByPromptCategoryId, setAddByPromptCategoryId] = useState<
+      number | null
+    >(null);
+    const [folderOpenRequest, setFolderOpenRequest] = useState(0);
+    const processedRollbackRequestIdRef = useRef<number | null>(null);
+    const [deleteFolderTarget, setDeleteFolderTarget] = useState<{
+      id: number;
+      name: string;
+    } | null>(null);
+    const [deleteFolderPending, setDeleteFolderPending] = useState(false);
+    const [draggingFolderId, setDraggingFolderId] = useState<number | null>(
+      null,
+    );
+    const [folderDropTargetId, setFolderDropTargetId] = useState<number | null>(
+      null,
+    );
+    const [draggingCategoryId, setDraggingCategoryId] = useState<number | null>(
+      null,
+    );
+    const [categoryDropTargetId, setCategoryDropTargetId] = useState<
+      number | null
+    >(null);
 
   const {
     dialog: duplicateResolutionDialog,
@@ -1086,21 +1099,6 @@ export const Sidebar = memo(function Sidebar({
     onFolderAdded,
     onFolderRescan,
   });
-
-  useEffect(() => {
-    onFolderCountChange?.(hasLoaded ? folders.length : null);
-  }, [folders.length, hasLoaded, onFolderCountChange]);
-
-  const folderDialogRequestRef = useRef(0);
-  useEffect(() => {
-    if (
-      folderDialogRequest &&
-      folderDialogRequest !== folderDialogRequestRef.current
-    ) {
-      folderDialogRequestRef.current = folderDialogRequest;
-      setFolderOpenRequest((current) => current + 1);
-    }
-  }, [folderDialogRequest]);
 
   const handleRemoveFolder = async (id: number) => {
     try {
@@ -1194,6 +1192,14 @@ export const Sidebar = memo(function Sidebar({
   const handleOpenFolderDialog = useCallback(() => {
     setFolderOpenRequest((current) => current + 1);
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openFolderDialog: handleOpenFolderDialog,
+    }),
+    [handleOpenFolderDialog],
+  );
 
   const handleCloseNewCategoryDialog = useCallback(() => {
     setIsNewCategoryOpen(false);
@@ -1456,7 +1462,8 @@ export const Sidebar = memo(function Sidebar({
         onSubmit={handleFolderAddWithDuplicateCheck}
       />
     </>
-  );
-});
+    );
+  }),
+);
 
 Sidebar.displayName = "Sidebar";

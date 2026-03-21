@@ -15,6 +15,8 @@ interface UseSidebarFolderActionsOptions {
   isAnalyzing: boolean;
   addSelectedFolder: (id: number) => void;
   removeSelectedFolder: (id: number) => void;
+  incrementFolderCount: () => void;
+  decrementFolderCount: () => void;
   runScan: (options?: RunScanOptions) => Promise<boolean>;
   scanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
@@ -27,6 +29,8 @@ export function useSidebarFolderActions({
   isAnalyzing,
   addSelectedFolder,
   removeSelectedFolder,
+  incrementFolderCount,
+  decrementFolderCount,
   runScan,
   scanningRef,
   scheduleAnalysis,
@@ -38,6 +42,7 @@ export function useSidebarFolderActions({
     (folderId: number) => {
       log.info("Folder added", { folderId });
       addSelectedFolder(folderId);
+      incrementFolderCount();
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
       schedulePageRefresh(0);
@@ -53,6 +58,7 @@ export function useSidebarFolderActions({
     },
     [
       addSelectedFolder,
+      incrementFolderCount,
       runScan,
       scheduleAnalysis,
       schedulePageRefresh,
@@ -65,6 +71,7 @@ export function useSidebarFolderActions({
     (folderId: number) => {
       log.info("Folder add rollback/cancelled", { folderId });
       removeSelectedFolder(folderId);
+      decrementFolderCount();
       setRollbackFolderIds((prev) => {
         const next = new Set(prev);
         next.delete(folderId);
@@ -79,6 +86,7 @@ export function useSidebarFolderActions({
       scheduleAnalysis(500);
     },
     [
+      decrementFolderCount,
       removeSelectedFolder,
       scheduleAnalysis,
       schedulePageRefresh,
@@ -91,6 +99,7 @@ export function useSidebarFolderActions({
     (folderId: number) => {
       log.info("Folder removed", { folderId });
       removeSelectedFolder(folderId);
+      decrementFolderCount();
       setRollbackFolderIds((prev) => {
         const next = new Set(prev);
         next.delete(folderId);
@@ -106,6 +115,7 @@ export function useSidebarFolderActions({
       void runScan();
     },
     [
+      decrementFolderCount,
       removeSelectedFolder,
       runScan,
       scheduleAnalysis,

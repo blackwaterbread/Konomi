@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
+import type { SidebarHandle } from "@/components/sidebar";
 import { ImageGallery } from "@/components/image-gallery";
 import { ImageDetail } from "@/components/image-detail";
 import { SettingsView } from "@/components/settings-view";
@@ -100,9 +101,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
     addSelectedFolder,
     removeSelectedFolder,
     folderCount,
-    setFolderCount,
-    folderDialogRequest,
-    requestFolderDialog,
+    incrementFolderCount,
+    decrementFolderCount,
   } = useSidebarFolders(initialFolderCount);
   const [activeView, setActiveView] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
@@ -235,6 +235,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
+  const sidebarRef = useRef<SidebarHandle | null>(null);
   const resolutionFilters = useMemo(
     () =>
       advancedFilters
@@ -456,6 +457,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
     isAnalyzing,
     addSelectedFolder,
     removeSelectedFolder,
+    incrementFolderCount,
+    decrementFolderCount,
     runScan,
     scanningRef,
     scheduleAnalysis,
@@ -888,11 +891,9 @@ export default function App({ initialFolderCount = null }: AppProps) {
       rollbackRequest: folderRollbackRequest,
       scanningFolderIds: activeScanFolderIds,
       scanning,
-      folderDialogRequest,
     }),
     [
       activeScanFolderIds,
-      folderDialogRequest,
       folderRollbackRequest,
       scanning,
       selectedFolderIds,
@@ -906,7 +907,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
       onFolderAdded: handleFolderAdded,
       onFolderCancelled: handleFolderCancelled,
       onFolderRescan: handleFolderRescan,
-      onFolderCountChange: setFolderCount,
     }),
     [
       handleFolderAdded,
@@ -988,7 +988,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       onAddTagToSearch: handleAddTagToSearch,
       onAddTagToGenerator: handleAddTagToGenerator,
       onClearSearch: handleClearSearch,
-      onAddFolder: requestFolderDialog,
+      onAddFolder: () => sidebarRef.current?.openFolderDialog(),
       onLoadAllSelectableImages: handleLoadAllSelectableImages,
     }),
     [
@@ -1005,7 +1005,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
       handleSendToGenerator,
       handleSendToSource,
       handleToggleFavorite,
-      requestFolderDialog,
     ],
   );
 
@@ -1077,6 +1076,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
             style={{ width: sidebarWidth }}
           >
             <Sidebar
+              ref={sidebarRef}
               view={sidebarView}
               folderState={sidebarFolderState}
               folderActions={sidebarFolderActions}

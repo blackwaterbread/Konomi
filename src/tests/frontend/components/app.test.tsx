@@ -115,20 +115,33 @@ vi.mock("@/components/header", () => ({
 }));
 
 vi.mock("@/components/sidebar", () => ({
-  Sidebar: ({
-    view,
-    folderState,
-  }: {
-    view: { activeView: string };
-    folderState?: { folderDialogRequest?: number };
-  }) => (
-    <div data-testid="sidebar">
-      <div data-testid="sidebar-active-view">{view.activeView}</div>
-      <div data-testid="sidebar-folder-dialog-request">
-        {String(folderState?.folderDialogRequest ?? 0)}
+  Sidebar: React.forwardRef(function MockSidebar(
+    {
+      view,
+    }: {
+      view: { activeView: string };
+    },
+    ref: React.ForwardedRef<{ openFolderDialog: () => void }>,
+  ) {
+    const [openRequestCount, setOpenRequestCount] = React.useState(0);
+
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        openFolderDialog: () => setOpenRequestCount((count) => count + 1),
+      }),
+      [],
+    );
+
+    return (
+      <div data-testid="sidebar">
+        <div data-testid="sidebar-active-view">{view.activeView}</div>
+        <div data-testid="sidebar-folder-dialog-request">
+          {String(openRequestCount)}
+        </div>
       </div>
-    </div>
-  ),
+    );
+  }),
 }));
 
 vi.mock("@/components/image-gallery", () => ({
