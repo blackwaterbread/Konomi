@@ -2,7 +2,6 @@ import {
   useState,
   useMemo,
   useCallback,
-  useEffect,
   useRef,
   useDeferredValue,
 } from "react";
@@ -43,10 +42,9 @@ import { useImageActions } from "@/hooks/useImageActions";
 import { useSearchPresetStats } from "@/hooks/useSearchPresetStats";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import { useSimilarImages } from "@/hooks/useSimilarImages";
+import { useAppShellState, type ActivePanel } from "@/hooks/useAppShellState";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { useTranslation } from "react-i18next";
-const INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY =
-  "konomi-initial-language-selection-completed";
 const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
   "similarityThreshold",
   "useAdvancedSimilarityThresholds",
@@ -85,84 +83,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     reorderFolders,
     folderCount,
   } = useFolderController(initialFolderCount);
-  const [activePanel, setActivePanel] = useState<
-    "gallery" | "generator" | "settings"
-  >("gallery");
-  const [tourOpen, setTourOpen] = useState(
-    () => localStorage.getItem("konomi-tour-completed") !== "true",
-  );
-  const [initialLanguageScreenOpen, setInitialLanguageScreenOpen] = useState(
-    () =>
-      localStorage.getItem("konomi-tour-completed") !== "true" &&
-      localStorage.getItem(INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY) !== "true",
-  );
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    try {
-      return Number(localStorage.getItem("konomi-sidebar-width")) || 288;
-    } catch {
-      return 288;
-    }
-  });
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(0);
-  const currentSidebarWidth = useRef(sidebarWidth);
-
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      isDragging.current = true;
-      dragStartX.current = e.clientX;
-      dragStartWidth.current = sidebarWidth;
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
-    [sidebarWidth],
-  );
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      const next = Math.max(
-        180,
-        Math.min(480, dragStartWidth.current + e.clientX - dragStartX.current),
-      );
-      currentSidebarWidth.current = next;
-      setSidebarWidth(next);
-    };
-    const onUp = () => {
-      if (!isDragging.current) return;
-      isDragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      try {
-        localStorage.setItem(
-          "konomi-sidebar-width",
-          String(currentSidebarWidth.current),
-        );
-      } catch {
-        /* ignore */
-      }
-    };
-    const onUnload = () => {
-      try {
-        localStorage.setItem(
-          "konomi-sidebar-width",
-          String(currentSidebarWidth.current),
-        );
-      } catch {
-        /* ignore */
-      }
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("beforeunload", onUnload);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("beforeunload", onUnload);
-    };
-  }, []);
-
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
   const sidebarRef = useRef<SidebarHandle | null>(null);
@@ -292,39 +212,23 @@ export default function App({ initialFolderCount = null }: AppProps) {
     [resetSettings, pendingSimilarityRecalcRef],
   );
 
-  const handlePanelChange = useCallback(
-    async (nextPanel: "gallery" | "generator" | "settings") => {
-      if (nextPanel === activePanel) return;
-
-      const leavingSettings =
-        activePanel === "settings" && nextPanel !== "settings";
-      if (!leavingSettings || !pendingSimilarityRecalcRef.current) {
-        setActivePanel(nextPanel);
-        return;
-      }
-
-      if (scanningRef.current) {
-        toast.error(t("error.scanInProgressForSimilarity"));
-        return;
-      }
-
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current);
-        analyzeTimerRef.current = null;
-      }
-
-      setActivePanel(nextPanel);
-      void runAnalysisNow();
-    },
-    [
-      activePanel,
-      runAnalysisNow,
-      scanningRef,
-      analyzeTimerRef,
-      pendingSimilarityRecalcRef,
-      t,
-    ],
-  );
+  const {
+    activePanel,
+    setActivePanel,
+    handlePanelChange,
+    sidebarWidth,
+    handleResizeStart,
+    initialLanguageScreenOpen,
+    showFeatureTour,
+    handleStartTour,
+    handleTourClose,
+    handleInitialLanguageContinue,
+  } = useAppShellState({
+    scanningRef,
+    analyzeTimerRef,
+    pendingSimilarityRecalcRef,
+    runAnalysisNow,
+  });
 
   const {
     imageActions,
@@ -375,30 +279,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
   }, []);
 
   const handleHeaderPanelChange = useCallback(
-    (panel: "gallery" | "generator" | "settings") => {
+    (panel: ActivePanel) => {
       void handlePanelChange(panel);
     },
     [handlePanelChange],
   );
-
-  const handleStartTour = useCallback(() => {
-    setTourOpen(true);
-  }, []);
-
-  const handleTourClose = useCallback(() => {
-    setTourOpen(false);
-    setActivePanel("gallery");
-    localStorage.setItem("konomi-tour-completed", "true");
-  }, []);
-
-  const handleInitialLanguageContinue = useCallback(() => {
-    try {
-      localStorage.setItem(INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY, "true");
-    } catch {
-      // ignore storage errors
-    }
-    setInitialLanguageScreenOpen(false);
-  }, []);
 
   const sidebarFolderState = useMemo(
     () => ({
@@ -504,7 +389,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
             outputFolder={outputFolder}
             onOutputFolderChange={setOutputFolder}
             isDarkTheme={isDarkTheme}
-            tourActive={tourOpen && !initialLanguageScreenOpen}
+            tourActive={showFeatureTour}
           />
         </div>
 
@@ -660,7 +545,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       />
 
       <FeatureTour
-        open={tourOpen && !initialLanguageScreenOpen}
+        open={showFeatureTour}
         onClose={handleTourClose}
         onPanelChange={setActivePanel}
         onAction={handleTourAction}
