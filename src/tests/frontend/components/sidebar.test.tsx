@@ -271,10 +271,9 @@ describe("Sidebar", () => {
     expect(onFolderCancelled).toHaveBeenCalledTimes(3);
   });
 
-  it("switches views and clears the selected category", async () => {
+  it("switches views through the provided handler", async () => {
     const user = userEvent.setup();
     const onViewChange = vi.fn();
-    const onCategorySelect = vi.fn();
 
     renderSidebar({
       view: {
@@ -285,15 +284,11 @@ describe("Sidebar", () => {
         selectedCategoryId: 9,
         categories: [createCategory(9, "Portraits")],
       },
-      categoryActions: {
-        onCategorySelect,
-      },
     });
 
     await user.click(screen.getByRole("button", { name: "Recent" }));
 
     expect(onViewChange).toHaveBeenCalledWith("recent");
-    expect(onCategorySelect).toHaveBeenCalledWith(null);
   });
 
   it("toggles custom category selection and rerolls the random builtin category", async () => {

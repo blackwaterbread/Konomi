@@ -1363,7 +1363,6 @@ export const Sidebar = memo(
                       )}
                       onClick={() => {
                         onViewChange(view.id);
-                        onCategorySelect(null);
                       }}
                     >
                       <Icon className="h-4 w-4" />

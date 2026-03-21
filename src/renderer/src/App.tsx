@@ -36,16 +36,15 @@ import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import { useGalleryImages } from "@/hooks/useGalleryImages";
 import { useScanning } from "@/hooks/useScanning";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
-import { useCategories } from "@/hooks/useCategories";
+import { useBrowseScope } from "@/hooks/useBrowseScope";
 import { useFolderController } from "@/hooks/useFolderController";
+import { useImageActions } from "@/hooks/useImageActions";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import { useSimilarImages } from "@/hooks/useSimilarImages";
-import type { ImageData } from "@/components/image-card";
 import type { ImageListQuery } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
 import { rowToImageData } from "@/lib/image-utils";
-import { dispatchSearchInputAppendTag } from "@/lib/search-input-event";
 import { applyAppLanguagePreference } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 
@@ -107,15 +106,10 @@ export default function App({ initialFolderCount = null }: AppProps) {
     reorderFolders,
     folderCount,
   } = useFolderController(initialFolderCount);
-  const [activeView, setActiveView] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
   const [sortBy, setSortBy] = useState<
     "recent" | "oldest" | "favorites" | "name"
   >("recent");
-  const [selectedImageSnapshot, setSelectedImage] = useState<ImageData | null>(
-    null,
-  );
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<
     "gallery" | "generator" | "settings"
   >("gallery");
@@ -197,33 +191,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
     };
   }, []);
 
-  const {
-    categories,
-    selectedCategoryId,
-    selectedCategory,
-    selectedBuiltinCategory,
-    selectCategory,
-    createCategory,
-    renameCategory,
-    reorderCategories,
-    deleteCategory,
-    addCategoryByPrompt,
-  } = useCategories();
-  const [randomSeed, setRandomSeed] = useState(() =>
-    Math.floor(Math.random() * 0x7fffffff),
-  );
-  const [categoryDialogImage, setCategoryDialogImage] =
-    useState<ImageData | null>(null);
-  const [bulkCategoryDialogImages, setBulkCategoryDialogImages] = useState<
-    ImageData[] | null
-  >(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [availableResolutions, setAvailableResolutions] = useState<
     Array<{ width: number; height: number }>
   >([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [generatorTransitioning, setGeneratorTransitioning] = useState(false);
   const [searchStatsProgress, setSearchStatsProgress] = useState<{
     done: number;
     total: number;
@@ -239,6 +211,13 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const galleryOverlayActionRafRef = useRef<number | null>(null);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
   const sidebarRef = useRef<SidebarHandle | null>(null);
+  const {
+    categories,
+    queryFragment,
+    sidebarView,
+    sidebarCategoryState,
+    categoryCommands,
+  } = useBrowseScope();
   const resolutionFilters = useMemo(
     () =>
       advancedFilters
@@ -265,14 +244,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
       folderIds: [...selectedFolderIds].sort((a, b) => a - b),
       searchQuery,
       sortBy,
-      onlyRecent: activeView === "recent",
+      onlyRecent: queryFragment.onlyRecent,
       recentDays: settings.recentDays,
-      customCategoryId:
-        selectedCategory && !selectedCategory.isBuiltin
-          ? selectedCategory.id
-          : null,
-      builtinCategory: selectedBuiltinCategory,
-      randomSeed,
+      customCategoryId: queryFragment.customCategoryId,
+      builtinCategory: queryFragment.builtinCategory,
+      randomSeed: queryFragment.randomSeed,
       resolutionFilters,
       modelFilters,
     }),
@@ -281,11 +257,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
       selectedFolderIds,
       searchQuery,
       sortBy,
-      activeView,
+      queryFragment.onlyRecent,
       settings.recentDays,
-      selectedCategory,
-      selectedBuiltinCategory,
-      randomSeed,
+      queryFragment.customCategoryId,
+      queryFragment.builtinCategory,
+      queryFragment.randomSeed,
       resolutionFilters,
       modelFilters,
     ],
@@ -302,44 +278,28 @@ export default function App({ initialFolderCount = null }: AppProps) {
     isLoading: isGalleryLoading,
     schedulePageRefresh,
   } = useGalleryImages(listBaseQuery);
-  const selectedImage = useMemo(() => {
-    if (!selectedImageSnapshot) return null;
-    return (
-      images.find((image) => image.id === selectedImageSnapshot.id) ??
-      selectedImageSnapshot
-    );
-  }, [images, selectedImageSnapshot]);
-  const selectedImageId = selectedImage?.id ?? null;
-  const deferredDetailContentImageId = useDeferredValue(
-    isDetailOpen ? selectedImageId : null,
-  );
-  const detailContentReady =
-    !!selectedImageId && deferredDetailContentImageId === selectedImageId;
   const gallerySelectionScopeKey = useMemo(
     () =>
       JSON.stringify({
         folderIds: [...selectedFolderIds].sort((a, b) => a - b),
         searchQuery,
-        onlyRecent: activeView === "recent",
+        onlyRecent: queryFragment.onlyRecent,
         recentDays: settings.recentDays,
-        customCategoryId:
-          selectedCategory && !selectedCategory.isBuiltin
-            ? selectedCategory.id
-            : null,
-        builtinCategory: selectedBuiltinCategory,
-        randomSeed,
+        customCategoryId: queryFragment.customCategoryId,
+        builtinCategory: queryFragment.builtinCategory,
+        randomSeed: queryFragment.randomSeed,
         resolutionFilters,
         modelFilters,
         totalImageCount,
       }),
     [
-      activeView,
       modelFilters,
-      randomSeed,
+      queryFragment.builtinCategory,
+      queryFragment.customCategoryId,
+      queryFragment.onlyRecent,
+      queryFragment.randomSeed,
       resolutionFilters,
       searchQuery,
-      selectedBuiltinCategory,
-      selectedCategory,
       selectedFolderIds,
       settings.recentDays,
       totalImageCount,
@@ -467,15 +427,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     setActiveScanFolderIds,
     setRollbackFolderIds,
   });
-  const { similarImages, similarReasons, similarImagesLoading } =
-    useSimilarImages({
-      selectedImageId,
-      isDetailOpen,
-      detailContentReady,
-      similarGroups,
-      visualThresholdRef,
-      promptThresholdRef,
-    });
 
   const handleSettingsUpdate = useCallback(
     (patch: Partial<Settings>) => {
@@ -552,6 +503,36 @@ export default function App({ initialFolderCount = null }: AppProps) {
       t,
     ],
   );
+
+  const {
+    imageActions,
+    generatorTransitioning,
+    categoryDialog,
+    deleteDialog,
+    detail,
+  } = useImageActions({
+    images,
+    setImages,
+    sortBy,
+    selectedBuiltinCategory: queryFragment.builtinCategory,
+    schedulePageRefresh,
+    generationViewRef,
+    handlePanelChange,
+  });
+  const deferredDetailContentImageId = useDeferredValue(
+    detail.isOpen ? detail.imageId : null,
+  );
+  const detailContentReady =
+    !!detail.imageId && deferredDetailContentImageId === detail.imageId;
+  const { similarImages, similarReasons, similarImagesLoading } =
+    useSimilarImages({
+      selectedImageId: detail.imageId,
+      isDetailOpen: detail.isOpen,
+      detailContentReady,
+      similarGroups,
+      visualThresholdRef,
+      promptThresholdRef,
+    });
 
   useEffect(() => {
     log.info("App mounted: loading initial data and starting watchers");
@@ -636,151 +617,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scheduleSearchStatsRefresh,
   ]);
 
-  const handleCategoryAddByPrompt = useCallback(
-    (id: number, query: string) => {
-      void addCategoryByPrompt(id, query).then((shouldRefreshPage) => {
-        if (shouldRefreshPage) {
-          schedulePageRefresh(0);
-        }
-      });
-    },
-    [addCategoryByPrompt, schedulePageRefresh],
-  );
-
-  const handleToggleFavorite = useCallback(
-    (id: string) => {
-      log.debug("Toggling favorite", { imageId: id });
-      setImages((prev) => {
-        const img = prev.find((i) => i.id === id);
-        if (!img) return prev;
-        const nextIsFavorite = !img.isFavorite;
-        const shouldRefreshPage =
-          sortBy === "favorites" || selectedBuiltinCategory === "favorites";
-        window.image
-          .setFavorite(parseInt(id, 10), nextIsFavorite)
-          .then(() => {
-            if (shouldRefreshPage) schedulePageRefresh(0);
-          })
-          .catch((e: unknown) => {
-            toast.error(
-              t("error.favoriteSetFailed", {
-                message: e instanceof Error ? e.message : String(e),
-              }),
-            );
-          });
-        return prev.map((i) =>
-          i.id === id ? { ...i, isFavorite: nextIsFavorite } : i,
-        );
-      });
-      setSelectedImage((prev) =>
-        prev?.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev,
-      );
-    },
-    [schedulePageRefresh, selectedBuiltinCategory, setImages, sortBy, t],
-  );
-
-  const handleCopyPrompt = useCallback(
-    (prompt: string) => {
-      navigator.clipboard
-        .writeText(prompt)
-        .catch(() => toast.error(t("app.clipboardCopyFailed")));
-    },
-    [t],
-  );
-
-  const handleAddTagToSearch = useCallback((tag: string) => {
-    const normalizedTag = tag.trim();
-    if (!normalizedTag) return;
-    dispatchSearchInputAppendTag({
-      tag: normalizedTag,
-      focusInput: false,
-      suppressAutocomplete: true,
-    });
-  }, []);
-
-  const handleAddTagToGenerator = useCallback(
-    (tag: string) => {
-      const normalizedTag = tag.trim();
-      if (!normalizedTag) return;
-      generationViewRef.current?.appendPromptTag(normalizedTag);
-      void handlePanelChange("generator");
-    },
-    [handlePanelChange],
-  );
-
-  const handleReveal = useCallback((path: string) => {
-    window.image.revealInExplorer(path);
-  }, []);
-
-  const handleDeleteImage = useCallback((id: string) => {
-    log.info("Deleting image requested", { imageId: id });
-    setDeleteConfirmId(id);
-  }, []);
-
-  const handleConfirmDelete = useCallback(() => {
-    if (!deleteConfirmId) return;
-    const img = images.find((i) => i.id === deleteConfirmId);
-    if (img) {
-      window.image.delete(img.path).catch((e: unknown) => {
-        toast.error(
-          t("error.imageDeleteFailed", {
-            message: e instanceof Error ? e.message : String(e),
-          }),
-        );
-      });
-      if (selectedImage?.id === deleteConfirmId) {
-        setSelectedImage(null);
-        setIsDetailOpen(false);
-      }
-      schedulePageRefresh(60);
-    }
-    setDeleteConfirmId(null);
-  }, [deleteConfirmId, images, schedulePageRefresh, selectedImage?.id, t]);
-
-  const handleSendToGenerator = useCallback(
-    (image: ImageData) => {
-      setGeneratorTransitioning(true);
-      requestAnimationFrame(() => {
-        generationViewRef.current?.importImage(image);
-        void handlePanelChange("generator");
-        requestAnimationFrame(() => {
-          setGeneratorTransitioning(false);
-        });
-      });
-    },
-    [handlePanelChange],
-  );
-
-  const handleSendToSource = useCallback(
-    (image: ImageData) => {
-      generationViewRef.current?.showSourceImage(image);
-      void handlePanelChange("generator");
-    },
-    [handlePanelChange],
-  );
-
-  const handleChangeCategory = useCallback((image: ImageData) => {
-    setBulkCategoryDialogImages(null);
-    setCategoryDialogImage(image);
-  }, []);
-
-  const handleBulkChangeCategory = useCallback((targets: ImageData[]) => {
-    if (targets.length === 0) return;
-    setCategoryDialogImage(null);
-    setBulkCategoryDialogImages(targets);
-  }, []);
-
-  const handleRandomRefresh = useCallback(() => {
-    log.info("Random pick refreshed");
-    setRandomSeed((seed) => seed + 1);
-  }, []);
-
-  const handleCategoryDialogClose = useCallback(() => {
-    setCategoryDialogImage(null);
-    setBulkCategoryDialogImages(null);
-    schedulePageRefresh(0);
-  }, [schedulePageRefresh]);
-
   const handleTourAction = useCallback((action: string) => {
     if (action === "open-prompt-group-panel") {
       generationViewRef.current?.openRightPanelTab("prompt-group");
@@ -856,36 +692,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     setInitialLanguageScreenOpen(false);
   }, []);
 
-  const selectedIndex = useMemo(
-    () =>
-      selectedImageId
-        ? images.findIndex((img) => img.id === selectedImageId)
-        : -1,
-    [images, selectedImageId],
-  );
-
-  const handlePrev = useCallback(() => {
-    if (selectedIndex > 0) setSelectedImage(images[selectedIndex - 1]);
-  }, [images, selectedIndex]);
-
-  const handleNext = useCallback(() => {
-    if (selectedIndex < images.length - 1)
-      setSelectedImage(images[selectedIndex + 1]);
-  }, [images, selectedIndex]);
-
-  const handleImageClick = useCallback((image: ImageData) => {
-    setSelectedImage(image);
-    setIsDetailOpen(true);
-  }, []);
-
-  const sidebarView = useMemo(
-    () => ({
-      activeView,
-      onViewChange: setActiveView,
-    }),
-    [activeView],
-  );
-
   const sidebarFolderState = useMemo(
     () => ({
       folders,
@@ -927,34 +733,25 @@ export default function App({ initialFolderCount = null }: AppProps) {
       toggleFolder,
     ],
   );
-
-  const sidebarCategoryState = useMemo(
-    () => ({
-      categories,
-      selectedCategoryId,
-    }),
-    [categories, selectedCategoryId],
-  );
-
   const sidebarCategoryActions = useMemo(
     () => ({
-      onCategorySelect: selectCategory,
-      onCategoryCreate: createCategory,
-      onCategoryRename: renameCategory,
-      onCategoryDelete: deleteCategory,
-      onCategoryReorder: reorderCategories,
-      onCategoryAddByPrompt: handleCategoryAddByPrompt,
-      onRandomRefresh: handleRandomRefresh,
+      onCategorySelect: categoryCommands.selectCategory,
+      onCategoryCreate: categoryCommands.createCategory,
+      onCategoryRename: categoryCommands.renameCategory,
+      onCategoryDelete: categoryCommands.deleteCategory,
+      onCategoryReorder: categoryCommands.reorderCategories,
+      onCategoryAddByPrompt: (id: number, query: string) => {
+        void categoryCommands
+          .addCategoryByPrompt(id, query)
+          .then((shouldRefreshPage) => {
+            if (shouldRefreshPage) {
+              schedulePageRefresh(0);
+            }
+          });
+      },
+      onRandomRefresh: categoryCommands.refreshRandomSelection,
     }),
-    [
-      createCategory,
-      deleteCategory,
-      handleCategoryAddByPrompt,
-      handleRandomRefresh,
-      renameCategory,
-      reorderCategories,
-      selectCategory,
-    ],
+    [categoryCommands, schedulePageRefresh],
   );
 
   const imageGalleryState = useMemo(
@@ -987,36 +784,12 @@ export default function App({ initialFolderCount = null }: AppProps) {
     () => ({
       onViewModeChange: setViewMode,
       onSortChange: setSortBy,
-      onToggleFavorite: handleToggleFavorite,
-      onCopyPrompt: handleCopyPrompt,
-      onImageClick: handleImageClick,
-      onReveal: handleReveal,
-      onDelete: handleDeleteImage,
-      onChangeCategory: handleChangeCategory,
-      onBulkChangeCategory: handleBulkChangeCategory,
-      onSendToGenerator: handleSendToGenerator,
-      onSendToSource: handleSendToSource,
-      onAddTagToSearch: handleAddTagToSearch,
-      onAddTagToGenerator: handleAddTagToGenerator,
+      ...imageActions,
       onClearSearch: handleClearSearch,
       onAddFolder: () => sidebarRef.current?.openFolderDialog(),
       onLoadAllSelectableImages: handleLoadAllSelectableImages,
     }),
-    [
-      handleAddTagToGenerator,
-      handleAddTagToSearch,
-      handleBulkChangeCategory,
-      handleChangeCategory,
-      handleClearSearch,
-      handleCopyPrompt,
-      handleDeleteImage,
-      handleImageClick,
-      handleLoadAllSelectableImages,
-      handleReveal,
-      handleSendToGenerator,
-      handleSendToSource,
-      handleToggleFavorite,
-    ],
+    [handleClearSearch, handleLoadAllSelectableImages, imageActions],
   );
 
   const imageGalleryPagination = useMemo(
@@ -1151,10 +924,10 @@ export default function App({ initialFolderCount = null }: AppProps) {
       </div>
 
       <CategoryDialog
-        image={categoryDialogImage}
-        images={bulkCategoryDialogImages}
+        image={categoryDialog.image}
+        images={categoryDialog.images}
         categories={categories}
-        onClose={handleCategoryDialogClose}
+        onClose={categoryDialog.onClose}
       />
 
       <Dialog
@@ -1183,12 +956,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!deleteConfirmId}
-        onOpenChange={(open) => {
-          if (!open) setDeleteConfirmId(null);
-        }}
-      >
+      <Dialog open={deleteDialog.open} onOpenChange={deleteDialog.onOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("app.dialog.imageDelete.title")}</DialogTitle>
@@ -1200,7 +968,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
             <DialogClose asChild>
               <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={handleConfirmDelete}>
+            <Button variant="destructive" onClick={deleteDialog.onConfirm}>
               {t("common.delete")}
             </Button>
           </DialogFooter>
@@ -1208,24 +976,22 @@ export default function App({ initialFolderCount = null }: AppProps) {
       </Dialog>
 
       <ImageDetail
-        image={selectedImage}
-        isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)}
-        onToggleFavorite={handleToggleFavorite}
-        onCopyPrompt={handleCopyPrompt}
-        onAddTagToSearch={handleAddTagToSearch}
-        onAddTagToGenerator={handleAddTagToGenerator}
-        prevImage={selectedIndex > 0 ? images[selectedIndex - 1] : null}
-        nextImage={
-          selectedIndex < images.length - 1 ? images[selectedIndex + 1] : null
-        }
-        onPrev={handlePrev}
-        onNext={handleNext}
+        image={detail.image}
+        isOpen={detail.isOpen}
+        onClose={detail.onClose}
+        onToggleFavorite={imageActions.onToggleFavorite}
+        onCopyPrompt={imageActions.onCopyPrompt}
+        onAddTagToSearch={imageActions.onAddTagToSearch}
+        onAddTagToGenerator={imageActions.onAddTagToGenerator}
+        prevImage={detail.prevImage}
+        nextImage={detail.nextImage}
+        onPrev={detail.onPrev}
+        onNext={detail.onNext}
         similarImages={similarImages}
         similarReasons={similarReasons}
         similarImagesLoading={similarImagesLoading}
         detailContentReady={detailContentReady}
-        onSimilarImageClick={setSelectedImage}
+        onSimilarImageClick={detail.onSelectImage}
         similarPageSize={settings.similarPageSize}
       />
 
