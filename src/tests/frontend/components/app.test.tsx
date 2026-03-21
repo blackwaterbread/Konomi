@@ -116,16 +116,16 @@ vi.mock("@/components/header", () => ({
 
 vi.mock("@/components/sidebar", () => ({
   Sidebar: ({
-    activeView,
-    folderDialogRequest,
+    view,
+    folderState,
   }: {
-    activeView: string;
-    folderDialogRequest?: number;
+    view: { activeView: string };
+    folderState?: { folderDialogRequest?: number };
   }) => (
     <div data-testid="sidebar">
-      <div data-testid="sidebar-active-view">{activeView}</div>
+      <div data-testid="sidebar-active-view">{view.activeView}</div>
       <div data-testid="sidebar-folder-dialog-request">
-        {String(folderDialogRequest ?? 0)}
+        {String(folderState?.folderDialogRequest ?? 0)}
       </div>
     </div>
   ),
@@ -133,23 +133,18 @@ vi.mock("@/components/sidebar", () => ({
 
 vi.mock("@/components/image-gallery", () => ({
   ImageGallery: ({
-    onSendToGenerator,
-    onSendToSource,
-    onAddTagToGenerator,
-    onAddFolder,
-    onImageClick,
-    onDelete,
-    onChangeCategory,
-    onBulkChangeCategory,
+    actions,
   }: {
-    onSendToGenerator?: (image: ImageData) => void;
-    onSendToSource?: (image: ImageData) => void;
-    onAddTagToGenerator?: (tag: string) => void;
-    onAddFolder?: () => void;
-    onImageClick?: (image: ImageData) => void;
-    onDelete?: (id: string) => void;
-    onChangeCategory?: (image: ImageData) => void;
-    onBulkChangeCategory?: (images: ImageData[]) => void;
+    actions: {
+      onSendToGenerator?: (image: ImageData) => void;
+      onSendToSource?: (image: ImageData) => void;
+      onAddTagToGenerator?: (tag: string) => void;
+      onAddFolder?: () => void;
+      onImageClick?: (image: ImageData) => void;
+      onDelete?: (id: string) => void;
+      onChangeCategory?: (image: ImageData) => void;
+      onBulkChangeCategory?: (images: ImageData[]) => void;
+    };
   }) => {
     const image: ImageData = {
       id: "11",
@@ -189,33 +184,38 @@ vi.mock("@/components/image-gallery", () => ({
 
     return (
       <div data-testid="image-gallery">
-        <button type="button" onClick={() => onSendToGenerator?.(image)}>
+        <button
+          type="button"
+          onClick={() => actions.onSendToGenerator?.(image)}
+        >
           Gallery Send To Generator
         </button>
-        <button type="button" onClick={() => onSendToSource?.(image)}>
+        <button type="button" onClick={() => actions.onSendToSource?.(image)}>
           Gallery Send To Source
         </button>
         <button
           type="button"
-          onClick={() => onAddTagToGenerator?.("sparkles")}
+          onClick={() => actions.onAddTagToGenerator?.("sparkles")}
         >
           Gallery Add Tag To Generator
         </button>
-        <button type="button" onClick={() => onAddFolder?.()}>
+        <button type="button" onClick={() => actions.onAddFolder?.()}>
           Gallery Add Folder
         </button>
-        <button type="button" onClick={() => onImageClick?.(image)}>
+        <button type="button" onClick={() => actions.onImageClick?.(image)}>
           Gallery Open Detail
         </button>
-        <button type="button" onClick={() => onDelete?.(image.id)}>
+        <button type="button" onClick={() => actions.onDelete?.(image.id)}>
           Gallery Delete Image
         </button>
-        <button type="button" onClick={() => onChangeCategory?.(image)}>
+        <button type="button" onClick={() => actions.onChangeCategory?.(image)}>
           Gallery Change Category
         </button>
         <button
           type="button"
-          onClick={() => onBulkChangeCategory?.([image, secondImage])}
+          onClick={() =>
+            actions.onBulkChangeCategory?.([image, secondImage])
+          }
         >
           Gallery Bulk Change Category
         </button>

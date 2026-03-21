@@ -5,24 +5,51 @@ import userEvent from "@testing-library/user-event";
 import { ImageGallery } from "@/components/image-gallery";
 import { createGalleryImage } from "../helpers/gallery-image";
 
+type ImageGalleryOverrides = Partial<
+  Omit<ComponentProps<typeof ImageGallery>, "gallery" | "actions" | "pagination">
+> & {
+  gallery?: Partial<ComponentProps<typeof ImageGallery>["gallery"]>;
+  actions?: Partial<ComponentProps<typeof ImageGallery>["actions"]>;
+  pagination?: Partial<ComponentProps<typeof ImageGallery>["pagination"]>;
+};
+
 function renderImageGallery(
-  overrides: Partial<ComponentProps<typeof ImageGallery>> = {},
+  overrides: ImageGalleryOverrides = {},
 ) {
+  const baseProps: ComponentProps<typeof ImageGallery> = {
+    gallery: {
+      images: [],
+      viewMode: "grid",
+      sortBy: "recent",
+      totalCount: 0,
+    },
+    actions: {
+      onViewModeChange: vi.fn(),
+      onSortChange: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onCopyPrompt: vi.fn(),
+      onImageClick: vi.fn(),
+      onReveal: vi.fn(),
+      onDelete: vi.fn(),
+      onChangeCategory: vi.fn(),
+      onBulkChangeCategory: vi.fn(),
+    },
+  };
   const props: ComponentProps<typeof ImageGallery> = {
-    images: [],
-    viewMode: "grid",
-    onViewModeChange: vi.fn(),
-    sortBy: "recent",
-    onSortChange: vi.fn(),
-    onToggleFavorite: vi.fn(),
-    onCopyPrompt: vi.fn(),
-    onImageClick: vi.fn(),
-    onReveal: vi.fn(),
-    onDelete: vi.fn(),
-    onChangeCategory: vi.fn(),
-    onBulkChangeCategory: vi.fn(),
-    totalCount: 0,
+    ...baseProps,
     ...overrides,
+    gallery: {
+      ...baseProps.gallery,
+      ...overrides.gallery,
+    },
+    actions: {
+      ...baseProps.actions,
+      ...overrides.actions,
+    },
+    pagination: {
+      ...baseProps.pagination,
+      ...overrides.pagination,
+    },
   };
 
   return {
@@ -37,8 +64,12 @@ describe("ImageGallery", () => {
     const onAddFolder = vi.fn();
 
     renderImageGallery({
-      hasFolders: false,
-      onAddFolder,
+      gallery: {
+        hasFolders: false,
+      },
+      actions: {
+        onAddFolder,
+      },
     });
 
     await user.click(
@@ -76,10 +107,14 @@ describe("ImageGallery", () => {
     const onLoadAllSelectableImages = vi.fn().mockResolvedValue(allImages);
 
     renderImageGallery({
-      images: pageImages,
-      totalCount: 3,
-      onBulkChangeCategory,
-      onLoadAllSelectableImages,
+      gallery: {
+        images: pageImages,
+        totalCount: 3,
+      },
+      actions: {
+        onBulkChangeCategory,
+        onLoadAllSelectableImages,
+      },
     });
 
     await user.click(screen.getByRole("button", { name: "Select" }));

@@ -41,20 +41,34 @@ import { cn } from "@/lib/utils";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import { useTranslation } from "react-i18next";
 
-interface SidebarProps {
+interface SidebarViewState {
   activeView: string;
   onViewChange: (view: string) => void;
+}
+
+interface SidebarFolderState {
   selectedFolderIds?: Set<number>;
+  rollbackRequest?: { id: number; folderIds: number[] } | null;
+  scanningFolderIds?: Set<number>;
+  scanning?: boolean;
+  folderDialogRequest?: number;
+}
+
+interface SidebarFolderActions {
   onFolderToggle?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
-  rollbackRequest?: { id: number; folderIds: number[] } | null;
-  scanningFolderIds?: Set<number>;
-  scanning?: boolean;
+  onFolderCountChange?: (count: number | null) => void;
+}
+
+interface SidebarCategoryState {
   categories: Category[];
   selectedCategoryId: number | null;
+}
+
+interface SidebarCategoryActions {
   onCategorySelect: (id: number | null) => void;
   onCategoryCreate: (name: string) => void;
   onCategoryRename: (id: number, name: string) => void;
@@ -62,9 +76,15 @@ interface SidebarProps {
   onCategoryReorder: (ids: number[]) => void;
   onCategoryAddByPrompt: (id: number, query: string) => void;
   onRandomRefresh: () => void;
+}
+
+interface SidebarProps {
+  view: SidebarViewState;
+  folderState: SidebarFolderState;
+  folderActions: SidebarFolderActions;
+  categoryState: SidebarCategoryState;
+  categoryActions: SidebarCategoryActions;
   isAnalyzing?: boolean;
-  onFolderCountChange?: (count: number | null) => void;
-  folderDialogRequest?: number;
 }
 
 const views = [
@@ -992,31 +1012,40 @@ const SidebarCategoriesSection = memo(function SidebarCategoriesSection({
 });
 
 export const Sidebar = memo(function Sidebar({
-  activeView,
-  onViewChange,
-  selectedFolderIds,
-  onFolderToggle,
-  onFolderRemoved,
-  onFolderAdded,
-  onFolderCancelled,
-  onFolderRescan,
-  rollbackRequest,
-  scanningFolderIds,
-  scanning,
-  categories,
-  selectedCategoryId,
-  onCategorySelect,
-  onCategoryCreate,
-  onCategoryRename,
-  onCategoryDelete,
-  onCategoryReorder,
-  onCategoryAddByPrompt,
-  onRandomRefresh,
+  view,
+  folderState,
+  folderActions,
+  categoryState,
+  categoryActions,
   isAnalyzing,
-  onFolderCountChange,
-  folderDialogRequest,
 }: SidebarProps) {
   const { t } = useTranslation();
+  const { activeView, onViewChange } = view;
+  const {
+    selectedFolderIds,
+    rollbackRequest,
+    scanningFolderIds,
+    scanning,
+    folderDialogRequest,
+  } = folderState;
+  const {
+    onFolderToggle,
+    onFolderRemoved,
+    onFolderAdded,
+    onFolderCancelled,
+    onFolderRescan,
+    onFolderCountChange,
+  } = folderActions;
+  const { categories, selectedCategoryId } = categoryState;
+  const {
+    onCategorySelect,
+    onCategoryCreate,
+    onCategoryRename,
+    onCategoryDelete,
+    onCategoryReorder,
+    onCategoryAddByPrompt,
+    onRandomRefresh,
+  } = categoryActions;
   const {
     folders,
     hasLoaded,

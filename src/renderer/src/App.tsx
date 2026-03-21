@@ -874,6 +874,156 @@ export default function App({ initialFolderCount = null }: AppProps) {
     setIsDetailOpen(true);
   }, []);
 
+  const sidebarView = useMemo(
+    () => ({
+      activeView,
+      onViewChange: setActiveView,
+    }),
+    [activeView],
+  );
+
+  const sidebarFolderState = useMemo(
+    () => ({
+      selectedFolderIds,
+      rollbackRequest: folderRollbackRequest,
+      scanningFolderIds: activeScanFolderIds,
+      scanning,
+      folderDialogRequest,
+    }),
+    [
+      activeScanFolderIds,
+      folderDialogRequest,
+      folderRollbackRequest,
+      scanning,
+      selectedFolderIds,
+    ],
+  );
+
+  const sidebarFolderActions = useMemo(
+    () => ({
+      onFolderToggle: toggleFolder,
+      onFolderRemoved: handleFolderRemoved,
+      onFolderAdded: handleFolderAdded,
+      onFolderCancelled: handleFolderCancelled,
+      onFolderRescan: handleFolderRescan,
+      onFolderCountChange: setFolderCount,
+    }),
+    [
+      handleFolderAdded,
+      handleFolderCancelled,
+      handleFolderRemoved,
+      handleFolderRescan,
+      toggleFolder,
+    ],
+  );
+
+  const sidebarCategoryState = useMemo(
+    () => ({
+      categories,
+      selectedCategoryId,
+    }),
+    [categories, selectedCategoryId],
+  );
+
+  const sidebarCategoryActions = useMemo(
+    () => ({
+      onCategorySelect: selectCategory,
+      onCategoryCreate: createCategory,
+      onCategoryRename: renameCategory,
+      onCategoryDelete: deleteCategory,
+      onCategoryReorder: reorderCategories,
+      onCategoryAddByPrompt: handleCategoryAddByPrompt,
+      onRandomRefresh: handleRandomRefresh,
+    }),
+    [
+      createCategory,
+      deleteCategory,
+      handleCategoryAddByPrompt,
+      handleRandomRefresh,
+      renameCategory,
+      reorderCategories,
+      selectCategory,
+    ],
+  );
+
+  const imageGalleryState = useMemo(
+    () => ({
+      images,
+      viewMode,
+      sortBy,
+      totalCount: totalImageCount,
+      searchQuery: searchQuery || undefined,
+      hasFolders: folderCount === null || folderCount > 0,
+      isInitializing: !hasLoadedOnce && isGalleryLoading,
+      isRefreshing: galleryOverlayState !== null,
+      selectionScopeKey: gallerySelectionScopeKey,
+    }),
+    [
+      folderCount,
+      galleryOverlayState,
+      gallerySelectionScopeKey,
+      hasLoadedOnce,
+      images,
+      isGalleryLoading,
+      searchQuery,
+      sortBy,
+      totalImageCount,
+      viewMode,
+    ],
+  );
+
+  const imageGalleryActions = useMemo(
+    () => ({
+      onViewModeChange: setViewMode,
+      onSortChange: setSortBy,
+      onToggleFavorite: handleToggleFavorite,
+      onCopyPrompt: handleCopyPrompt,
+      onImageClick: handleImageClick,
+      onReveal: handleReveal,
+      onDelete: handleDeleteImage,
+      onChangeCategory: handleChangeCategory,
+      onBulkChangeCategory: handleBulkChangeCategory,
+      onSendToGenerator: handleSendToGenerator,
+      onSendToSource: handleSendToSource,
+      onAddTagToSearch: handleAddTagToSearch,
+      onAddTagToGenerator: handleAddTagToGenerator,
+      onClearSearch: handleClearSearch,
+      onAddFolder: requestFolderDialog,
+      onLoadAllSelectableImages: handleLoadAllSelectableImages,
+    }),
+    [
+      handleAddTagToGenerator,
+      handleAddTagToSearch,
+      handleBulkChangeCategory,
+      handleChangeCategory,
+      handleClearSearch,
+      handleCopyPrompt,
+      handleDeleteImage,
+      handleImageClick,
+      handleLoadAllSelectableImages,
+      handleReveal,
+      handleSendToGenerator,
+      handleSendToSource,
+      handleToggleFavorite,
+      requestFolderDialog,
+    ],
+  );
+
+  const imageGalleryPagination = useMemo(
+    () => ({
+      pageSize: settings.pageSize,
+      page: galleryPage,
+      totalPages: galleryTotalPages,
+      onPageChange: handleGalleryPageChange,
+    }),
+    [
+      galleryPage,
+      galleryTotalPages,
+      handleGalleryPageChange,
+      settings.pageSize,
+    ],
+  );
+
   return (
     <div className="h-screen bg-background flex flex-col">
       <Header
@@ -927,29 +1077,12 @@ export default function App({ initialFolderCount = null }: AppProps) {
             style={{ width: sidebarWidth }}
           >
             <Sidebar
-              rollbackRequest={folderRollbackRequest}
-              activeView={activeView}
-              onViewChange={setActiveView}
-              selectedFolderIds={selectedFolderIds}
-              onFolderToggle={toggleFolder}
-              onFolderRemoved={handleFolderRemoved}
-              onFolderAdded={handleFolderAdded}
-              onFolderCancelled={handleFolderCancelled}
-              onFolderRescan={handleFolderRescan}
-              scanningFolderIds={activeScanFolderIds}
-              scanning={scanning}
-              categories={categories}
-              selectedCategoryId={selectedCategoryId}
-              onCategorySelect={selectCategory}
-              onCategoryCreate={createCategory}
-              onCategoryRename={renameCategory}
-              onCategoryDelete={deleteCategory}
-              onCategoryReorder={reorderCategories}
-              onCategoryAddByPrompt={handleCategoryAddByPrompt}
-              onRandomRefresh={handleRandomRefresh}
+              view={sidebarView}
+              folderState={sidebarFolderState}
+              folderActions={sidebarFolderActions}
+              categoryState={sidebarCategoryState}
+              categoryActions={sidebarCategoryActions}
               isAnalyzing={isAnalyzing}
-              onFolderCountChange={setFolderCount}
-              folderDialogRequest={folderDialogRequest}
             />
             <div
               className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors z-10"
@@ -998,35 +1131,9 @@ export default function App({ initialFolderCount = null }: AppProps) {
             }
           >
             <ImageGallery
-              images={images}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-              onToggleFavorite={handleToggleFavorite}
-              onCopyPrompt={handleCopyPrompt}
-              onImageClick={handleImageClick}
-              onReveal={handleReveal}
-              onDelete={handleDeleteImage}
-              onChangeCategory={handleChangeCategory}
-              onBulkChangeCategory={handleBulkChangeCategory}
-              onSendToGenerator={handleSendToGenerator}
-              onSendToSource={handleSendToSource}
-              onAddTagToSearch={handleAddTagToSearch}
-              onAddTagToGenerator={handleAddTagToGenerator}
-              totalCount={totalImageCount}
-              pageSize={settings.pageSize}
-              page={galleryPage}
-              totalPages={galleryTotalPages}
-              onPageChange={handleGalleryPageChange}
-              searchQuery={searchQuery || undefined}
-              onClearSearch={handleClearSearch}
-              hasFolders={folderCount === null || folderCount > 0}
-              onAddFolder={requestFolderDialog}
-              isInitializing={!hasLoadedOnce && isGalleryLoading}
-              isRefreshing={galleryOverlayState !== null}
-              selectionScopeKey={gallerySelectionScopeKey}
-              onLoadAllSelectableImages={handleLoadAllSelectableImages}
+              gallery={imageGalleryState}
+              actions={imageGalleryActions}
+              pagination={imageGalleryPagination}
             />
           </div>
         </div>

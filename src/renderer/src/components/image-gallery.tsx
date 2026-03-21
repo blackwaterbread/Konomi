@@ -27,11 +27,20 @@ import { OnboardingView } from "./onboarding-view";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
-interface ImageGalleryProps {
+interface ImageGalleryState {
   images: ImageData[];
   viewMode: "grid" | "compact" | "list";
-  onViewModeChange: (mode: "grid" | "compact" | "list") => void;
   sortBy: "recent" | "oldest" | "favorites" | "name";
+  totalCount: number;
+  searchQuery?: string;
+  hasFolders?: boolean;
+  isInitializing?: boolean;
+  isRefreshing?: boolean;
+  selectionScopeKey?: string;
+}
+
+interface ImageGalleryActions {
+  onViewModeChange: (mode: "grid" | "compact" | "list") => void;
   onSortChange: (sort: "recent" | "oldest" | "favorites" | "name") => void;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
@@ -44,52 +53,64 @@ interface ImageGalleryProps {
   onSendToSource?: (image: ImageData) => void;
   onAddTagToSearch?: (tag: string) => void;
   onAddTagToGenerator?: (tag: string) => void;
-  totalCount: number;
+  onClearSearch?: () => void;
+  onAddFolder?: () => void;
+  onLoadAllSelectableImages?: () => Promise<ImageData[]>;
+}
+
+interface ImageGalleryPagination {
   pageSize?: number;
   page?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
-  searchQuery?: string;
-  onClearSearch?: () => void;
-  hasFolders?: boolean;
-  onAddFolder?: () => void;
-  isInitializing?: boolean;
-  isRefreshing?: boolean;
-  selectionScopeKey?: string;
-  onLoadAllSelectableImages?: () => Promise<ImageData[]>;
+}
+
+interface ImageGalleryProps {
+  gallery: ImageGalleryState;
+  actions: ImageGalleryActions;
+  pagination?: ImageGalleryPagination;
 }
 
 export const ImageGallery = memo(function ImageGallery({
-  images,
-  viewMode,
-  onViewModeChange,
-  sortBy,
-  onSortChange,
-  onToggleFavorite,
-  onCopyPrompt,
-  onImageClick,
-  onReveal,
-  onDelete,
-  onChangeCategory,
-  onBulkChangeCategory,
-  onSendToGenerator,
-  onSendToSource,
-  onAddTagToSearch,
-  onAddTagToGenerator,
-  totalCount,
-  pageSize = 50,
-  page,
-  totalPages,
-  onPageChange,
-  searchQuery,
-  onClearSearch,
-  hasFolders = true,
-  onAddFolder,
-  isInitializing = false,
-  isRefreshing = false,
-  selectionScopeKey,
-  onLoadAllSelectableImages,
+  gallery,
+  actions,
+  pagination,
 }: ImageGalleryProps) {
+  const {
+    images,
+    viewMode,
+    sortBy,
+    totalCount,
+    searchQuery,
+    hasFolders = true,
+    isInitializing = false,
+    isRefreshing = false,
+    selectionScopeKey,
+  } = gallery;
+  const {
+    onViewModeChange,
+    onSortChange,
+    onToggleFavorite,
+    onCopyPrompt,
+    onImageClick,
+    onReveal,
+    onDelete,
+    onChangeCategory,
+    onBulkChangeCategory,
+    onSendToGenerator,
+    onSendToSource,
+    onAddTagToSearch,
+    onAddTagToGenerator,
+    onClearSearch,
+    onAddFolder,
+    onLoadAllSelectableImages,
+  } = actions;
+  const {
+    pageSize = 50,
+    page,
+    totalPages,
+    onPageChange,
+  } = pagination ?? {};
   const { t } = useTranslation();
   const [internalPage, setInternalPage] = useState(1);
   const [pageJumpValue, setPageJumpValue] = useState("1");

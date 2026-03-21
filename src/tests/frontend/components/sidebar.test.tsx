@@ -119,34 +119,84 @@ function createFolderDialogState() {
   };
 }
 
+type SidebarOverrides = Partial<
+  Omit<
+    ComponentProps<typeof Sidebar>,
+    | "view"
+    | "folderState"
+    | "folderActions"
+    | "categoryState"
+    | "categoryActions"
+  >
+> & {
+  view?: Partial<ComponentProps<typeof Sidebar>["view"]>;
+  folderState?: Partial<ComponentProps<typeof Sidebar>["folderState"]>;
+  folderActions?: Partial<ComponentProps<typeof Sidebar>["folderActions"]>;
+  categoryState?: Partial<ComponentProps<typeof Sidebar>["categoryState"]>;
+  categoryActions?: Partial<ComponentProps<typeof Sidebar>["categoryActions"]>;
+};
+
 function renderSidebar(
-  overrides: Partial<ComponentProps<typeof Sidebar>> = {},
+  overrides: SidebarOverrides = {},
 ) {
-  const props: ComponentProps<typeof Sidebar> = {
-    activeView: "all",
-    onViewChange: vi.fn(),
-    selectedFolderIds: new Set(),
-    onFolderToggle: vi.fn(),
-    onFolderRemoved: vi.fn(),
-    onFolderAdded: vi.fn(),
-    onFolderCancelled: vi.fn(),
-    onFolderRescan: vi.fn(),
-    rollbackRequest: null,
-    scanningFolderIds: new Set(),
-    scanning: false,
-    categories: [],
-    selectedCategoryId: null,
-    onCategorySelect: vi.fn(),
-    onCategoryCreate: vi.fn(),
-    onCategoryRename: vi.fn(),
-    onCategoryDelete: vi.fn(),
-    onCategoryReorder: vi.fn(),
-    onCategoryAddByPrompt: vi.fn(),
-    onRandomRefresh: vi.fn(),
+  const baseProps: ComponentProps<typeof Sidebar> = {
+    view: {
+      activeView: "all",
+      onViewChange: vi.fn(),
+    },
+    folderState: {
+      selectedFolderIds: new Set(),
+      rollbackRequest: null,
+      scanningFolderIds: new Set(),
+      scanning: false,
+      folderDialogRequest: 0,
+    },
+    folderActions: {
+      onFolderToggle: vi.fn(),
+      onFolderRemoved: vi.fn(),
+      onFolderAdded: vi.fn(),
+      onFolderCancelled: vi.fn(),
+      onFolderRescan: vi.fn(),
+      onFolderCountChange: vi.fn(),
+    },
+    categoryState: {
+      categories: [],
+      selectedCategoryId: null,
+    },
+    categoryActions: {
+      onCategorySelect: vi.fn(),
+      onCategoryCreate: vi.fn(),
+      onCategoryRename: vi.fn(),
+      onCategoryDelete: vi.fn(),
+      onCategoryReorder: vi.fn(),
+      onCategoryAddByPrompt: vi.fn(),
+      onRandomRefresh: vi.fn(),
+    },
     isAnalyzing: false,
-    onFolderCountChange: vi.fn(),
-    folderDialogRequest: 0,
+  };
+  const props: ComponentProps<typeof Sidebar> = {
+    ...baseProps,
     ...overrides,
+    view: {
+      ...baseProps.view,
+      ...overrides.view,
+    },
+    folderState: {
+      ...baseProps.folderState,
+      ...overrides.folderState,
+    },
+    folderActions: {
+      ...baseProps.folderActions,
+      ...overrides.folderActions,
+    },
+    categoryState: {
+      ...baseProps.categoryState,
+      ...overrides.categoryState,
+    },
+    categoryActions: {
+      ...baseProps.categoryActions,
+      ...overrides.categoryActions,
+    },
   };
 
   return {
@@ -198,9 +248,13 @@ describe("Sidebar", () => {
     });
 
     const { rerender, props } = renderSidebar({
-      onFolderCountChange,
-      onFolderCancelled,
-      rollbackRequest: { id: 1, folderIds: [1, 2] },
+      folderActions: {
+        onFolderCountChange,
+        onFolderCancelled,
+      },
+      folderState: {
+        rollbackRequest: { id: 1, folderIds: [1, 2] },
+      },
     });
 
     await waitFor(() => expect(onFolderCountChange).toHaveBeenCalledWith(2));
@@ -211,9 +265,15 @@ describe("Sidebar", () => {
     rerender(
       <Sidebar
         {...props}
-        onFolderCountChange={onFolderCountChange}
-        onFolderCancelled={onFolderCancelled}
-        rollbackRequest={{ id: 1, folderIds: [1, 2] }}
+        folderActions={{
+          ...props.folderActions,
+          onFolderCountChange,
+          onFolderCancelled,
+        }}
+        folderState={{
+          ...props.folderState,
+          rollbackRequest: { id: 1, folderIds: [1, 2] },
+        }}
       />,
     );
 
@@ -222,9 +282,15 @@ describe("Sidebar", () => {
     rerender(
       <Sidebar
         {...props}
-        onFolderCountChange={onFolderCountChange}
-        onFolderCancelled={onFolderCancelled}
-        rollbackRequest={{ id: 2, folderIds: [2] }}
+        folderActions={{
+          ...props.folderActions,
+          onFolderCountChange,
+          onFolderCancelled,
+        }}
+        folderState={{
+          ...props.folderState,
+          rollbackRequest: { id: 2, folderIds: [2] },
+        }}
       />,
     );
 
@@ -238,11 +304,17 @@ describe("Sidebar", () => {
     const onCategorySelect = vi.fn();
 
     renderSidebar({
-      activeView: "all",
-      selectedCategoryId: 9,
-      onViewChange,
-      onCategorySelect,
-      categories: [createCategory(9, "Portraits")],
+      view: {
+        activeView: "all",
+        onViewChange,
+      },
+      categoryState: {
+        selectedCategoryId: 9,
+        categories: [createCategory(9, "Portraits")],
+      },
+      categoryActions: {
+        onCategorySelect,
+      },
     });
 
     await user.click(screen.getByRole("button", { name: "Recent" }));
@@ -261,10 +333,14 @@ describe("Sidebar", () => {
     ];
 
     const { rerender, props } = renderSidebar({
-      categories,
-      selectedCategoryId: 1,
-      onCategorySelect,
-      onRandomRefresh,
+      categoryState: {
+        categories,
+        selectedCategoryId: 1,
+      },
+      categoryActions: {
+        onCategorySelect,
+        onRandomRefresh,
+      },
     });
 
     await user.click(screen.getByTitle("Pick Again"));
@@ -273,10 +349,16 @@ describe("Sidebar", () => {
     rerender(
       <Sidebar
         {...props}
-        categories={categories}
-        selectedCategoryId={2}
-        onCategorySelect={onCategorySelect}
-        onRandomRefresh={onRandomRefresh}
+        categoryState={{
+          ...props.categoryState,
+          categories,
+          selectedCategoryId: 2,
+        }}
+        categoryActions={{
+          ...props.categoryActions,
+          onCategorySelect,
+          onRandomRefresh,
+        }}
       />,
     );
 
@@ -318,7 +400,9 @@ describe("Sidebar", () => {
     useFolderDialogMock.mockReturnValue(folderDialogState);
 
     renderSidebar({
-      folderDialogRequest: 1,
+      folderState: {
+        folderDialogRequest: 1,
+      },
     });
 
     await waitFor(() =>
