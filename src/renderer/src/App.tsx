@@ -38,8 +38,9 @@ import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { useCategories } from "@/hooks/useCategories";
 import { useSidebarFolders } from "@/hooks/useSidebarFolders";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
+import { useSimilarImages } from "@/hooks/useSimilarImages";
 import type { ImageData } from "@/components/image-card";
-import type { SimilarityReason, ImageListQuery } from "@preload/index.d";
+import type { ImageListQuery } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
 import { rowToImageData } from "@/lib/image-utils";
@@ -220,11 +221,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   >([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [generatorTransitioning, setGeneratorTransitioning] = useState(false);
-  const [similarImages, setSimilarImages] = useState<ImageData[]>([]);
-  const [similarReasons, setSimilarReasons] = useState<
-    Record<string, SimilarityReason>
-  >({});
-  const [similarImagesLoading, setSimilarImagesLoading] = useState(false);
   const [searchStatsProgress, setSearchStatsProgress] = useState<{
     done: number;
     total: number;
@@ -236,7 +232,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const similarRequestSeqRef = useRef(0);
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
@@ -468,6 +463,15 @@ export default function App({ initialFolderCount = null }: AppProps) {
     setActiveScanFolderIds,
     setRollbackFolderIds,
   });
+  const { similarImages, similarReasons, similarImagesLoading } =
+    useSimilarImages({
+      selectedImageId,
+      isDetailOpen,
+      detailContentReady,
+      similarGroups,
+      visualThresholdRef,
+      promptThresholdRef,
+    });
 
   const handleSettingsUpdate = useCallback(
     (patch: Partial<Settings>) => {
@@ -847,73 +851,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     }
     setInitialLanguageScreenOpen(false);
   }, []);
-
-  useEffect(() => {
-    const requestId = ++similarRequestSeqRef.current;
-    setSimilarImages([]);
-    setSimilarReasons({});
-
-    if (!selectedImageId || !isDetailOpen || !detailContentReady) {
-      setSimilarImagesLoading(false);
-      return;
-    }
-
-    const imageId = parseInt(selectedImageId, 10);
-    const group = similarGroups.find((g) => g.imageIds.includes(imageId));
-    if (!group || group.imageIds.length === 0) {
-      setSimilarImagesLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setSimilarImagesLoading(true);
-    const candidateIds = group.imageIds.filter((id) => id !== imageId);
-    Promise.all([
-      window.image.listByIds(group.imageIds),
-      window.image.similarReasons(
-        imageId,
-        candidateIds,
-        visualThresholdRef.current,
-        promptThresholdRef.current,
-      ),
-    ])
-      .then(([rows, reasons]) => {
-        if (cancelled || requestId !== similarRequestSeqRef.current) return;
-        const scoreMap = new Map(
-          reasons.map((item) => [item.imageId, item.score]),
-        );
-        const imageDataList = rows.map(rowToImageData);
-        imageDataList.sort(
-          (a, b) =>
-            (scoreMap.get(parseInt(b.id)) ?? 0) -
-            (scoreMap.get(parseInt(a.id)) ?? 0),
-        );
-        setSimilarImages(imageDataList);
-        setSimilarReasons(
-          Object.fromEntries(
-            reasons.map((item) => [String(item.imageId), item.reason]),
-          ),
-        );
-        setSimilarImagesLoading(false);
-      })
-      .catch(() => {
-        if (cancelled || requestId !== similarRequestSeqRef.current) return;
-        setSimilarImages([]);
-        setSimilarReasons({});
-        setSimilarImagesLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    detailContentReady,
-    isDetailOpen,
-    selectedImageId,
-    similarGroups,
-    visualThresholdRef,
-    promptThresholdRef,
-  ]);
 
   const selectedIndex = useMemo(
     () =>
