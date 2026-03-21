@@ -225,40 +225,60 @@ vi.mock("@/components/image-gallery", () => ({
 }));
 
 vi.mock("@/components/generation-view", () => ({
-  GenerationView: ({
-    pendingImport,
-    onClearPendingImport,
-    pendingSourceImport,
-    onClearPendingSourceImport,
-    appendPromptTagRequest,
-    outputFolder,
-  }: {
-    pendingImport?: ImageData | null;
-    onClearPendingImport?: () => void;
-    pendingSourceImport?: ImageData | null;
-    onClearPendingSourceImport?: () => void;
-    appendPromptTagRequest?: { id: number; tag: string } | null;
-    outputFolder: string;
-  }) => (
-    <div data-testid="generation-view">
-      <div data-testid="generation-output-folder">{outputFolder}</div>
-      <div data-testid="generation-pending-import">
-        {pendingImport?.id ?? "none"}
+  GenerationView: React.forwardRef(function MockGenerationView(
+    {
+      outputFolder,
+    }: {
+      outputFolder: string;
+    },
+    ref: React.ForwardedRef<{
+      importImage: (image: ImageData) => void;
+      showSourceImage: (image: ImageData) => void;
+      appendPromptTag: (tag: string) => void;
+      openRightPanelTab: (tab: "prompt-group" | "settings") => void;
+    }>,
+  ) {
+    const [pendingImport, setPendingImport] = React.useState<ImageData | null>(
+      null,
+    );
+    const [pendingSourceImport, setPendingSourceImport] =
+      React.useState<ImageData | null>(null);
+    const [appendPromptTag, setAppendPromptTag] = React.useState<string | null>(
+      null,
+    );
+
+    React.useImperativeHandle(
+      ref,
+      () => ({
+        importImage: (image) => setPendingImport(image),
+        showSourceImage: (image) => setPendingSourceImport(image),
+        appendPromptTag: (tag) => setAppendPromptTag(tag),
+        openRightPanelTab: () => {},
+      }),
+      [],
+    );
+
+    return (
+      <div data-testid="generation-view">
+        <div data-testid="generation-output-folder">{outputFolder}</div>
+        <div data-testid="generation-pending-import">
+          {pendingImport?.id ?? "none"}
+        </div>
+        <div data-testid="generation-pending-source">
+          {pendingSourceImport?.id ?? "none"}
+        </div>
+        <div data-testid="generation-append-tag">
+          {appendPromptTag ?? "none"}
+        </div>
+        <button type="button" onClick={() => setPendingImport(null)}>
+          Clear Pending Import
+        </button>
+        <button type="button" onClick={() => setPendingSourceImport(null)}>
+          Clear Pending Source
+        </button>
       </div>
-      <div data-testid="generation-pending-source">
-        {pendingSourceImport?.id ?? "none"}
-      </div>
-      <div data-testid="generation-append-tag">
-        {appendPromptTagRequest?.tag ?? "none"}
-      </div>
-      <button type="button" onClick={() => onClearPendingImport?.()}>
-        Clear Pending Import
-      </button>
-      <button type="button" onClick={() => onClearPendingSourceImport?.()}>
-        Clear Pending Source
-      </button>
-    </div>
-  ),
+    );
+  }),
 }));
 
 vi.mock("@/components/settings-view", () => ({

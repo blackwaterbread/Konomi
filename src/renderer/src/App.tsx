@@ -35,21 +35,19 @@ import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import { useGalleryImages } from "@/hooks/useGalleryImages";
 import { useScanning } from "@/hooks/useScanning";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
+import { useCategories } from "@/hooks/useCategories";
+import { useSidebarFolders } from "@/hooks/useSidebarFolders";
+import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 import type { ImageData } from "@/components/image-card";
-import type {
-  Category,
-  SimilarityReason,
-  ImageListQuery,
-} from "@preload/index.d";
+import type { SimilarityReason, ImageListQuery } from "@preload/index.d";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { createLogger } from "@/lib/logger";
 import { rowToImageData } from "@/lib/image-utils";
 import { dispatchSearchInputAppendTag } from "@/lib/search-input-event";
-import i18n, { applyAppLanguagePreference } from "@/lib/i18n";
+import { applyAppLanguagePreference } from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 
 const log = createLogger("renderer/App");
-const CATEGORY_ORDER_STORAGE_KEY = "konomi-category-order";
 const INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY =
   "konomi-initial-language-selection-completed";
 const SIMILARITY_SETTING_KEYS = new Set<keyof Settings>([
@@ -82,59 +80,6 @@ function resolveIsDarkTheme(theme: Settings["theme"] | undefined): boolean {
   return resolvedTheme === "dark";
 }
 
-function readCategoryOrder(): number[] {
-  try {
-    const raw = localStorage.getItem(CATEGORY_ORDER_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is number => Number.isInteger(id));
-  } catch {
-    return [];
-  }
-}
-
-function writeCategoryOrder(ids: number[]): void {
-  try {
-    localStorage.setItem(CATEGORY_ORDER_STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function applyCategoryOrder(
-  inputCategories: Category[],
-  preferredOrder?: number[],
-): Category[] {
-  const builtin = inputCategories
-    .filter((cat) => cat.isBuiltin)
-    .sort((a, b) => a.order - b.order);
-  const custom = inputCategories.filter((cat) => !cat.isBuiltin);
-  const order = preferredOrder ?? readCategoryOrder();
-  const customMap = new Map(custom.map((cat) => [cat.id, cat]));
-  const orderedCustom: Category[] = [];
-
-  for (const id of order) {
-    const cat = customMap.get(id);
-    if (!cat) continue;
-    orderedCustom.push(cat);
-    customMap.delete(id);
-  }
-
-  const remainingCustom = custom.filter((cat) => customMap.has(cat.id));
-  const normalizedCustom = [...orderedCustom, ...remainingCustom];
-  writeCategoryOrder(normalizedCustom.map((cat) => cat.id));
-
-  return [...builtin, ...normalizedCustom];
-}
-
-function getBuiltinCategoryKind(
-  category: Category | undefined,
-): "favorites" | "random" | null {
-  if (!category?.isBuiltin) return null;
-  return category.order === 1 ? "random" : "favorites";
-}
-
 interface AppProps {
   initialFolderCount?: number | null;
 }
@@ -148,16 +93,16 @@ export default function App({ initialFolderCount = null }: AppProps) {
     reason: "page" | "search";
     phase: "queued" | "loading";
   } | null>(null);
-  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(
-    () => {
-      try {
-        const stored = localStorage.getItem("konomi-selected-folders");
-        return stored ? new Set<number>(JSON.parse(stored)) : new Set();
-      } catch {
-        return new Set();
-      }
-    },
-  );
+  const {
+    selectedFolderIds,
+    toggleFolder,
+    addSelectedFolder,
+    removeSelectedFolder,
+    folderCount,
+    setFolderCount,
+    folderDialogRequest,
+    requestFolderDialog,
+  } = useSidebarFolders(initialFolderCount);
   const [activeView, setActiveView] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "compact" | "list">("grid");
   const [sortBy, setSortBy] = useState<
@@ -173,10 +118,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const [isDarkTheme, setIsDarkTheme] = useState(() =>
     resolveIsDarkTheme(settings.theme),
   );
-  const [folderCount, setFolderCount] = useState<number | null>(
-    initialFolderCount,
-  );
-  const [folderDialogRequest, setFolderDialogRequest] = useState(0);
   const [tourOpen, setTourOpen] = useState(
     () => localStorage.getItem("konomi-tour-completed") !== "true",
   );
@@ -252,10 +193,18 @@ export default function App({ initialFolderCount = null }: AppProps) {
     };
   }, []);
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    null,
-  );
+  const {
+    categories,
+    selectedCategoryId,
+    selectedCategory,
+    selectedBuiltinCategory,
+    selectCategory,
+    createCategory,
+    renameCategory,
+    reorderCategories,
+    deleteCategory,
+    addCategoryByPrompt,
+  } = useCategories();
   const [randomSeed, setRandomSeed] = useState(() =>
     Math.floor(Math.random() * 0x7fffffff),
   );
@@ -291,15 +240,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
-
-  const selectedCategory = useMemo(
-    () => categories.find((cat) => cat.id === selectedCategoryId),
-    [categories, selectedCategoryId],
-  );
-  const selectedBuiltinCategory = useMemo(
-    () => getBuiltinCategoryKind(selectedCategory),
-    [selectedCategory],
-  );
   const resolutionFilters = useMemo(
     () =>
       advancedFilters
@@ -512,6 +452,23 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scheduleAnalysis,
   } = useImageAnalysis({ scanningRef, settings });
 
+  const {
+    handleFolderAdded,
+    handleFolderCancelled,
+    handleFolderRemoved,
+    handleFolderRescan,
+  } = useSidebarFolderActions({
+    isAnalyzing,
+    addSelectedFolder,
+    removeSelectedFolder,
+    runScan,
+    scanningRef,
+    scheduleAnalysis,
+    schedulePageRefresh,
+    setActiveScanFolderIds,
+    setRollbackFolderIds,
+  });
+
   const handleSettingsUpdate = useCallback(
     (patch: Partial<Settings>) => {
       updateSettings(patch);
@@ -625,17 +582,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
       },
     );
 
-    window.category
-      .list()
-      .then((loaded) => setCategories(applyCategoryOrder(loaded)))
-      .catch((e: unknown) =>
-        toast.error(
-          i18n.t("error.categoryLoadFailed", {
-            message: e instanceof Error ? e.message : String(e),
-          }),
-        ),
-      );
-
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -682,220 +628,15 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scheduleSearchStatsRefresh,
   ]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "konomi-selected-folders",
-      JSON.stringify([...selectedFolderIds]),
-    );
-  }, [selectedFolderIds]);
-
-  const handleFolderToggle = useCallback((id: number) => {
-    setSelectedFolderIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleFolderAdded = useCallback(
-    (folderId: number) => {
-      log.info("Folder added", { folderId });
-      setSelectedFolderIds((prev) => new Set([...prev, folderId]));
-      setRollbackFolderIds((prev) => new Set([...prev, folderId]));
-      setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
-      schedulePageRefresh(0);
-      runScan().then((ok) => {
-        if (!ok) return;
-        setRollbackFolderIds((prev) => {
-          const s = new Set(prev);
-          s.delete(folderId);
-          return s;
-        });
-        scheduleAnalysis(0);
-      });
-    },
-    [
-      runScan,
-      scheduleAnalysis,
-      schedulePageRefresh,
-      setActiveScanFolderIds,
-      setRollbackFolderIds,
-    ],
-  );
-
-  const handleFolderCancelled = useCallback(
-    (id: number) => {
-      log.info("Folder add rollback/cancelled", { folderId: id });
-      setSelectedFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      setRollbackFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      setActiveScanFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      schedulePageRefresh(0);
-      scheduleAnalysis(500);
-    },
-    [
-      scheduleAnalysis,
-      schedulePageRefresh,
-      setActiveScanFolderIds,
-      setRollbackFolderIds,
-    ],
-  );
-
-  const handleFolderRemoved = useCallback(
-    (id: number) => {
-      log.info("Folder removed", { folderId: id });
-      setSelectedFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      setRollbackFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      setActiveScanFolderIds((prev) => {
-        const s = new Set(prev);
-        s.delete(id);
-        return s;
-      });
-      schedulePageRefresh(0);
-      scheduleAnalysis(500);
-      runScan();
-    },
-    [
-      runScan,
-      scheduleAnalysis,
-      schedulePageRefresh,
-      setActiveScanFolderIds,
-      setRollbackFolderIds,
-    ],
-  );
-
-  const handleFolderRescan = useCallback(
-    (id: number) => {
-      if (scanningRef.current || isAnalyzing) return;
-      log.info("Folder rescan requested", { folderId: id });
-      setActiveScanFolderIds((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-      void runScan({ folderIds: [id] }).then((ok) => {
-        if (ok) {
-          scheduleAnalysis(0);
+  const handleCategoryAddByPrompt = useCallback(
+    (id: number, query: string) => {
+      void addCategoryByPrompt(id, query).then((shouldRefreshPage) => {
+        if (shouldRefreshPage) {
+          schedulePageRefresh(0);
         }
       });
     },
-    [
-      isAnalyzing,
-      runScan,
-      scheduleAnalysis,
-      scanningRef,
-      setActiveScanFolderIds,
-    ],
-  );
-
-  const handleCategorySelect = useCallback((id: number | null) => {
-    log.debug("Category selected", { categoryId: id });
-    setSelectedCategoryId(id);
-  }, []);
-
-  const handleCategoryCreate = useCallback(
-    (name: string) => {
-      log.info("Creating category", { name });
-      window.category
-        .create(name)
-        .then((cat) =>
-          setCategories((prev) => applyCategoryOrder([...prev, cat])),
-        )
-        .catch((e: unknown) =>
-          toast.error(
-            t("error.categoryCreateFailed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          ),
-        );
-    },
-    [t],
-  );
-
-  const handleCategoryRename = useCallback(
-    (id: number, name: string) => {
-      log.info("Renaming category", { categoryId: id, name });
-      window.category
-        .rename(id, name)
-        .then((updated) =>
-          setCategories((prev) => prev.map((c) => (c.id === id ? updated : c))),
-        )
-        .catch((e: unknown) =>
-          toast.error(
-            t("error.categoryRenameFailed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          ),
-        );
-    },
-    [t],
-  );
-
-  const handleCategoryReorder = useCallback((ids: number[]) => {
-    log.info("Reordering categories", { ids });
-    setCategories((prev) => applyCategoryOrder(prev, ids));
-  }, []);
-
-  const handleCategoryDelete = useCallback(
-    (id: number) => {
-      log.info("Deleting category", { categoryId: id });
-      window.category
-        .delete(id)
-        .then(() => {
-          setCategories((prev) =>
-            applyCategoryOrder(prev.filter((c) => c.id !== id)),
-          );
-          if (selectedCategoryId === id) setSelectedCategoryId(null);
-          schedulePageRefresh(0);
-        })
-        .catch((e: unknown) =>
-          toast.error(
-            t("error.categoryDeleteFailed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          ),
-        );
-    },
-    [schedulePageRefresh, selectedCategoryId, t],
-  );
-
-  const handleCategoryAddByPrompt = useCallback(
-    (id: number, query: string) => {
-      log.info("Adding category images by prompt", { categoryId: id, query });
-      window.category
-        .addByPrompt(id, query)
-        .then(() => {
-          if (selectedCategoryId === id) schedulePageRefresh(0);
-        })
-        .catch((e: unknown) =>
-          toast.error(
-            t("error.categoryAddImagesFailed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          ),
-        );
-    },
-    [schedulePageRefresh, selectedCategoryId, t],
+    [addCategoryByPrompt, schedulePageRefresh],
   );
 
   const handleToggleFavorite = useCallback(
@@ -1081,10 +822,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     }
   }, [listBaseQuery, t]);
 
-  const handleAddFolderRequest = useCallback(() => {
-    setFolderDialogRequest((n) => n + 1);
-  }, []);
-
   const handleHeaderPanelChange = useCallback(
     (panel: "gallery" | "generator" | "settings") => {
       void handlePanelChange(panel);
@@ -1257,7 +994,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
               activeView={activeView}
               onViewChange={setActiveView}
               selectedFolderIds={selectedFolderIds}
-              onFolderToggle={handleFolderToggle}
+              onFolderToggle={toggleFolder}
               onFolderRemoved={handleFolderRemoved}
               onFolderAdded={handleFolderAdded}
               onFolderCancelled={handleFolderCancelled}
@@ -1266,11 +1003,11 @@ export default function App({ initialFolderCount = null }: AppProps) {
               scanning={scanning}
               categories={categories}
               selectedCategoryId={selectedCategoryId}
-              onCategorySelect={handleCategorySelect}
-              onCategoryCreate={handleCategoryCreate}
-              onCategoryRename={handleCategoryRename}
-              onCategoryDelete={handleCategoryDelete}
-              onCategoryReorder={handleCategoryReorder}
+              onCategorySelect={selectCategory}
+              onCategoryCreate={createCategory}
+              onCategoryRename={renameCategory}
+              onCategoryDelete={deleteCategory}
+              onCategoryReorder={reorderCategories}
               onCategoryAddByPrompt={handleCategoryAddByPrompt}
               onRandomRefresh={handleRandomRefresh}
               isAnalyzing={isAnalyzing}
@@ -1348,7 +1085,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
               searchQuery={searchQuery || undefined}
               onClearSearch={handleClearSearch}
               hasFolders={folderCount === null || folderCount > 0}
-              onAddFolder={handleAddFolderRequest}
+              onAddFolder={requestFolderDialog}
               isInitializing={!hasLoadedOnce && isGalleryLoading}
               isRefreshing={galleryOverlayState !== null}
               selectionScopeKey={gallerySelectionScopeKey}
