@@ -622,28 +622,6 @@ export function SettingsView({
 
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-foreground select-none">
-            {t("settings.hashReset.title")}
-          </h2>
-          <p className="text-xs text-muted-foreground select-none">
-            {t("settings.hashReset.description")}
-          </p>
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            disabled={resetting || isAnalyzing}
-          >
-            {resetting
-              ? t("settings.hashReset.resetting")
-              : isAnalyzing
-                ? t("settings.hashReset.calculating")
-                : t("settings.hashReset.action")}
-          </Button>
-        </div>
-
-        <Separator className="bg-border" />
-
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-foreground select-none">
             {t("settings.ignored.title")}
           </h2>
           <p className="text-xs text-muted-foreground select-none">
@@ -730,6 +708,34 @@ export function SettingsView({
               </span>
             </div>
           </div>
+        </div>
+
+        <Separator className="bg-border" />
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-foreground select-none">
+            {t("settings.hashReset.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground select-none">
+            {t("settings.hashReset.description")}
+          </p>
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-warning/35 bg-warning/15 text-[11px] font-bold leading-none">
+              !
+            </span>
+            <p className="select-none">{t("settings.hashReset.warning")}</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleReset}
+            disabled={resetting || isAnalyzing}
+          >
+            {resetting
+              ? t("settings.hashReset.resetting")
+              : isAnalyzing
+                ? t("settings.hashReset.calculating")
+                : t("settings.hashReset.action")}
+          </Button>
         </div>
       </div>
     </div>

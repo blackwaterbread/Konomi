@@ -645,9 +645,11 @@ const ko = {
       },
     },
     hashReset: {
-      title: "해시 재계산",
+      title: "유사도 값 재계산",
       description:
-        "유사 이미지 판별에 사용되는 Perceptual Hash를 초기화하고 다시 계산합니다.",
+        "유사 이미지 판별에 사용되는 값들을 초기화하고 다시 계산합니다.",
+      warning:
+        "유사 이미지 판단 강도를 변경했다고 재계산을 해야 하는 것은 아닙니다.",
       resetting: "초기화 중...",
       calculating: "계산 중...",
       action: "초기화 및 재계산",

@@ -651,9 +651,11 @@ const en = {
       },
     },
     hashReset: {
-      title: "Recalculate Hashes",
+      title: "Recalculate Similarity Values",
       description:
-        "Reset and recalculate the Perceptual Hash values used for similar image detection.",
+        "Reset and recalculate the values used for similar image detection.",
+      warning:
+        "Changing similar-image sensitivity does not mean recalculation is required.",
       resetting: "Resetting...",
       calculating: "Calculating...",
       action: "Reset and Recalculate",
