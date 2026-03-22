@@ -418,6 +418,7 @@ const en = {
       negativePrompt: "Negative Prompt",
     },
     promptDisplay: {
+      blockMode: "Block",
       rawText: "Raw",
     },
     character: {

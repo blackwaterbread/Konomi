@@ -250,7 +250,7 @@ describe("PromptInput", () => {
     expect(screen.getByText("sunset beach")).toBeInTheDocument();
   });
 
-  it("keeps inserted text between a group chip and the following token", async () => {
+  it("routes group-chip typing back to the trailing input in block mode", async () => {
     const onChange = vi.fn();
 
     renderPromptInput({
@@ -268,12 +268,12 @@ describe("PromptInput", () => {
 
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
-        "first, @{landscape}, second, third",
+        "first, @{landscape}, third, second",
       ),
     );
   });
 
-  it("can insert a token before the first chip in normal mode", async () => {
+  it("returns to the trailing input when navigating left from the first chip in block mode", async () => {
     const onChange = vi.fn();
 
     renderPromptInput({
@@ -287,10 +287,11 @@ describe("PromptInput", () => {
     fireEvent.keyDown(firstToken, { key: "ArrowLeft" });
 
     const input = screen.getByLabelText("tag, tag, tag...");
+    await waitFor(() => expect(input).toHaveFocus());
     fireEvent.change(input, { target: { value: "zero" } });
 
     await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith("zero, first, second"),
+      expect(onChange).toHaveBeenLastCalledWith("first, second, zero"),
     );
   });
 
@@ -503,6 +504,64 @@ describe("PromptInput", () => {
     expect(() => fireEvent.scroll(textarea)).not.toThrow();
   });
 
+  it("reserves the textarea scrollbar gutter in the raw highlight overlay", async () => {
+    const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "offsetWidth",
+    );
+    const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "clientWidth",
+    );
+
+    Object.defineProperty(HTMLTextAreaElement.prototype, "offsetWidth", {
+      configurable: true,
+      get: () => 220,
+    });
+    Object.defineProperty(HTMLTextAreaElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 204,
+    });
+
+    try {
+      const { container } = renderPromptInput({
+        value: "fake animal ears, closed mouth, @{nami}",
+        displayMode: "raw",
+      });
+
+      const overlay = container.querySelector(
+        "[data-prompt-raw-overlay-content]",
+      ) as HTMLDivElement | null;
+
+      expect(overlay).not.toBeNull();
+      await waitFor(() =>
+        expect(overlay?.style.paddingRight).toContain("16px"),
+      );
+    } finally {
+      if (offsetWidthDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "offsetWidth",
+          offsetWidthDescriptor,
+        );
+      } else {
+        delete (HTMLTextAreaElement.prototype as { offsetWidth?: number })
+          .offsetWidth;
+      }
+
+      if (clientWidthDescriptor) {
+        Object.defineProperty(
+          HTMLTextAreaElement.prototype,
+          "clientWidth",
+          clientWidthDescriptor,
+        );
+      } else {
+        delete (HTMLTextAreaElement.prototype as { clientWidth?: number })
+          .clientWidth;
+      }
+    }
+  });
+
   it("renders weighted raw-mode highlights with stronger background tones", () => {
     const { container } = renderPromptInput({
       value: "1.4::sparkles::, {sunset}, [simple background]",
@@ -520,6 +579,77 @@ describe("PromptInput", () => {
     expect(highlights[1]).toHaveClass("bg-primary/40");
     expect(highlights[2]).toHaveTextContent("[simple background]");
     expect(highlights[2]).toHaveClass("bg-group/38");
+  });
+
+  it("renders group tokens with group-themed raw-mode highlights", () => {
+    const { container } = renderPromptInput({
+      value: "masterpiece, @{landscape:sunset|ocean mist}",
+      displayMode: "raw",
+    });
+
+    const highlights = Array.from(
+      container.querySelectorAll("[data-prompt-raw-highlight]"),
+    );
+
+    expect(highlights).toHaveLength(1);
+    expect(highlights[0]).toHaveTextContent("@{landscape:sunset|ocean mist}");
+    expect(highlights[0]).toHaveClass("bg-group/45");
+  });
+
+  it("renders mixed raw-mode group and emphasis highlights in source order", () => {
+    const { container } = renderPromptInput({
+      value:
+        "@{nami}, 1.4::sparkles::, [soft light], {dramatic angle}, @{landscape:sunset|ocean mist}",
+      displayMode: "raw",
+    });
+
+    const highlights = Array.from(
+      container.querySelectorAll("[data-prompt-raw-highlight]"),
+    );
+
+    expect(highlights.map((highlight) => highlight.textContent)).toEqual([
+      "@{nami}",
+      "1.4::sparkles::",
+      "[soft light]",
+      "{dramatic angle}",
+      "@{landscape:sunset|ocean mist}",
+    ]);
+    expect(highlights[0]).toHaveClass("bg-group/45");
+    expect(highlights[1]).toHaveClass("bg-warning/45");
+    expect(highlights[2]).toHaveClass("bg-group/38");
+    expect(highlights[3]).toHaveClass("bg-primary/40");
+    expect(highlights[4]).toHaveClass("bg-group/45");
+  });
+
+  it("renders destructive and info raw-mode tones for negative and low explicit weights", () => {
+    const { container } = renderPromptInput({
+      value: "-0.5::broken anatomy::, 0.6::washed out::",
+      displayMode: "raw",
+    });
+
+    const highlights = Array.from(
+      container.querySelectorAll("[data-prompt-raw-highlight]"),
+    );
+
+    expect(highlights).toHaveLength(2);
+    expect(highlights[0]).toHaveTextContent("-0.5::broken anatomy::");
+    expect(highlights[0]).toHaveClass("bg-destructive/40");
+    expect(highlights[1]).toHaveTextContent("0.6::washed out::");
+    expect(highlights[1]).toHaveClass("bg-info/40");
+  });
+
+  it("does not highlight incomplete raw-mode group references", () => {
+    const { container } = renderPromptInput({
+      value: "masterpiece, @{na",
+      displayMode: "raw",
+    });
+
+    expect(
+      container.querySelectorAll("[data-prompt-raw-highlight]"),
+    ).toHaveLength(0);
+    expect(
+      container.querySelectorAll("[data-prompt-raw-syntax-error]"),
+    ).toHaveLength(0);
   });
 
   it("keeps raw-mode highlight spans aligned to full multi-tag emphasis segments", () => {
@@ -556,6 +686,26 @@ describe("PromptInput", () => {
       "1.2::oda_eiichirou, {sunset, [simple background",
     );
     expect(errors[0]).toHaveClass("bg-destructive/42");
+  });
+
+  it("prioritizes raw-mode syntax errors over overlapping group highlights", () => {
+    const { container } = renderPromptInput({
+      value: "1.2::sparkles @{nami}, plain, @{landscape}",
+      displayMode: "raw",
+    });
+
+    const errors = Array.from(
+      container.querySelectorAll("[data-prompt-raw-syntax-error]"),
+    );
+    const highlights = Array.from(
+      container.querySelectorAll("[data-prompt-raw-highlight]"),
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toHaveTextContent(
+      "1.2::sparkles @{nami}, plain, @{landscape}",
+    );
+    expect(highlights).toHaveLength(0);
   });
 
   it("cuts and pastes text through the raw-text context menu", async () => {

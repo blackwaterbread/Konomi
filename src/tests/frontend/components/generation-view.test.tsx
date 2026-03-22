@@ -360,11 +360,11 @@ describe("GenerationView", () => {
       ),
     );
     await waitFor(() =>
-      expect(screen.getAllByText("sparkles")).toHaveLength(1),
+      expect(screen.getByDisplayValue("sparkles")).toBeInTheDocument(),
     );
   });
 
-  it("toggles the main prompt input into raw-text mode", async () => {
+  it("shows the main prompt input in raw mode by default and toggles into block mode", async () => {
     const user = userEvent.setup();
     const { ref } = renderGenerationView();
 
@@ -373,15 +373,15 @@ describe("GenerationView", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getAllByText("sparkles")).toHaveLength(1),
+      expect(screen.getByDisplayValue("sparkles")).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByRole("switch", { name: "Raw" }));
+    await user.click(screen.getByRole("switch", { name: "Block" }));
 
-    expect(await screen.findByDisplayValue("sparkles")).toBeInTheDocument();
+    expect(await screen.findByText("sparkles")).toBeInTheDocument();
   });
 
-  it("toggles a character prompt card into raw-text mode", async () => {
+  it("shows a character prompt card in raw mode by default and toggles into block mode", async () => {
     const user = userEvent.setup();
 
     localStorage.setItem(
@@ -413,12 +413,16 @@ describe("GenerationView", () => {
 
     expect(characterCard).not.toBeNull();
 
+    expect(
+      await within(characterCard!).findByDisplayValue("char sparkles"),
+    ).toBeInTheDocument();
+
     await user.click(
-      within(characterCard!).getByRole("switch", { name: "Raw" }),
+      within(characterCard!).getByRole("switch", { name: "Block" }),
     );
 
     expect(
-      await within(characterCard!).findByDisplayValue("char sparkles"),
+      await within(characterCard!).findByText("char sparkles"),
     ).toBeInTheDocument();
   });
 

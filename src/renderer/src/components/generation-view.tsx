@@ -1643,7 +1643,7 @@ const PromptSection = memo(function PromptSection({
   promptGroups,
 }: PromptSectionProps) {
   const { t } = useTranslation();
-  const [showRawPromptText, setShowRawPromptText] = useState(false);
+  const [showBlockPromptInput, setShowBlockPromptInput] = useState(false);
   const handlePromptChange = useCallback(
     (nextValue: string) => {
       if (promptInputMode === "prompt") {
@@ -1694,11 +1694,11 @@ const PromptSection = memo(function PromptSection({
           </button>
         </div>
         <label className="ml-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{t("generation.promptDisplay.rawText")}</span>
+          <span>{t("generation.promptDisplay.blockMode")}</span>
           <Switch
-            checked={showRawPromptText}
-            onCheckedChange={setShowRawPromptText}
-            aria-label={t("generation.promptDisplay.rawText")}
+            checked={showBlockPromptInput}
+            onCheckedChange={setShowBlockPromptInput}
+            aria-label={t("generation.promptDisplay.blockMode")}
           />
         </label>
       </div>
@@ -1706,7 +1706,7 @@ const PromptSection = memo(function PromptSection({
         key={promptInputMode}
         value={promptInputMode === "prompt" ? prompt : negativePrompt}
         onChange={handlePromptChange}
-        displayMode={showRawPromptText ? "raw" : "chips"}
+        displayMode={showBlockPromptInput ? "chips" : "raw"}
         placeholder={
           promptInputMode === "prompt"
             ? "1girl, beautiful, masterpiece, ..."
@@ -1745,7 +1745,7 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
   onValueChange,
 }: CharacterPromptCardProps) {
   const { t } = useTranslation();
-  const [showRawPromptText, setShowRawPromptText] = useState(false);
+  const [showBlockPromptInput, setShowBlockPromptInput] = useState(false);
 
   return (
     <div
@@ -1794,11 +1794,11 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
         </div>
         <div className="flex-1" />
         <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>{t("generation.promptDisplay.rawText")}</span>
+          <span>{t("generation.promptDisplay.blockMode")}</span>
           <Switch
-            checked={showRawPromptText}
-            onCheckedChange={setShowRawPromptText}
-            aria-label={t("generation.promptDisplay.rawText")}
+            checked={showBlockPromptInput}
+            onCheckedChange={setShowBlockPromptInput}
+            aria-label={t("generation.promptDisplay.blockMode")}
           />
         </label>
         <button
@@ -1822,7 +1822,7 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
             : character.negativePrompt
         }
         onChange={(nextValue) => onValueChange(index, nextValue)}
-        displayMode={showRawPromptText ? "raw" : "chips"}
+        displayMode={showBlockPromptInput ? "chips" : "raw"}
         placeholder={
           character.inputMode === "prompt"
             ? t("generation.character.promptLabel", { index: index + 1 })

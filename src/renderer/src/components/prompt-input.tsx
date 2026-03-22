@@ -84,6 +84,10 @@ const EMPTY_RAW_CONTEXT_MENU_STATE = {
   hasSelection: false,
   hasValue: false,
 };
+const ENABLE_BLOCK_MODE_CUSTOM_CURSOR = false;
+// Block mode keeps the older chip editor around, but the between-chip custom
+// cursor has been the most fragile part of that UI. Keep the old path behind a
+// flag so we can revisit it later without losing the implementation entirely.
 
 interface PromptInputProps {
   value: string;
@@ -318,10 +322,13 @@ export const PromptInput = memo(function PromptInput({
     top: 0,
     left: 0,
   });
+  const [rawOverlayScrollbarWidth, setRawOverlayScrollbarWidth] = useState(0);
   const tagSuggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const tagSuggestRequestSeqRef = useRef(0);
+  const enableBlockModeCustomCursor =
+    !isRawMode && ENABLE_BLOCK_MODE_CUSTOM_CURSOR;
 
   useEffect(() => {
     if (groupsProp !== undefined) {
@@ -554,6 +561,36 @@ export const PromptInput = memo(function PromptInput({
       setShowTrailingEmptyInput(true);
     }
   }, [tokens.length]);
+
+  useLayoutEffect(() => {
+    if (!isRawMode) {
+      setRawOverlayScrollbarWidth(0);
+      return;
+    }
+
+    const textarea = rawInputRef.current;
+    if (!textarea) return;
+
+    const syncRawOverlayScrollbarWidth = () => {
+      const nextWidth = Math.max(
+        0,
+        textarea.offsetWidth - textarea.clientWidth,
+      );
+      setRawOverlayScrollbarWidth((prev) =>
+        prev === nextWidth ? prev : nextWidth,
+      );
+    };
+
+    syncRawOverlayScrollbarWidth();
+    const raf = window.requestAnimationFrame(syncRawOverlayScrollbarWidth);
+    const observer = new ResizeObserver(syncRawOverlayScrollbarWidth);
+    observer.observe(textarea);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [isRawMode, value]);
 
   useEffect(() => {
     inlineEditTokenIdRef.current = inlineEditTokenId;
@@ -952,6 +989,12 @@ export const PromptInput = memo(function PromptInput({
     nextTokensArg = tokens,
     cursor: "start" | "end" = "end",
   ) => {
+    if (!enableBlockModeCustomCursor) {
+      // Disabled on purpose: block mode now falls back to the trailing input
+      // instead of reviving the older between-chip insertion cursor.
+      focusInput("end");
+      return;
+    }
     const clampedIndex = Math.max(0, Math.min(index, nextTokensArg.length));
     setInlineEditTokenId(null);
     setPopoverTokenId(null);
@@ -986,6 +1029,10 @@ export const PromptInput = memo(function PromptInput({
   };
 
   const focusChipCursorAtIndex = (index: number) => {
+    if (!enableBlockModeCustomCursor) {
+      focusTokenAtIndex(index);
+      return;
+    }
     const token = tokens[index];
     if (!token) return;
     setInlineEditTokenId(null);
@@ -1214,13 +1261,21 @@ export const PromptInput = memo(function PromptInput({
     e: ReactKeyboardEvent<HTMLDivElement>,
     index: number,
   ) => {
+    const isPrintableKey =
+      e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+
+    if (!enableBlockModeCustomCursor && isPrintableKey) {
+      e.preventDefault();
+      focusInput("end");
+      emit(tokens, `${draft}${e.key}`);
+      return;
+    }
+
     // Printable key while chip cursor is active → start typing at this position
     if (
+      enableBlockModeCustomCursor &&
       chipCursorIndex === index &&
-      e.key.length === 1 &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey
+      isPrintableKey
     ) {
       e.preventDefault();
       const nextInsertIndex = index + 1;
@@ -1237,7 +1292,8 @@ export const PromptInput = memo(function PromptInput({
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       if (index === 0) {
-        focusInputAtIndex(0, tokens, "start");
+        if (enableBlockModeCustomCursor) focusInputAtIndex(0, tokens, "start");
+        else focusInput("end");
         return;
       }
       const currentToken = tokens[index];
@@ -1253,7 +1309,7 @@ export const PromptInput = memo(function PromptInput({
     if (e.key === "ArrowRight") {
       e.preventDefault();
       if (index < tokens.length - 1) focusTokenAtIndex(index + 1);
-      else focusInput("start");
+      else focusInput(enableBlockModeCustomCursor ? "start" : "end");
       return;
     }
     if (e.key === "Backspace" || e.key === "Delete") {
@@ -1694,8 +1750,10 @@ export const PromptInput = memo(function PromptInput({
               className="pointer-events-none absolute inset-2 overflow-hidden"
             >
               <div
-                className="min-h-full w-full px-1 py-0.5 text-sm leading-6 whitespace-pre-wrap break-words"
+                data-prompt-raw-overlay-content=""
+                className="min-h-full w-full box-border px-1 py-0.5 text-sm leading-6 whitespace-pre-wrap break-words"
                 style={{
+                  paddingRight: `calc(0.25rem + ${rawOverlayScrollbarWidth}px)`,
                   transform: `translate(${-rawScrollPosition.left}px, ${-rawScrollPosition.top}px)`,
                 }}
               >
@@ -1709,17 +1767,17 @@ export const PromptInput = memo(function PromptInput({
                     const decoratedRanges = [
                       ...rawSyntaxIssueRanges.map((range) => ({
                         ...range,
-                        kind: "error" as const,
+                        decorationKind: "error" as const,
                       })),
                       ...rawHighlightRanges.map((range) => ({
                         ...range,
-                        kind: "highlight" as const,
+                        decorationKind: "highlight" as const,
                       })),
                     ].sort((left, right) =>
                       left.start === right.start
-                        ? left.kind === right.kind
+                        ? left.decorationKind === right.decorationKind
                           ? right.end - left.end
-                          : left.kind === "error"
+                          : left.decorationKind === "error"
                             ? -1
                             : 1
                         : left.start - right.start,
@@ -1741,16 +1799,22 @@ export const PromptInput = memo(function PromptInput({
                         <span
                           key={`raw-highlight-${range.start}-${range.end}`}
                           data-prompt-raw-highlight={
-                            range.kind === "highlight" ? "" : undefined
+                            range.decorationKind === "highlight"
+                              ? ""
+                              : undefined
                           }
                           data-prompt-raw-syntax-error={
-                            range.kind === "error" ? "" : undefined
+                            range.decorationKind === "error" ? "" : undefined
                           }
                           className={cn(
                             "rounded-[4px] box-decoration-clone",
-                            range.kind === "error"
+                            range.decorationKind === "error"
                               ? "bg-destructive/42"
-                              : getPromptWeightRawHighlightClass(range.weight),
+                              : range.kind === "group"
+                                ? "bg-group/45"
+                                : getPromptWeightRawHighlightClass(
+                                    range.weight,
+                                  ),
                             "text-transparent",
                           )}
                         >
@@ -1917,14 +1981,15 @@ export const PromptInput = memo(function PromptInput({
   );
 
   const showTrailingInput =
-    insertIndex === null &&
-    chipCursorIndex === null &&
     inlineEditTokenId === null &&
     popoverTokenId === null &&
-    (tokens.length === 0 ||
-      isInputFocused ||
-      draft.trim().length > 0 ||
-      showTrailingEmptyInput);
+    (!enableBlockModeCustomCursor ||
+      (insertIndex === null &&
+        chipCursorIndex === null &&
+        (tokens.length === 0 ||
+          isInputFocused ||
+          draft.trim().length > 0 ||
+          showTrailingEmptyInput)));
 
   return (
     <div
@@ -2016,7 +2081,10 @@ export const PromptInput = memo(function PromptInput({
             className="flex w-full min-w-0 flex-wrap items-center gap-1.5"
             onMouseDown={handleContainerMouseDown}
           >
-            {insertIndex === 0 && (
+            {/* Disabled behind a flag: the older block-mode cursor rendered a
+                temporary input before the first chip. We now keep block mode
+                simpler and route editing through the trailing input instead. */}
+            {enableBlockModeCustomCursor && insertIndex === 0 && (
               <div className="relative min-w-[3ch] basis-0 flex-1">
                 {inputInner}
               </div>
@@ -2040,23 +2108,27 @@ export const PromptInput = memo(function PromptInput({
                     chipRef={(node) => setTokenRef(token.id, node)}
                     onTokenFocus={() => {
                       setInlineEditTokenId(null);
-                      setChipCursorIndex(index);
+                      setChipCursorIndex(
+                        enableBlockModeCustomCursor ? index : null,
+                      );
                     }}
                     onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
                     isSortable={true}
                     sortableId={token.id}
                   />
-                  {insertIndex === index + 1 ? (
-                    <div className="relative min-w-[3ch] basis-0 flex-1">
-                      {inputInner}
-                    </div>
-                  ) : chipCursorIndex === index ? (
-                    <span
-                      className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
-                      style={{
-                        animation: "chip-cursor-blink 0.7s step-end infinite",
-                      }}
-                    />
+                  {enableBlockModeCustomCursor ? (
+                    insertIndex === index + 1 ? (
+                      <div className="relative min-w-[3ch] basis-0 flex-1">
+                        {inputInner}
+                      </div>
+                    ) : chipCursorIndex === index ? (
+                      <span
+                        className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
+                        style={{
+                          animation: "chip-cursor-blink 0.7s step-end infinite",
+                        }}
+                      />
+                    ) : null
                   ) : null}
                 </Fragment>
               ) : isWildcard(token) ? (
@@ -2069,23 +2141,29 @@ export const PromptInput = memo(function PromptInput({
                     onDelete={() => {
                       removeTokenAtIndex(index);
                     }}
-                    onTokenFocus={() => setChipCursorIndex(index)}
+                    onTokenFocus={() =>
+                      setChipCursorIndex(
+                        enableBlockModeCustomCursor ? index : null,
+                      )
+                    }
                     onTokenKeyDown={(e) => handleTokenKeyDown(e, index)}
                     isSortable={true}
                     sortableId={token.id}
                     chipRef={(node) => setTokenRef(token.id, node)}
                   />
-                  {insertIndex === index + 1 ? (
-                    <div className="relative min-w-[3ch] basis-0 flex-1">
-                      {inputInner}
-                    </div>
-                  ) : chipCursorIndex === index ? (
-                    <span
-                      className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
-                      style={{
-                        animation: "chip-cursor-blink 0.7s step-end infinite",
-                      }}
-                    />
+                  {enableBlockModeCustomCursor ? (
+                    insertIndex === index + 1 ? (
+                      <div className="relative min-w-[3ch] basis-0 flex-1">
+                        {inputInner}
+                      </div>
+                    ) : chipCursorIndex === index ? (
+                      <span
+                        className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
+                        style={{
+                          animation: "chip-cursor-blink 0.7s step-end infinite",
+                        }}
+                      />
+                    ) : null
                   ) : null}
                 </Fragment>
               ) : (
@@ -2141,7 +2219,11 @@ export const PromptInput = memo(function PromptInput({
                       }
                       focusInput("end");
                     }}
-                    onTokenFocus={() => setChipCursorIndex(index)}
+                    onTokenFocus={() =>
+                      setChipCursorIndex(
+                        enableBlockModeCustomCursor ? index : null,
+                      )
+                    }
                     onEditorOpenChange={(open, reason) => {
                       if (open) {
                         setInlineEditTokenId(null);
@@ -2165,12 +2247,17 @@ export const PromptInput = memo(function PromptInput({
                     onRequestAdjacentEdit={(direction) => {
                       if (direction === "prev") {
                         if (index > 0) focusTokenAtIndex(index - 1);
-                        else focusInputAtIndex(0, tokens, "start");
+                        else if (enableBlockModeCustomCursor)
+                          focusInputAtIndex(0, tokens, "start");
+                        else focusInput("end");
                         return;
                       }
                       if (index < tokens.length - 1)
                         focusTokenAtIndex(index + 1);
-                      else focusInput("start");
+                      else
+                        focusInput(
+                          enableBlockModeCustomCursor ? "start" : "end",
+                        );
                     }}
                     onRequestVerticalNavigation={(direction) =>
                       navigateVertical(direction, index)
@@ -2180,18 +2267,20 @@ export const PromptInput = memo(function PromptInput({
                     sortableId={token.id}
                     chipRef={(node) => setTokenRef(token.id, node)}
                   />
-                  {insertIndex === index + 1 ? (
-                    <div className="relative min-w-[3ch] basis-0 flex-1">
-                      {inputInner}
-                    </div>
-                  ) : chipCursorIndex === index ||
-                    inlineEditTokenId === token.id ? (
-                    <span
-                      className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
-                      style={{
-                        animation: "chip-cursor-blink 0.7s step-end infinite",
-                      }}
-                    />
+                  {enableBlockModeCustomCursor ? (
+                    insertIndex === index + 1 ? (
+                      <div className="relative min-w-[3ch] basis-0 flex-1">
+                        {inputInner}
+                      </div>
+                    ) : chipCursorIndex === index ||
+                      inlineEditTokenId === token.id ? (
+                      <span
+                        className="inline-block w-0.5 h-4 self-center rounded-full bg-primary/80"
+                        style={{
+                          animation: "chip-cursor-blink 0.7s step-end infinite",
+                        }}
+                      />
+                    ) : null
                   ) : null}
                 </Fragment>
               ),

@@ -417,6 +417,7 @@ const ko = {
       negativePrompt: "Negative Prompt",
     },
     promptDisplay: {
+      blockMode: "블록",
       rawText: "원문",
     },
     character: {

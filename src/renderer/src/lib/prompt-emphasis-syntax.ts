@@ -17,11 +17,18 @@ export type PromptEmphasisSyntaxIssue = {
   anchorText: string;
 };
 
-export type PromptEmphasisHighlightRange = {
-  start: number;
-  end: number;
-  weight: number;
-};
+export type PromptEmphasisHighlightRange =
+  | {
+      start: number;
+      end: number;
+      kind: "weight";
+      weight: number;
+    }
+  | {
+      start: number;
+      end: number;
+      kind: "group";
+    };
 
 const EXPLICIT_WEIGHT_PREFIX_RE = /^-?(?:\d+(?:\.\d+)?|\.\d+)::/;
 
@@ -107,7 +114,10 @@ function getExplicitWeightPrefix(rawToken: string): string | null {
   return rawToken.match(EXPLICIT_WEIGHT_PREFIX_RE)?.[0] ?? null;
 }
 
-function isLikelyExplicitClosingDelimiter(source: string, start: number): boolean {
+function isLikelyExplicitClosingDelimiter(
+  source: string,
+  start: number,
+): boolean {
   let cursor = start;
   while (cursor < source.length && /\s/.test(source[cursor] ?? "")) {
     cursor += 1;
@@ -294,6 +304,7 @@ export function findPromptEmphasisHighlightRanges(
         ranges.push({
           start: trimmedSegment.start,
           end: trimmedSegment.end,
+          kind: "weight",
           weight: explicitWeight,
         });
       }
@@ -308,19 +319,31 @@ export function findPromptEmphasisHighlightRanges(
       }
 
       const token = parseRawToken(trimmedPart.raw);
-      if (isGroupRef(token) || isWildcard(token) || !hasVisibleWeight(token.weight)) {
+      if (isGroupRef(token)) {
+        ranges.push({
+          start: trimmedPart.start,
+          end: trimmedPart.end,
+          kind: "group",
+        });
+        continue;
+      }
+
+      if (isWildcard(token) || !hasVisibleWeight(token.weight)) {
         continue;
       }
 
       ranges.push({
         start: trimmedPart.start,
         end: trimmedPart.end,
+        kind: "weight",
         weight: token.weight,
       });
     }
   }
 
   return ranges.sort((left, right) =>
-    left.start === right.start ? right.end - left.end : left.start - right.start,
+    left.start === right.start
+      ? right.end - left.end
+      : left.start - right.start,
   );
 }

@@ -47,27 +47,106 @@ describe("prompt emphasis syntax", () => {
       {
         start: 0,
         end: "0.75::artist:oda_eiichirou, year 2023::".length,
+        kind: "weight",
         weight: 0.75,
       },
       {
         start: "0.75::artist:oda_eiichirou, year 2023::, ".length,
         end: prompt.length,
+        kind: "weight",
         weight: 1.2,
       },
     ]);
-    expect(ranges.map((range) => prompt.slice(range.start, range.end))).toEqual([
-      "0.75::artist:oda_eiichirou, year 2023::",
-      "1.2::oekaki::",
-    ]);
+    expect(ranges.map((range) => prompt.slice(range.start, range.end))).toEqual(
+      ["0.75::artist:oda_eiichirou, year 2023::", "1.2::oekaki::"],
+    );
   });
 
   it("returns exact raw highlight ranges for multi-tag bracket emphasis", () => {
-    const prompt = "{artist:oda_eiichirou, year 2023}, [simple background], plain";
+    const prompt =
+      "{artist:oda_eiichirou, year 2023}, [simple background], plain";
     const ranges = findPromptEmphasisHighlightRanges(prompt);
 
-    expect(ranges.map((range) => prompt.slice(range.start, range.end))).toEqual([
-      "{artist:oda_eiichirou, year 2023}",
-      "[simple background]",
+    expect(ranges.map((range) => prompt.slice(range.start, range.end))).toEqual(
+      ["{artist:oda_eiichirou, year 2023}", "[simple background]"],
+    );
+  });
+
+  it("returns raw highlight ranges for group references", () => {
+    const prompt = "masterpiece, @{landscape:sunset|ocean mist}";
+    const ranges = findPromptEmphasisHighlightRanges(prompt);
+
+    expect(ranges).toEqual([
+      {
+        start: "masterpiece, ".length,
+        end: prompt.length,
+        kind: "group",
+      },
     ]);
+  });
+
+  it("returns mixed highlight ranges in source order for groups and emphasis", () => {
+    const prompt =
+      "@{nami}, 1.4::sparkles::, [soft light], {dramatic angle}, @{landscape}";
+    const ranges = findPromptEmphasisHighlightRanges(prompt);
+
+    expect(
+      ranges.map((range) => ({
+        ...range,
+        raw: prompt.slice(range.start, range.end),
+      })),
+    ).toEqual([
+      {
+        start: 0,
+        end: "@{nami}".length,
+        kind: "group",
+        raw: "@{nami}",
+      },
+      {
+        start: "@{nami}, ".length,
+        end: "@{nami}, 1.4::sparkles::".length,
+        kind: "weight",
+        weight: 1.4,
+        raw: "1.4::sparkles::",
+      },
+      {
+        start: "@{nami}, 1.4::sparkles::, ".length,
+        end: "@{nami}, 1.4::sparkles::, [soft light]".length,
+        kind: "weight",
+        weight: 0.9523809523809523,
+        raw: "[soft light]",
+      },
+      {
+        start: "@{nami}, 1.4::sparkles::, [soft light], ".length,
+        end: "@{nami}, 1.4::sparkles::, [soft light], {dramatic angle}".length,
+        kind: "weight",
+        weight: 1.05,
+        raw: "{dramatic angle}",
+      },
+      {
+        start: "@{nami}, 1.4::sparkles::, [soft light], {dramatic angle}, "
+          .length,
+        end: prompt.length,
+        kind: "group",
+        raw: "@{landscape}",
+      },
+    ]);
+  });
+
+  it("does not return raw highlight ranges for incomplete group references", () => {
+    expect(findPromptEmphasisHighlightRanges("masterpiece, @{na")).toEqual([]);
+  });
+
+  it("suppresses overlapping group highlight ranges inside malformed explicit segments", () => {
+    const prompt = "1.2::sparkles @{nami}, plain, @{landscape}";
+
+    expect(findPromptEmphasisSyntaxIssues(prompt)).toEqual([
+      expect.objectContaining({
+        kind: "invalidExplicitWeight",
+        raw: "1.2::sparkles @{nami}, plain, @{landscape}",
+      }),
+    ]);
+
+    expect(findPromptEmphasisHighlightRanges(prompt)).toEqual([]);
   });
 });
