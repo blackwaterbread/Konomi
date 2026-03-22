@@ -230,6 +230,67 @@ describe("PromptInput", () => {
     expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
   });
 
+  it("does not auto-apply a tag suggestion on Enter before ArrowDown", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [{ tag: "sunset", count: 12 }],
+      stats: { totalTags: 10, maxCount: 12, bucketThresholds: [3, 6, 9] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "sun" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "sunset" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps applying the first tag suggestion on Tab without ArrowDown", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [{ tag: "sunset", count: 12 }],
+      stats: { totalTags: 10, maxCount: 12, bucketThresholds: [3, 6, 9] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
+  });
+
+  it("applies a tag suggestion on Enter after ArrowDown", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [{ tag: "sunset", count: 12 }],
+      stats: { totalTags: 10, maxCount: 12, bucketThresholds: [3, 6, 9] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
+  });
+
   it("renders a raw-text editor mode that edits the prompt directly", async () => {
     const onChange = vi.fn();
 

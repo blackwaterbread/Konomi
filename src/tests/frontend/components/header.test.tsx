@@ -56,7 +56,7 @@ describe("Header", () => {
     preloadMocks.image.suggestTags.mockResolvedValue([]);
   });
 
-  it("suggests tags for the active token and commits the selected suggestion", async () => {
+  it("applies the selected suggestion on Enter after ArrowDown and waits for a second Enter to search", async () => {
     const onSearchChange = vi.fn();
 
     preloadMocks.image.suggestTags.mockResolvedValue([
@@ -86,10 +86,70 @@ describe("Header", () => {
     );
     await waitFor(() => expect(screen.getByText("sunset")).toBeInTheDocument());
 
+    fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(input).toHaveValue("cat, sunset");
+    expect(onSearchChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
     expect(onSearchChange).toHaveBeenCalledWith("cat, sunset");
+  });
+
+  it("does not auto-apply a search suggestion on Enter before ArrowDown", async () => {
+    const onSearchChange = vi.fn();
+
+    preloadMocks.image.suggestTags.mockResolvedValue([
+      { tag: "sunset", count: 12 },
+      { tag: "sunrise", count: 8 },
+    ]);
+
+    renderHeader({ onSearchChange });
+
+    const input = screen.getByPlaceholderText(
+      "Search images by prompt...",
+    ) as HTMLInputElement;
+
+    fireEvent.focus(input);
+    fireEvent.change(input, {
+      target: { value: "cat, su", selectionStart: 7 },
+    });
+    input.setSelectionRange(7, 7);
+    fireEvent.keyUp(input, { key: "u" });
+
+    await waitFor(() => expect(screen.getByText("sunset")).toBeInTheDocument());
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(input).toHaveValue("cat, su");
+    expect(onSearchChange).toHaveBeenCalledWith("cat, su");
+  });
+
+  it("keeps applying the first search suggestion on Tab without ArrowDown", async () => {
+    preloadMocks.image.suggestTags.mockResolvedValue([
+      { tag: "sunset", count: 12 },
+      { tag: "sunrise", count: 8 },
+    ]);
+
+    renderHeader();
+
+    const input = screen.getByPlaceholderText(
+      "Search images by prompt...",
+    ) as HTMLInputElement;
+
+    fireEvent.focus(input);
+    fireEvent.change(input, {
+      target: { value: "cat, su", selectionStart: 7 },
+    });
+    input.setSelectionRange(7, 7);
+    fireEvent.keyUp(input, { key: "u" });
+
+    await waitFor(() => expect(screen.getByText("sunset")).toBeInTheDocument());
+
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(input).toHaveValue("cat, sunset");
   });
 
   it("appends externally requested tags into search and commits the updated query", async () => {

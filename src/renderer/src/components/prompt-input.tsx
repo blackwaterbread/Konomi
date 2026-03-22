@@ -248,7 +248,7 @@ export const PromptInput = memo(function PromptInput({
   const [tagSuggestionStats, setTagSuggestionStats] =
     useState<PromptTagSuggestStats>(EMPTY_PROMPT_TAG_SUGGEST_STATS);
   const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
-  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(0);
+  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
   const [rawContextMenuState, setRawContextMenuState] = useState(
     EMPTY_RAW_CONTEXT_MENU_STATE,
   );
@@ -380,7 +380,7 @@ export const PromptInput = memo(function PromptInput({
       setTagSuggestions([]);
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
       setTagSuggestionOpen(false);
-      setTagSuggestionIndex(0);
+      setTagSuggestionIndex(-1);
       if (tagSuggestDebounceRef.current) {
         clearTimeout(tagSuggestDebounceRef.current);
         tagSuggestDebounceRef.current = null;
@@ -393,7 +393,7 @@ export const PromptInput = memo(function PromptInput({
       setTagSuggestions([]);
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
       setTagSuggestionOpen(false);
-      setTagSuggestionIndex(0);
+      setTagSuggestionIndex(-1);
       if (tagSuggestDebounceRef.current) {
         clearTimeout(tagSuggestDebounceRef.current);
         tagSuggestDebounceRef.current = null;
@@ -421,8 +421,10 @@ export const PromptInput = memo(function PromptInput({
           setTagSuggestionOpen(suggestions.length > 0);
           setTagSuggestionIndex((prev) =>
             suggestions.length === 0
-              ? 0
-              : Math.min(prev, suggestions.length - 1),
+              ? -1
+              : prev < 0
+                ? -1
+                : Math.min(prev, suggestions.length - 1),
           );
         })
         .catch(() => {
@@ -430,7 +432,7 @@ export const PromptInput = memo(function PromptInput({
           setTagSuggestions([]);
           setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
           setTagSuggestionOpen(false);
-          setTagSuggestionIndex(0);
+          setTagSuggestionIndex(-1);
         });
     }, 120);
 
@@ -690,7 +692,7 @@ export const PromptInput = memo(function PromptInput({
     setTagSuggestions([]);
     setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
     setTagSuggestionOpen(false);
-    setTagSuggestionIndex(0);
+    setTagSuggestionIndex(-1);
     requestAnimationFrame(() => inputRef.current?.focus());
     return true;
   };
@@ -728,7 +730,7 @@ export const PromptInput = memo(function PromptInput({
     setTagSuggestions([]);
     setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
     setTagSuggestionOpen(false);
-    setTagSuggestionIndex(0);
+    setTagSuggestionIndex(-1);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
@@ -891,7 +893,7 @@ export const PromptInput = memo(function PromptInput({
     setGroupSearch("");
     setTagSuggestions([]);
     setTagSuggestionOpen(false);
-    setTagSuggestionIndex(0);
+    setTagSuggestionIndex(-1);
     if (draft.length > 0) {
       emit(tokens, "");
     } else {
@@ -959,17 +961,19 @@ export const PromptInput = memo(function PromptInput({
     if (tagSuggestionOpen && tagSuggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setTagSuggestionIndex((i) => (i + 1) % tagSuggestions.length);
+        setTagSuggestionIndex((i) =>
+          i < 0 ? 0 : (i + 1) % tagSuggestions.length,
+        );
         return;
       }
-      if (e.key === "ArrowUp") {
+      if (e.key === "ArrowUp" && tagSuggestionIndex >= 0) {
         e.preventDefault();
         setTagSuggestionIndex((i) =>
           i <= 0 ? tagSuggestions.length - 1 : i - 1,
         );
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Tab" || (e.key === "Enter" && tagSuggestionIndex >= 0)) {
         e.preventDefault();
         applyTagSuggestion(
           tagSuggestions[tagSuggestionIndex] ?? tagSuggestions[0],

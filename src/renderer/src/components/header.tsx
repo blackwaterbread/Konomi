@@ -267,7 +267,7 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
           const next = items.filter((item) => item.tag.trim());
           setTagSuggestions(next);
           setTagSuggestionOpen(next.length > 0);
-          setTagSuggestionIndex(next.length > 0 ? 0 : -1);
+          setTagSuggestionIndex(-1);
         })
         .catch(() => {
           if (requestId !== suggestRequestSeqRef.current) return;
@@ -371,23 +371,23 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
                     );
                     return;
                   }
-                  if (e.key === "ArrowUp") {
+                  if (e.key === "ArrowUp" && tagSuggestionIndex >= 0) {
                     e.preventDefault();
                     setTagSuggestionIndex((prev) =>
                       prev <= 0 ? tagSuggestions.length - 1 : prev - 1,
                     );
                     return;
                   }
-                  if (e.key === "Enter" || e.key === "Tab") {
+                  if (
+                    e.key === "Tab" ||
+                    (e.key === "Enter" && tagSuggestionIndex >= 0)
+                  ) {
                     const index =
                       tagSuggestionIndex >= 0 ? tagSuggestionIndex : 0;
                     const picked = tagSuggestions[index];
                     if (picked) {
                       e.preventDefault();
-                      const nextValue = applyTagSuggestion(picked.tag);
-                      if (e.key === "Enter" && nextValue !== null) {
-                        commitSearch(nextValue);
-                      }
+                      applyTagSuggestion(picked.tag);
                       return;
                     }
                   }

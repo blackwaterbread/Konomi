@@ -192,7 +192,7 @@ function TokenChipCore({
   const [tagSuggestionStats, setTagSuggestionStats] =
     useState<PromptTagSuggestStats>(EMPTY_PROMPT_TAG_SUGGEST_STATS);
   const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
-  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(0);
+  const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
   const showInlineSuggestions =
     inlineEditOpen && tagSuggestionOpen && tagSuggestions.length > 0;
 
@@ -227,7 +227,7 @@ function TokenChipCore({
     setTagSuggestions([]);
     setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
     setTagSuggestionOpen(false);
-    setTagSuggestionIndex(0);
+    setTagSuggestionIndex(-1);
   }, [resolvedEditorOpen]);
 
   useEffect(() => {
@@ -238,7 +238,7 @@ function TokenChipCore({
       setTagSuggestions((prev) => (prev.length === 0 ? prev : []));
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
       setTagSuggestionOpen(false);
-      setTagSuggestionIndex(0);
+      setTagSuggestionIndex(-1);
       if (tagSuggestDebounceRef.current) {
         clearTimeout(tagSuggestDebounceRef.current);
         tagSuggestDebounceRef.current = null;
@@ -271,8 +271,10 @@ function TokenChipCore({
           setTagSuggestionOpen(suggestions.length > 0);
           setTagSuggestionIndex((prev) =>
             suggestions.length === 0
-              ? 0
-              : Math.min(prev, suggestions.length - 1),
+              ? -1
+              : prev < 0
+                ? -1
+                : Math.min(prev, suggestions.length - 1),
           );
         })
         .catch(() => {
@@ -280,7 +282,7 @@ function TokenChipCore({
           setTagSuggestions([]);
           setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
           setTagSuggestionOpen(false);
-          setTagSuggestionIndex(0);
+          setTagSuggestionIndex(-1);
         });
     }, 120);
 
@@ -459,17 +461,19 @@ function TokenChipCore({
     if (tagSuggestionOpen && tagSuggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setTagSuggestionIndex((i) => (i + 1) % tagSuggestions.length);
+        setTagSuggestionIndex((i) =>
+          i < 0 ? 0 : (i + 1) % tagSuggestions.length,
+        );
         return;
       }
-      if (e.key === "ArrowUp") {
+      if (e.key === "ArrowUp" && tagSuggestionIndex >= 0) {
         e.preventDefault();
         setTagSuggestionIndex((i) =>
           i <= 0 ? tagSuggestions.length - 1 : i - 1,
         );
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Tab" || (e.key === "Enter" && tagSuggestionIndex >= 0)) {
         e.preventDefault();
         applyTagSuggestion(
           tagSuggestions[tagSuggestionIndex] ?? tagSuggestions[0],
@@ -480,7 +484,7 @@ function TokenChipCore({
         e.preventDefault();
         e.stopPropagation();
         setTagSuggestionOpen(false);
-        setTagSuggestionIndex(0);
+        setTagSuggestionIndex(-1);
         return;
       }
     }
@@ -587,7 +591,7 @@ function TokenChipCore({
     setDraftText(suggestion.tag);
     setTagSuggestions([]);
     setTagSuggestionOpen(false);
-    setTagSuggestionIndex(0);
+    setTagSuggestionIndex(-1);
     window.requestAnimationFrame(() => {
       if (inlineEditOpen) {
         inlineInputRef.current?.focus();
@@ -677,17 +681,19 @@ function TokenChipCore({
     if (tagSuggestionOpen && tagSuggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setTagSuggestionIndex((i) => (i + 1) % tagSuggestions.length);
+        setTagSuggestionIndex((i) =>
+          i < 0 ? 0 : (i + 1) % tagSuggestions.length,
+        );
         return;
       }
-      if (e.key === "ArrowUp") {
+      if (e.key === "ArrowUp" && tagSuggestionIndex >= 0) {
         e.preventDefault();
         setTagSuggestionIndex((i) =>
           i <= 0 ? tagSuggestions.length - 1 : i - 1,
         );
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Tab" || (e.key === "Enter" && tagSuggestionIndex >= 0)) {
         e.preventDefault();
         applyTagSuggestion(
           tagSuggestions[tagSuggestionIndex] ?? tagSuggestions[0],
@@ -698,7 +704,7 @@ function TokenChipCore({
         e.preventDefault();
         e.stopPropagation();
         setTagSuggestionOpen(false);
-        setTagSuggestionIndex(0);
+        setTagSuggestionIndex(-1);
         return;
       }
     }
