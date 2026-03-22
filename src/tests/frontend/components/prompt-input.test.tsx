@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PromptInput } from "@/components/prompt-input";
 import type { PromptGroup } from "@preload/index.d";
@@ -803,6 +804,271 @@ describe("PromptInput", () => {
     expect(
       await screen.findByRole("button", { name: "stars" }),
     ).toBeInTheDocument();
+  });
+
+  // ── Chip mode: input manipulation ───────────────────────────────────────
+
+  it("removes a chip when Backspace is pressed while the chip is focused", async () => {
+    const onChange = vi.fn();
+
+    renderPromptInput({ value: "sparkles, sunset", onChange });
+
+    const lastChip = screen.getByRole("button", { name: "sunset" });
+    fireEvent.focus(lastChip);
+    fireEvent.keyDown(lastChip, { key: "Backspace" });
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith("sparkles"));
+    expect(screen.queryByRole("button", { name: "sunset" })).not.toBeInTheDocument();
+  });
+
+  it("does not remove a chip when Backspace is pressed with a non-empty draft", async () => {
+    const onChange = vi.fn();
+
+    renderPromptInput({ value: "sparkles, sunset", onChange });
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+
+    fireEvent.change(input, { target: { value: "s" } });
+    fireEvent.keyDown(input, { key: "Backspace" });
+
+    expect(onChange).not.toHaveBeenCalledWith("sparkles");
+    expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
+  });
+
+  it("tokenizes pasted comma-separated text into chips", async () => {
+    const onChange = vi.fn();
+
+    renderPromptInput({ onChange });
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+    input.focus();
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: () => "rose petals, glowing eyes, soft light",
+      },
+    });
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        "rose petals, glowing eyes, soft light",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "rose petals" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "glowing eyes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "soft light" })).toBeInTheDocument();
+  });
+
+  it("renders a wildcard chip for %{opt1|opt2} values", () => {
+    renderPromptInput({ value: "sparkles, %{beach|forest}, stars" });
+
+    expect(
+      screen.getByRole("button", { name: "%{beach|forest}" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "sparkles" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "stars" })).toBeInTheDocument();
+  });
+
+  it("excludes already-present tokens from tag suggestions", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [{ tag: "sunset", count: 5 }],
+      stats: { totalTags: 5, maxCount: 5, bucketThresholds: [] },
+    });
+
+    renderPromptInput({ value: "sparkles, forest" });
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await waitFor(() =>
+      expect(preloadMocks.promptBuilder.suggestTags).toHaveBeenCalledWith(
+        expect.objectContaining({
+          exclude: expect.arrayContaining(["sparkles", "forest"]),
+        }),
+      ),
+    );
+  });
+
+  // ── Tag suggestion keyboard navigation ───────────────────────────────────
+
+  it("dismisses tag suggestions when Escape is pressed", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [{ tag: "sunset", count: 5 }],
+      stats: { totalTags: 5, maxCount: 5, bucketThresholds: [] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(screen.queryByText("sunset")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("cycles through multiple suggestions with ArrowDown and applies with Enter", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [
+        { tag: "sunset", count: 10 },
+        { tag: "sunflower", count: 7 },
+        { tag: "sunbeam", count: 3 },
+      ],
+      stats: { totalTags: 10, maxCount: 10, bucketThresholds: [] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "sunflower" })).toBeInTheDocument();
+  });
+
+  it("selects the third suggestion when ArrowDown is pressed three times", async () => {
+    preloadMocks.promptBuilder.suggestTags.mockResolvedValueOnce({
+      suggestions: [
+        { tag: "sunset", count: 10 },
+        { tag: "sunflower", count: 7 },
+        { tag: "sunbeam", count: 3 },
+      ],
+      stats: { totalTags: 10, maxCount: 10, bucketThresholds: [] },
+    });
+
+    renderPromptInput();
+
+    const input = screen.getByLabelText("tag, tag, tag...");
+    fireEvent.change(input, { target: { value: "sun" } });
+
+    await screen.findByText("sunset");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // sunset
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // sunflower
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // sunbeam
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "sunbeam" })).toBeInTheDocument();
+  });
+
+  // ── Raw mode: context menu ───────────────────────────────────────────────
+
+  it("deletes selected text through the raw-text context menu Delete action", async () => {
+    const onChange = vi.fn();
+
+    renderPromptInput({
+      value: "sparkles, sunset",
+      onChange,
+      displayMode: "raw",
+    });
+
+    const textarea = screen.getByRole("textbox", {
+      name: "tag, tag, tag...",
+    }) as HTMLTextAreaElement;
+
+    textarea.focus();
+    textarea.setSelectionRange(0, 9); // "sparkles,"
+
+    fireEvent.contextMenu(textarea);
+    fireEvent.click(await screen.findByText("Delete"));
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(" sunset"),
+    );
+  });
+
+  it("shows 'Select all' in the raw-text context menu", async () => {
+    renderPromptInput({
+      value: "sparkles, sunset",
+      displayMode: "raw",
+    });
+
+    const textarea = screen.getByRole("textbox", { name: "tag, tag, tag..." });
+
+    fireEvent.contextMenu(textarea);
+
+    expect(await screen.findByText("Select all")).toBeInTheDocument();
+  });
+
+  // ── Raw mode: group autocomplete keyboard ────────────────────────────────
+
+  it("dismisses group autocomplete in raw mode when Escape is pressed", async () => {
+    const groups = [
+      {
+        id: 1,
+        name: "landscape",
+        categoryId: 1,
+        order: 0,
+        tokens: [{ id: 10, label: "sunset", order: 0, groupId: 1 }],
+      },
+    ];
+
+    renderPromptInput({ displayMode: "raw", groups });
+
+    const textarea = screen.getByRole("textbox", {
+      name: "tag, tag, tag...",
+    }) as HTMLTextAreaElement;
+
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, {
+      target: { value: "@{land", selectionStart: 6, selectionEnd: 6 },
+    });
+
+    await screen.findByText("{landscape}");
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(screen.queryByText("{landscape}")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("navigates group autocomplete in raw mode with ArrowDown/Up and inserts on Enter", async () => {
+    const groups = [
+      {
+        id: 1,
+        name: "landscape",
+        categoryId: 1,
+        order: 0,
+        tokens: [{ id: 10, label: "sunset", order: 0, groupId: 1 }],
+      },
+      {
+        id: 2,
+        name: "lighting",
+        categoryId: 1,
+        order: 1,
+        tokens: [{ id: 11, label: "dramatic light", order: 0, groupId: 2 }],
+      },
+    ];
+
+    renderPromptInput({ displayMode: "raw", groups });
+
+    const textarea = screen.getByRole("textbox", {
+      name: "tag, tag, tag...",
+    }) as HTMLTextAreaElement;
+
+    fireEvent.focus(textarea);
+    fireEvent.change(textarea, {
+      target: { value: "@{l", selectionStart: 3, selectionEnd: 3 },
+    });
+
+    await screen.findByText("{landscape}");
+
+    // ArrowDown to first item → Enter inserts it
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(textarea).toHaveValue("@{lighting}"));
   });
 
   it("does not keep the n-1 malformed explicit-weight token after raw undo recovery", async () => {
