@@ -2,6 +2,10 @@
 
 [English](https://github.com/blackwaterbread/Konomi/blob/main/README.md)
 
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/165d6f54-aa34-4d59-baa8-5e5f52882075" />
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/64552406-6c62-4c1f-898e-a363ebe7d8aa" />
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/ddc9ffdc-b511-4730-a375-8dcac2f6d53c" />
+
 Konomi는 사용자가 지정한 폴더를 스캔해서 메타데이터를 기반으로 검색/관리 기능을 제공하고 NovelAI 이미지 생성까지 한 곳에서 처리할 수 있도록 만든 Electron 데스크톱 앱입니다. 단순 뷰어가 아니라 "생성 → 아카이빙 → 검색 → 재활용" 흐름을 하나로 묶는 것을 목표로 합니다.
 
 ## 주요 기능

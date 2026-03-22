@@ -2,6 +2,10 @@
 
 [한국어](https://github.com/blackwaterbread/Konomi/blob/main/README.ko.md)
 
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/165d6f54-aa34-4d59-baa8-5e5f52882075" />
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/64552406-6c62-4c1f-898e-a363ebe7d8aa" />
+<img width="1798" height="1040" alt="Image" src="https://github.com/user-attachments/assets/ddc9ffdc-b511-4730-a375-8dcac2f6d53c" />
+
 Konomi is an Electron desktop app that scans user-selected folders, extracts image metadata, helps you search and organize your archive, and lets you generate new images with NovelAI in the same place. Rather than being just a viewer, it is designed to unify the full workflow of "generate -> archive -> search -> reuse."
 
 ## Key Features
