@@ -1,5 +1,3 @@
-import { readFileSync } from "fs";
-import path from "path";
 import { describe, expect, it } from "vitest";
 import {
   readImageMetaFromBuffer,
@@ -7,6 +5,7 @@ import {
 import { readMidjourneyMetaFromBuffer } from "../../../main/lib/midjourney";
 import { readWebuiMetaFromBuffer } from "../../../main/lib/webui";
 import {
+  createNaiPngBuffer,
   createPngBuffer,
   createPngTextChunk,
 } from "../fixtures/png-fixture";
@@ -104,9 +103,20 @@ describe("metadata readers", () => {
   });
 
   it("maps the NovelAI V4.5 infilling source hash to the full model", () => {
-    const buf = readFileSync(
-      path.resolve(process.cwd(), "examples", "ex1.png"),
-    );
+    const buf = createNaiPngBuffer({
+      Software: "NovelAI",
+      Source: "NovelAI Diffusion V4.5 4BDE2A90",
+      Comment: JSON.stringify({
+        prompt: "",
+        uc: "",
+        seed: 0,
+        sampler: "k_euler",
+        steps: 28,
+        scale: 6,
+        width: 896,
+        height: 1152,
+      }),
+    });
 
     expect(readImageMetaFromBuffer(buf)).toMatchObject({
       source: "nai",
