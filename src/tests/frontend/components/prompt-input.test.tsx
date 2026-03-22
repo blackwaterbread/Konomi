@@ -6,7 +6,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PromptInput } from "@/components/prompt-input";
 import type { PromptGroup } from "@preload/index.d";
