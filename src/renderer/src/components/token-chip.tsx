@@ -117,7 +117,10 @@ interface TokenChipProps {
   onAddTagToGeneration?: (tag: string) => void;
   onChange?: (token: PromptToken) => void;
   onDelete?: () => void;
-  onEditorOpenChange?: (open: boolean) => void;
+  onEditorOpenChange?: (
+    open: boolean,
+    reason?: "cancel" | "apply" | "advance",
+  ) => void;
   onInlineEditOpenChange?: (open: boolean, reason?: "cancel" | "stay") => void;
   onApplyAdvance?: () => void;
   chipRef?: (node: HTMLDivElement | null) => void;
@@ -172,6 +175,7 @@ function TokenChipCore({
   const editorInputRef = useRef<HTMLInputElement | null>(null);
   const inlineInputRef = useRef<HTMLInputElement | null>(null);
   const inlineHandlingRef = useRef<"apply" | "cancel" | null>(null);
+  const selectingTagSuggestionRef = useRef(false);
   const suppressTagSuggestOnceRef = useRef(false);
   const tagSuggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -216,9 +220,12 @@ function TokenChipCore({
     ? Boolean(editorOpen)
     : internalEditorOpen;
 
-  const setEditorOpenState = (open: boolean) => {
+  const setEditorOpenState = (
+    open: boolean,
+    reason?: "cancel" | "apply" | "advance",
+  ) => {
     if (!isEditorOpenControlled) setInternalEditorOpen(open);
-    onEditorOpenChange?.(open);
+    onEditorOpenChange?.(open, reason);
   };
 
   useEffect(() => {
@@ -340,11 +347,11 @@ function TokenChipCore({
       setDraftText(token.text);
       setDraftWeight(clampWeight(token.weight));
       setDraftExpression(inferWeightExpression(token));
-      if (!isEditorOpenControlled) setInternalEditorOpen(false);
-      onEditorOpenChange?.(false);
+      setEditorOpenState(false, "cancel");
     };
 
     const onPointerDown = (e: MouseEvent) => {
+      if (selectingTagSuggestionRef.current) return;
       const node = rootRef.current;
       const popoverNode = popoverRef.current;
       if (node?.contains(e.target as Node)) return;
@@ -552,7 +559,11 @@ function TokenChipCore({
   };
 
   const handleInlineBlur = () => {
-    if (inlineHandlingRef.current !== null) return;
+    if (
+      inlineHandlingRef.current !== null ||
+      selectingTagSuggestionRef.current
+    )
+      return;
     applyInlineEdit(false);
   };
 
@@ -603,6 +614,18 @@ function TokenChipCore({
     });
   };
 
+  const handleTagSuggestionMouseDown = (
+    e: ReactMouseEvent<HTMLButtonElement>,
+    suggestion: PromptTagSuggestion,
+  ) => {
+    e.preventDefault();
+    selectingTagSuggestionRef.current = true;
+    applyTagSuggestion(suggestion);
+    window.requestAnimationFrame(() => {
+      selectingTagSuggestionRef.current = false;
+    });
+  };
+
   const emitChange = (
     nextText: string,
     nextWeight: number,
@@ -627,12 +650,12 @@ function TokenChipCore({
   const applyEditing = (advance = false) => {
     emitChange(draftText, draftWeight, draftExpression);
     if (advance) onApplyAdvance?.();
-    setEditorOpenState(false);
+    setEditorOpenState(false, advance ? "advance" : "apply");
   };
 
   const cancelEditing = () => {
     resetDraft();
-    setEditorOpenState(false);
+    setEditorOpenState(false, "cancel");
   };
 
   const stepWeight = (delta: number) => {
@@ -905,10 +928,9 @@ function TokenChipCore({
               <button
                 key={`${suggestion.tag}-${suggestion.count}`}
                 type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  applyTagSuggestion(suggestion);
-                }}
+                onMouseDown={(e) =>
+                  handleTagSuggestionMouseDown(e, suggestion)
+                }
                 className={cn(
                   "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
                   index === tagSuggestionIndex
@@ -970,10 +992,9 @@ function TokenChipCore({
                       <button
                         key={`${suggestion.tag}-${suggestion.count}`}
                         type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          applyTagSuggestion(suggestion);
-                        }}
+                        onMouseDown={(e) =>
+                          handleTagSuggestionMouseDown(e, suggestion)
+                        }
                         className={cn(
                           "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
                           index === tagSuggestionIndex

@@ -1923,7 +1923,7 @@ export const PromptInput = memo(function PromptInput({
                       focusInput("end");
                     }}
                     onTokenFocus={() => setChipCursorIndex(index)}
-                    onEditorOpenChange={(open) => {
+                    onEditorOpenChange={(open, reason) => {
                       if (open) {
                         setInlineEditTokenId(null);
                         setChipCursorIndex(null);
@@ -1931,6 +1931,9 @@ export const PromptInput = memo(function PromptInput({
                       } else {
                         setPopoverTokenId((prev) => {
                           if (prev !== token.id) return prev;
+                          if (reason === "advance") {
+                            return null;
+                          }
                           requestAnimationFrame(() => {
                             tokenRefs.current.get(token.id)?.focus();
                           });

@@ -11,20 +11,43 @@ vi.mock("@/components/token-chip", () => ({
     chipRef,
     onTokenFocus,
     onTokenKeyDown,
+    editorOpen,
+    onEditorOpenChange,
+    onApplyAdvance,
   }: {
     token: { text: string };
     chipRef?: (node: HTMLButtonElement | null) => void;
     onTokenFocus?: () => void;
     onTokenKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+    editorOpen?: boolean;
+    onEditorOpenChange?: (
+      open: boolean,
+      reason?: "cancel" | "apply" | "advance",
+    ) => void;
+    onApplyAdvance?: () => void;
   }) => (
-    <button
-      ref={chipRef}
-      type="button"
-      onFocus={onTokenFocus}
-      onKeyDown={onTokenKeyDown}
-    >
-      {token.text}
-    </button>
+    <>
+      <button
+        ref={chipRef}
+        type="button"
+        onFocus={onTokenFocus}
+        onKeyDown={onTokenKeyDown}
+        onDoubleClick={() => onEditorOpenChange?.(true)}
+      >
+        {token.text}
+      </button>
+      {editorOpen ? (
+        <button
+          type="button"
+          onClick={() => {
+            onApplyAdvance?.();
+            onEditorOpenChange?.(false, "advance");
+          }}
+        >
+          Advance {token.text}
+        </button>
+      ) : null}
+    </>
   ),
 }));
 
@@ -289,6 +312,20 @@ describe("PromptInput", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(screen.getByRole("button", { name: "sunset" })).toBeInTheDocument();
+  });
+
+  it("keeps the PromptInput focus target after a token popover closes with advance", async () => {
+    renderPromptInput({ value: "sunset" });
+
+    const token = screen.getByRole("button", { name: "sunset" });
+
+    fireEvent.doubleClick(token);
+    fireEvent.click(await screen.findByRole("button", { name: "Advance sunset" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("tag, tag, tag...")).toHaveFocus(),
+    );
+    expect(screen.getByRole("button", { name: "sunset" })).not.toHaveFocus();
   });
 
   it("renders a raw-text editor mode that edits the prompt directly", async () => {
