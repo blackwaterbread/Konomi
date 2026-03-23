@@ -18,7 +18,6 @@ interface UseSidebarFolderActionsOptions {
   runScan: (options?: RunScanOptions) => Promise<boolean>;
   scanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
-  schedulePageRefresh: (delay?: number) => void;
   setActiveScanFolderIds: Dispatch<SetStateAction<Set<number>>>;
   setRollbackFolderIds: Dispatch<SetStateAction<Set<number>>>;
 }
@@ -30,7 +29,6 @@ export function useSidebarFolderActions({
   runScan,
   scanningRef,
   scheduleAnalysis,
-  schedulePageRefresh,
   setActiveScanFolderIds,
   setRollbackFolderIds,
 }: UseSidebarFolderActionsOptions) {
@@ -40,7 +38,6 @@ export function useSidebarFolderActions({
       addSelectedFolder(folderId);
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
-      schedulePageRefresh(0);
       void runScan().then((ok) => {
         if (!ok) return;
         setRollbackFolderIds((prev) => {
@@ -55,7 +52,6 @@ export function useSidebarFolderActions({
       addSelectedFolder,
       runScan,
       scheduleAnalysis,
-      schedulePageRefresh,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],
@@ -75,13 +71,11 @@ export function useSidebarFolderActions({
         next.delete(folderId);
         return next;
       });
-      schedulePageRefresh(0);
       scheduleAnalysis(500);
     },
     [
       removeSelectedFolder,
       scheduleAnalysis,
-      schedulePageRefresh,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],
@@ -101,7 +95,6 @@ export function useSidebarFolderActions({
         next.delete(folderId);
         return next;
       });
-      schedulePageRefresh(0);
       scheduleAnalysis(500);
       void runScan();
     },
@@ -109,7 +102,6 @@ export function useSidebarFolderActions({
       removeSelectedFolder,
       runScan,
       scheduleAnalysis,
-      schedulePageRefresh,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],

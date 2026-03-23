@@ -171,7 +171,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
     runScan,
     scanningRef,
     scheduleAnalysis,
-    schedulePageRefresh,
     setActiveScanFolderIds,
     setRollbackFolderIds,
   });
