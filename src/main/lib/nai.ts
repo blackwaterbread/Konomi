@@ -3,6 +3,7 @@ import { inflateSync, gunzipSync } from "zlib";
 import type { NovelAIMeta } from "@/types/nai";
 import { readMidjourneyMetaFromBuffer } from "./midjourney";
 import { readWebuiMetaFromBuffer } from "./webui";
+import { readPngTextChunks } from "./png-meta";
 
 const PAETH = (a: number, b: number, c: number): number => {
   const p = a + b - c;
@@ -250,7 +251,17 @@ export function readNaiMeta(filePath: string): NovelAIMeta | null {
   }
 }
 
-export function readNaiMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
+function readNaiMetaFromPngText(buf: Buffer): NovelAIMeta | null {
+  try {
+    const chunks = readPngTextChunks(buf);
+    if (!isNovelAI(chunks)) return null;
+    return parseNaiComment(chunks);
+  } catch {
+    return null;
+  }
+}
+
+function readNaiMetaFromLsb(buf: Buffer): NovelAIMeta | null {
   try {
     const { px, w, h, ch } = decodePng(buf);
     const raw = decodeNaiStealth(px, w, h, ch);
@@ -259,6 +270,10 @@ export function readNaiMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
   } catch {
     return null;
   }
+}
+
+export function readNaiMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
+  return readNaiMetaFromPngText(buf) ?? readNaiMetaFromLsb(buf);
 }
 
 export function readImageMetaFromBuffer(buf: Buffer): NovelAIMeta | null {
