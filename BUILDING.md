@@ -28,7 +28,7 @@ bun install
 Konomi uses a custom C++ native addon (`webp-alpha`) to decode WebP images.
 Prebuilt binaries are committed to the repository under `prebuilds/`, so this
 step is only needed when building from source for the first time, or after
-modifying `native/webp-alpha/`.
+modifying `src/native/webp-alpha/`.
 
 ### Windows
 
@@ -108,7 +108,7 @@ bun run build:linux  # Linux AppImage / deb
 ## Project Structure
 
 ```
-native/webp-alpha/     C++ native addon source (libwebp binding)
+src/native/webp-alpha/     C++ native addon source (libwebp binding)
 prebuilds/             Prebuilt .node binaries (committed to git)
 prisma/                Prisma schema + migrations
 resources/             Bundled assets (prompts.db, icons)

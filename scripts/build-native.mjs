@@ -34,7 +34,7 @@ if (!process.env.LIBWEBP_ROOT) {
 
 mkdirSync(outDir, { recursive: true });
 
-const nativeDir = join(root, 'native', 'webp-alpha');
+const nativeDir = join(root, 'src', 'native', 'webp-alpha');
 process.chdir(nativeDir);
 
 console.log(`Building webp-alpha for ${platform}-${arch}...`);
