@@ -1,0 +1,79 @@
+name: Build Native Addon
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32-x64
+          - os: macos-13
+            platform: darwin-x64
+          - os: macos-14
+            platform: darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install libwebp (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libwebp:x64-windows-static
+          echo "LIBWEBP_ROOT=C:/vcpkg/installed/x64-windows-static" >> $env:GITHUB_ENV
+
+      - name: Install libwebp (macOS)
+        if: runner.os == 'macOS'
+        run: brew install webp
+
+      - name: Build native addon
+        run: bun run prebuild:native
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: prebuilds/${{ matrix.platform }}/webp-alpha.node
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: prebuilds-artifacts
+
+      - name: Move artifacts into prebuilds/
+        run: |
+          for dir in prebuilds-artifacts/*/; do
+            platform=$(basename "$dir")
+            mkdir -p "prebuilds/$platform"
+            cp "$dir/webp-alpha.node" "prebuilds/$platform/webp-alpha.node"
+          done
+
+      - name: Commit prebuilds
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prebuilds/
+          git diff --staged --quiet && echo "No changes" || (
+            git commit -m "chore: update prebuilt native addon binaries [skip ci]"
+            git push
+          )
