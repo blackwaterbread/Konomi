@@ -4,13 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-windows:
-    if: contains(github.event.base_ref, 'refs/heads/main')
     runs-on: windows-latest
 
     steps:
@@ -37,8 +37,35 @@ jobs:
             dist/*.exe
             dist/latest.yml
 
-  build-mac:
-    if: contains(github.event.base_ref, 'refs/heads/main')
+  build-mac-x64:
+    runs-on: macos-15-intel
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+
+      - name: Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: bun run build:mac -- --x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-x64
+          path: |
+            dist/*.dmg
+            dist/latest-mac.yml
+
+  build-mac-arm64:
     runs-on: macos-latest
 
     steps:
@@ -56,18 +83,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: bun run build:mac -- --universal
+        run: bun run build:mac -- --arm64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: macos
+          name: macos-arm64
           path: |
             dist/*.dmg
             dist/latest-mac.yml
 
   release:
-    needs: [build-windows, build-mac]
+    needs: [build-windows, build-mac-x64, build-mac-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -78,10 +105,22 @@ jobs:
         with:
           path: artifacts
 
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Merge latest-mac.yml
+        run: |
+          yq '.files += load("artifacts/macos-x64/latest-mac.yml").files' \
+            artifacts/macos-arm64/latest-mac.yml > artifacts/latest-mac.yml
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             artifacts/windows/*
-            artifacts/macos/*
+            artifacts/macos-x64/*.dmg
+            artifacts/macos-arm64/*.dmg
+            artifacts/latest-mac.yml
