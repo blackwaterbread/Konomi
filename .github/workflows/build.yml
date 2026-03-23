@@ -55,6 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_LINK: ""
         run: bun run build:mac -- --x64
 
       - name: Upload artifact
@@ -83,6 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_LINK: ""
         run: bun run build:mac -- --arm64
 
       - name: Upload artifact
