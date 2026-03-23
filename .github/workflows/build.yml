@@ -25,8 +25,6 @@ jobs:
         run: bun run db:generate
 
       - name: Build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run build:win
 
       - name: Upload artifact
@@ -53,7 +51,6 @@ jobs:
 
       - name: Build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           CSC_LINK: ""
         run: bun run build:mac -- --x64 --config.mac.identity=null
@@ -82,7 +79,6 @@ jobs:
 
       - name: Build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           CSC_LINK: ""
         run: bun run build:mac -- --arm64 --config.mac.identity=null
