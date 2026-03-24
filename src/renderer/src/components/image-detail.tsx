@@ -1,4 +1,11 @@
-import { useState, useCallback, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  memo,
+  useDeferredValue,
+} from "react";
 import {
   X,
   Heart,
@@ -9,6 +16,7 @@ import {
   Maximize2,
   Minimize2,
   Loader2,
+  Pin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,18 +35,20 @@ import { useTranslation } from "react-i18next";
 
 type SimilarityReason = "visual" | "prompt" | "both";
 
-function SimilarThumb({
+const SimilarThumb = memo(function SimilarThumb({
   img,
   isCurrent,
+  isAnchor,
   reason,
   score,
-  onClick,
+  onSimilarImageClick,
 }: {
   img: ImageData;
   isCurrent: boolean;
+  isAnchor?: boolean;
   reason?: SimilarityReason;
   score?: number;
-  onClick: () => void;
+  onSimilarImageClick?: (img: ImageData) => void;
 }) {
   const { t } = useTranslation();
   const [loaded, setLoaded] = useState(false);
@@ -51,7 +61,7 @@ function SimilarThumb({
           ? "ring-primary cursor-default"
           : "ring-transparent hover:ring-primary/50 cursor-pointer",
       )}
-      onClick={onClick}
+      onClick={() => onSimilarImageClick?.(img)}
     >
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
@@ -67,7 +77,12 @@ function SimilarThumb({
         )}
         onLoad={() => setLoaded(true)}
       />
-      {!isCurrent && reason && (
+      {isAnchor && (
+        <span className="absolute left-1 top-1 rounded border border-muted-foreground/30 bg-background/85 px-1 py-0.5 text-muted-foreground backdrop-blur-sm">
+          <Pin className="h-2.5 w-2.5" />
+        </span>
+      )}
+      {!isAnchor && reason && (
         <span
           className={cn(
             "absolute left-1 top-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide backdrop-blur-sm",
@@ -84,7 +99,7 @@ function SimilarThumb({
     </button>
   );
 
-  if (isCurrent || score === undefined || reason === undefined) return thumb;
+  if (score === undefined || reason === undefined) return thumb;
 
   const pct = Math.round(score * 100);
   const ss = "imageDetail.similarityScore";
@@ -99,9 +114,12 @@ function SimilarThumb({
   const reasonLabel = t(`${ss}.${reason}`);
 
   return (
-    <Tooltip>
+    <Tooltip open={isCurrent || undefined}>
       <TooltipTrigger asChild>{thumb}</TooltipTrigger>
-      <TooltipContent side="right" className="flex flex-col gap-0.5">
+      <TooltipContent
+        side="right"
+        className="flex flex-col gap-0.5 data-[state=closed]:!animate-none"
+      >
         <span className="font-semibold">
           {scoreLabel} ({pct}%)
         </span>
@@ -109,7 +127,318 @@ function SimilarThumb({
       </TooltipContent>
     </Tooltip>
   );
-}
+});
+
+const HeaderBar = memo(function HeaderBar({
+  image,
+  copiedKey,
+  fitMode,
+  onToggleFavorite,
+  onCopy,
+  onClose,
+  onFitModeToggle,
+}: {
+  image: ImageData;
+  copiedKey: string | null;
+  fitMode: "fit" | "actual";
+  onToggleFavorite: (id: string) => void;
+  onCopy: (key: string, text: string) => void;
+  onClose: () => void;
+  onFitModeToggle: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="relative flex items-center justify-between border-b border-border/60 bg-background/80 px-5 py-2.5 backdrop-blur-sm shrink-0">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "h-8 text-muted-foreground hover:text-foreground",
+            image.isFavorite && "text-favorite hover:text-favorite",
+          )}
+          onClick={() => onToggleFavorite(image.id)}
+        >
+          <Heart
+            className={cn(
+              "h-4 w-4 mr-1.5",
+              image.isFavorite && "fill-favorite",
+            )}
+          />
+          {image.isFavorite
+            ? t("imageDetail.actions.removeFavorite")
+            : t("imageDetail.actions.addFavorite")}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-muted-foreground hover:text-foreground"
+          onClick={() => onCopy("prompt", image.prompt)}
+        >
+          {copiedKey === "prompt" ? (
+            <Check className="h-4 w-4 mr-1.5 text-success" />
+          ) : (
+            <Copy className="h-4 w-4 mr-1.5" />
+          )}
+          {copiedKey === "prompt"
+            ? t("imageDetail.actions.copied")
+            : t("imageDetail.actions.copyPrompt")}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-muted-foreground hover:text-foreground"
+          onClick={onFitModeToggle}
+        >
+          {fitMode === "fit" ? (
+            <>
+              <Maximize2 className="h-4 w-4 mr-1.5" />
+              {t("imageDetail.actions.actualSize")}
+            </>
+          ) : (
+            <>
+              <Minimize2 className="h-4 w-4 mr-1.5" />
+              {t("imageDetail.actions.fitToScreen")}
+            </>
+          )}
+        </Button>
+      </div>
+
+      <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-muted-foreground/70">
+        {image.model && <span>{image.model}</span>}
+        {image.model && <span>·</span>}
+        <span>
+          {image.width} × {image.height}
+        </span>
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        onClick={onClose}
+      >
+        <X className="h-5 w-5" />
+      </Button>
+    </div>
+  );
+});
+
+const InfoPanel = memo(function InfoPanel({
+  image,
+  copiedKey,
+  onCopy,
+  onAddTagToSearch,
+  onAddTagToGenerator,
+}: {
+  image: ImageData;
+  copiedKey: string | null;
+  onCopy: (key: string, text: string) => void;
+  onAddTagToSearch: (tag: string) => void;
+  onAddTagToGenerator: (tag: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { formatDate } = useLocaleFormatters();
+  const hasSeed = Number.isFinite(image.seed);
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-4 space-y-3">
+        {/* Prompt */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+              Prompt
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
+              onClick={() => onCopy("prompt", image.prompt)}
+            >
+              {copiedKey === "prompt" ? (
+                <Check className="h-3 w-3 text-success" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
+          <TokenContainer
+            tokens={image.tokens}
+            isEditable={false}
+            onAddTagToSearch={onAddTagToSearch}
+            onAddTagToGeneration={onAddTagToGenerator}
+          />
+        </div>
+
+        {/* Negative Prompt */}
+        {image.negativePrompt && (
+          <div className="space-y-1 border-t border-border/60 pt-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+                Negative
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
+                onClick={() => onCopy("negative", image.negativePrompt!)}
+              >
+                {copiedKey === "negative" ? (
+                  <Check className="h-3 w-3 text-success" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+            <TokenContainer
+              tokens={image.negativeTokens}
+              isEditable={false}
+              onAddTagToSearch={onAddTagToSearch}
+              onAddTagToGeneration={onAddTagToGenerator}
+            />
+          </div>
+        )}
+
+        {/* Character Prompts */}
+        {image.characterPrompts &&
+          image.characterPrompts.map((cp, i) => (
+            <div key={i} className="space-y-1 border-t border-border/60 pt-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+                  Char {i + 1}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => onCopy(`char-${i}`, cp)}
+                >
+                  {copiedKey === `char-${i}` ? (
+                    <Check className="h-3 w-3 text-success" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+              <TokenContainer
+                tokens={parsePromptTokens(cp).filter(
+                  (t): t is PromptToken => !isGroupRef(t),
+                )}
+                isEditable={false}
+                onAddTagToSearch={onAddTagToSearch}
+                onAddTagToGeneration={onAddTagToGenerator}
+              />
+            </div>
+          ))}
+
+        {/* Metadata */}
+        <div className="border-t border-border/60 pt-3 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+            Info
+          </p>
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.model")}
+            </span>
+            <span className="text-foreground/80 truncate">
+              {image.model || t("imageDetail.info.unavailable")}
+            </span>
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.seed")}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="font-mono text-foreground/80">
+                {hasSeed ? image.seed : t("imageDetail.info.unavailable")}
+              </span>
+              {hasSeed ? (
+                <button
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => onCopy("seed", String(image.seed))}
+                >
+                  {copiedKey === "seed" ? (
+                    <Check className="h-3 w-3 text-success" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </button>
+              ) : null}
+            </span>
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.size")}
+            </span>
+            <span className="font-mono text-foreground/80">
+              {image.width}×{image.height}
+            </span>
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.sampler")}
+            </span>
+            <span className="text-foreground/80 truncate">
+              {image.sampler || t("imageDetail.info.unavailable")}
+            </span>
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.steps")}
+            </span>
+            <span className="font-mono text-foreground/80">
+              {image.steps || t("imageDetail.info.unavailable")}
+            </span>
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.cfg")}
+            </span>
+            <span className="font-mono text-foreground/80">
+              {image.cfgScale || t("imageDetail.info.unavailable")}
+            </span>
+            {image.cfgRescale ? (
+              <>
+                <span className="text-muted-foreground/70">
+                  {t("imageDetail.info.cfgRescale")}
+                </span>
+                <span className="font-mono text-foreground/80">
+                  {image.cfgRescale}
+                </span>
+              </>
+            ) : null}
+            {image.noiseSchedule ? (
+              <>
+                <span className="text-muted-foreground/70">
+                  {t("imageDetail.info.noiseSchedule")}
+                </span>
+                <span className="text-foreground/80 truncate">
+                  {image.noiseSchedule}
+                </span>
+              </>
+            ) : null}
+            {image.varietyPlus ? (
+              <>
+                <span className="text-muted-foreground/70">
+                  {t("imageDetail.info.varietyPlus")}
+                </span>
+                <span className="text-foreground/80">ON</span>
+              </>
+            ) : null}
+            <span className="text-muted-foreground/70">
+              {t("imageDetail.info.date")}
+            </span>
+            <span className="text-foreground/80">
+              {formatDate(image.fileModifiedAt)}
+            </span>
+            {image.pHash ? (
+              <>
+                <span className="text-muted-foreground/70">
+                  {t("imageDetail.info.phash")}
+                </span>
+                <span className="font-mono text-muted-foreground/80 truncate">
+                  {image.pHash}
+                </span>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  );
+});
 
 interface ImageDetailProps {
   image: ImageData | null;
@@ -153,38 +482,67 @@ export function ImageDetail({
   similarPageSize = 10,
 }: ImageDetailProps) {
   const { t } = useTranslation();
-  const { formatDate } = useLocaleFormatters();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [fitMode, setFitMode] = useState<"fit" | "actual">("fit");
   const [imgLoaded, setImgLoaded] = useState(false);
   const [displaySrc, setDisplaySrc] = useState<string | null>(null);
   const [similarPage, setSimilarPage] = useState(0);
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  const panelOpenedRef = useRef(false);
+
+  // Defer info panel renders so similar-panel ring updates feel instant.
+  const deferredImage = useDeferredValue(image);
+
+  // Lock the anchor image when the panel opens; clear when it closes
+  useEffect(() => {
+    if (isOpen && image?.id) {
+      setAnchorId((prev) => prev ?? image.id);
+    } else if (!isOpen) {
+      setAnchorId(null);
+    }
+  }, [isOpen, image?.id]);
+
+  const effectiveAnchorId = anchorId ?? image?.id ?? null;
   const hasSimilar = similarImages && similarImages.length > 1;
   const currentThumb = hasSimilar
-    ? similarImages.find((img) => img.id === image?.id) ?? null
+    ? (similarImages.find((img) => img.id === effectiveAnchorId) ?? null)
     : null;
   const otherSimilar = hasSimilar
-    ? similarImages.filter((img) => img.id !== image?.id)
+    ? similarImages.filter((img) => img.id !== effectiveAnchorId)
     : [];
-  const totalPages = otherSimilar.length > 0
-    ? Math.ceil(otherSimilar.length / similarPageSize)
-    : 0;
+  const totalPages =
+    otherSimilar.length > 0
+      ? Math.ceil(otherSimilar.length / similarPageSize)
+      : 0;
 
-  // Reset displaySrc so the panel paints before fetching starts
+  // On first open: defer src via double RAF so the panel shell paints first.
+  // On subsequent navigation (panel already open): swap src directly to avoid flickering.
   useEffect(() => {
-    setDisplaySrc(null);
+    if (!isOpen) {
+      panelOpenedRef.current = false;
+      setDisplaySrc(null);
+      setImgLoaded(false);
+      return;
+    }
     setImgLoaded(false);
-    let cancelled = false;
-    const id = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!cancelled) setDisplaySrc(image?.src ?? null);
+    if (!panelOpenedRef.current) {
+      panelOpenedRef.current = true;
+      setDisplaySrc(null);
+      let cancelled = false;
+      const id = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!cancelled) setDisplaySrc(image?.src ?? null);
+        });
       });
-    });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(id);
-    };
-  }, [image?.src]);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(id);
+      };
+    } else {
+      setDisplaySrc(image?.src ?? null);
+      return;
+    }
+  }, [image?.src, isOpen]);
 
   // Reset similar images page when image changes
   useEffect(() => {
@@ -207,6 +565,10 @@ export function ImageDetail({
     },
     [onCopyPrompt],
   );
+
+  const handleFitModeToggle = useCallback(() => {
+    setFitMode((m) => (m === "fit" ? "actual" : "fit"));
+  }, []);
 
   // Prefetch adjacent images
   useEffect(() => {
@@ -239,7 +601,6 @@ export function ImageDetail({
     similarPage * similarPageSize,
     (similarPage + 1) * similarPageSize,
   );
-  const hasSeed = Number.isFinite(image.seed);
   const isPanelLoading = !detailContentReady;
 
   return (
@@ -250,79 +611,15 @@ export function ImageDetail({
       )}
     >
       {/* Top Bar */}
-      <div className="relative flex items-center justify-between border-b border-border/60 bg-background/80 px-5 py-2.5 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-8 text-muted-foreground hover:text-foreground",
-              image.isFavorite && "text-favorite hover:text-favorite",
-            )}
-            onClick={() => onToggleFavorite(image.id)}
-          >
-            <Heart
-              className={cn(
-                "h-4 w-4 mr-1.5",
-                image.isFavorite && "fill-favorite",
-              )}
-            />
-            {image.isFavorite
-              ? t("imageDetail.actions.removeFavorite")
-              : t("imageDetail.actions.addFavorite")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-muted-foreground hover:text-foreground"
-            onClick={() => handleCopy("prompt", image.prompt)}
-          >
-            {copiedKey === "prompt" ? (
-              <Check className="h-4 w-4 mr-1.5 text-success" />
-            ) : (
-              <Copy className="h-4 w-4 mr-1.5" />
-            )}
-            {copiedKey === "prompt"
-              ? t("imageDetail.actions.copied")
-              : t("imageDetail.actions.copyPrompt")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setFitMode((m) => (m === "fit" ? "actual" : "fit"))}
-          >
-            {fitMode === "fit" ? (
-              <>
-                <Maximize2 className="h-4 w-4 mr-1.5" />
-                {t("imageDetail.actions.actualSize")}
-              </>
-            ) : (
-              <>
-                <Minimize2 className="h-4 w-4 mr-1.5" />
-                {t("imageDetail.actions.fitToScreen")}
-              </>
-            )}
-          </Button>
-        </div>
-
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-muted-foreground/70">
-          {image.model && <span>{image.model}</span>}
-          {image.model && <span>·</span>}
-          <span>
-            {image.width} × {image.height}
-          </span>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-        >
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
+      <HeaderBar
+        image={image}
+        copiedKey={copiedKey}
+        fitMode={fitMode}
+        onToggleFavorite={onToggleFavorite}
+        onCopy={handleCopy}
+        onClose={onClose}
+        onFitModeToggle={handleFitModeToggle}
+      />
 
       {/* Body: similar | image | info */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -331,39 +628,44 @@ export function ImageDetail({
           <p className="shrink-0 pt-3 pb-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
             {t("imageDetail.similarImages")}
           </p>
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {isPanelLoading || similarImagesLoading ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-muted-foreground/70">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <p className="text-[10px]">{t("common.loading")}</p>
-              </div>
-            ) : hasSimilar ? (
+          <div className="relative flex-1 min-h-0 overflow-y-auto">
+            {hasSimilar ? (
               <TooltipProvider delayDuration={300}>
                 <div className="p-2 space-y-1.5">
                   {currentThumb && (
                     <SimilarThumb
                       key={currentThumb.id}
                       img={currentThumb}
-                      isCurrent={true}
-                      onClick={() => {}}
+                      isCurrent={image?.id === currentThumb.id}
+                      isAnchor={true}
+                      onSimilarImageClick={onSimilarImageClick}
                     />
                   )}
                   {pagedOther.map((img) => (
                     <SimilarThumb
                       key={img.id}
                       img={img}
-                      isCurrent={false}
+                      isCurrent={img.id === image?.id}
                       reason={similarReasons?.[img.id]}
                       score={similarScores?.[img.id]}
-                      onClick={() => onSimilarImageClick?.(img)}
+                      onSimilarImageClick={onSimilarImageClick}
                     />
                   ))}
                 </div>
               </TooltipProvider>
             ) : (
-              <p className="px-2 pt-4 text-center text-[10px] text-muted-foreground/70">
-                {t("common.none")}
-              </p>
+              !isPanelLoading &&
+              !similarImagesLoading && (
+                <p className="px-2 pt-4 text-center text-[10px] text-muted-foreground/70">
+                  {t("common.none")}
+                </p>
+              )
+            )}
+            {(isPanelLoading || similarImagesLoading) && !hasSimilar && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/70">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <p className="text-[10px]">{t("common.loading")}</p>
+              </div>
             )}
           </div>
           {totalPages > 1 && (
@@ -451,7 +753,8 @@ export function ImageDetail({
           <button
             className={cn(
               "absolute left-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
-              !prevImage && "opacity-0 pointer-events-none",
+              (!prevImage || image.id !== effectiveAnchorId) &&
+                "opacity-0 pointer-events-none",
             )}
             onClick={onPrev}
           >
@@ -462,7 +765,8 @@ export function ImageDetail({
           <button
             className={cn(
               "absolute right-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
-              !nextImage && "opacity-0 pointer-events-none",
+              (!nextImage || image.id !== effectiveAnchorId) &&
+                "opacity-0 pointer-events-none",
             )}
             onClick={onNext}
           >
@@ -472,213 +776,19 @@ export function ImageDetail({
 
         {/* Info Panel */}
         <div className="w-80 shrink-0 border-l border-border/60 bg-card/70">
-          {isPanelLoading ? (
+          {isPanelLoading && !deferredImage ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-muted-foreground/70">
               <Loader2 className="h-5 w-5 animate-spin" />
               <p className="text-xs">{t("common.loading")}</p>
             </div>
           ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 space-y-3">
-                {/* Prompt */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
-                      Prompt
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => handleCopy("prompt", image.prompt)}
-                    >
-                      {copiedKey === "prompt" ? (
-                        <Check className="h-3 w-3 text-success" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
-                  <TokenContainer
-                    tokens={image.tokens}
-                    isEditable={false}
-                    onAddTagToSearch={onAddTagToSearch}
-                    onAddTagToGeneration={onAddTagToGenerator}
-                  />
-                </div>
-
-                {/* Negative Prompt */}
-                {image.negativePrompt && (
-                  <div className="space-y-1 border-t border-border/60 pt-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
-                        Negative
-                      </p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-                        onClick={() =>
-                          handleCopy("negative", image.negativePrompt!)
-                        }
-                      >
-                        {copiedKey === "negative" ? (
-                          <Check className="h-3 w-3 text-success" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
-                    <TokenContainer
-                      tokens={image.negativeTokens}
-                      isEditable={false}
-                      onAddTagToSearch={onAddTagToSearch}
-                      onAddTagToGeneration={onAddTagToGenerator}
-                    />
-                  </div>
-                )}
-
-                {/* Character Prompts */}
-                {image.characterPrompts &&
-                  image.characterPrompts.map((cp, i) => (
-                    <div
-                      key={i}
-                      className="space-y-1 border-t border-border/60 pt-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
-                          Char {i + 1}
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => handleCopy(`char-${i}`, cp)}
-                        >
-                          {copiedKey === `char-${i}` ? (
-                            <Check className="h-3 w-3 text-success" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </Button>
-                      </div>
-                      <TokenContainer
-                        tokens={parsePromptTokens(cp).filter(
-                          (t): t is PromptToken => !isGroupRef(t),
-                        )}
-                        isEditable={false}
-                        onAddTagToSearch={onAddTagToSearch}
-                        onAddTagToGeneration={onAddTagToGenerator}
-                      />
-                    </div>
-                  ))}
-
-                {/* Metadata */}
-                <div className="border-t border-border/60 pt-3 space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                    Info
-                  </p>
-                  <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.model")}
-                    </span>
-                    <span className="text-foreground/80 truncate">
-                      {image.model || t("imageDetail.info.unavailable")}
-                    </span>
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.seed")}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono text-foreground/80">
-                        {hasSeed
-                          ? image.seed
-                          : t("imageDetail.info.unavailable")}
-                      </span>
-                      {hasSeed ? (
-                        <button
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => handleCopy("seed", String(image.seed))}
-                        >
-                          {copiedKey === "seed" ? (
-                            <Check className="h-3 w-3 text-success" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </button>
-                      ) : null}
-                    </span>
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.size")}
-                    </span>
-                    <span className="font-mono text-foreground/80">
-                      {image.width}×{image.height}
-                    </span>
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.sampler")}
-                    </span>
-                    <span className="text-foreground/80 truncate">
-                      {image.sampler || t("imageDetail.info.unavailable")}
-                    </span>
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.steps")}
-                    </span>
-                    <span className="font-mono text-foreground/80">
-                      {image.steps || t("imageDetail.info.unavailable")}
-                    </span>
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.cfg")}
-                    </span>
-                    <span className="font-mono text-foreground/80">
-                      {image.cfgScale || t("imageDetail.info.unavailable")}
-                    </span>
-                    {image.cfgRescale ? (
-                      <>
-                        <span className="text-muted-foreground/70">
-                          {t("imageDetail.info.cfgRescale")}
-                        </span>
-                        <span className="font-mono text-foreground/80">
-                          {image.cfgRescale}
-                        </span>
-                      </>
-                    ) : null}
-                    {image.noiseSchedule ? (
-                      <>
-                        <span className="text-muted-foreground/70">
-                          {t("imageDetail.info.noiseSchedule")}
-                        </span>
-                        <span className="text-foreground/80 truncate">
-                          {image.noiseSchedule}
-                        </span>
-                      </>
-                    ) : null}
-                    {image.varietyPlus ? (
-                      <>
-                        <span className="text-muted-foreground/70">
-                          {t("imageDetail.info.varietyPlus")}
-                        </span>
-                        <span className="text-foreground/80">ON</span>
-                      </>
-                    ) : null}
-                    <span className="text-muted-foreground/70">
-                      {t("imageDetail.info.date")}
-                    </span>
-                    <span className="text-foreground/80">
-                      {formatDate(image.fileModifiedAt)}
-                    </span>
-                    {image.pHash ? (
-                      <>
-                        <span className="text-muted-foreground/70">
-                          {t("imageDetail.info.phash")}
-                        </span>
-                        <span className="font-mono text-muted-foreground/80 truncate">
-                          {image.pHash}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </ScrollArea>
+            <InfoPanel
+              image={deferredImage ?? image}
+              copiedKey={copiedKey}
+              onCopy={handleCopy}
+              onAddTagToSearch={onAddTagToSearch}
+              onAddTagToGenerator={onAddTagToGenerator}
+            />
           )}
         </div>
       </div>

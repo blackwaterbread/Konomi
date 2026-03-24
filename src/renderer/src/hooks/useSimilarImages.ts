@@ -27,19 +27,47 @@ export function useSimilarImages({
   );
   const [similarImagesLoading, setSimilarImagesLoading] = useState(false);
   const requestSeqRef = useRef(0);
+  // Lock the anchor image ID when the panel first opens; reset on close.
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  // Track the anchor for which we last successfully initiated a fetch,
+  // so we skip re-fetching when detailContentReady cycles for the same anchor.
+  const fetchedAnchorRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!isDetailOpen) {
+      setAnchorId(null);
+      fetchedAnchorRef.current = null;
+      return;
+    }
+    if (selectedImageId) {
+      setAnchorId((prev) => prev ?? selectedImageId);
+    }
+  }, [isDetailOpen, selectedImageId]);
+
+  useEffect(() => {
+    if (!anchorId || !isDetailOpen) {
+      setSimilarImages([]);
+      setSimilarReasons({});
+      setSimilarScores({});
+      setSimilarImagesLoading(false);
+      return;
+    }
+
+    if (!detailContentReady) {
+      setSimilarImagesLoading(false);
+      return;
+    }
+
+    // Already fetched for this anchor — skip to avoid flickering on navigation.
+    if (fetchedAnchorRef.current === anchorId) return;
+    fetchedAnchorRef.current = anchorId;
+
     const requestId = ++requestSeqRef.current;
     setSimilarImages([]);
     setSimilarReasons({});
     setSimilarScores({});
 
-    if (!selectedImageId || !isDetailOpen || !detailContentReady) {
-      setSimilarImagesLoading(false);
-      return;
-    }
-
-    const imageId = parseInt(selectedImageId, 10);
+    const imageId = parseInt(anchorId, 10);
     const group = similarGroups.find((entry) =>
       entry.imageIds.includes(imageId),
     );
@@ -97,10 +125,10 @@ export function useSimilarImages({
       cancelled = true;
     };
   }, [
+    anchorId,
     detailContentReady,
     isDetailOpen,
     promptThresholdRef,
-    selectedImageId,
     similarGroups,
     visualThresholdRef,
   ]);
