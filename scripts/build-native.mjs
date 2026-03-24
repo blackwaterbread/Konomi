@@ -2,45 +2,98 @@
  * Native addon build script
  *
  * Prerequisites:
- *   Windows: vcpkg install libwebp:x64-windows-static
+ *   Windows: vcpkg install libwebp:x64-windows-static libpng:x64-windows-static
  *            set LIBWEBP_ROOT=C:/vcpkg/installed/x64-windows-static
- *   macOS:   brew install webp  (LIBWEBP_ROOT auto-detected)
+ *            set LIBPNG_ROOT=C:/vcpkg/installed/x64-windows-static
+ *   macOS:   brew install webp libpng  (roots auto-detected)
  *
  * Usage: node scripts/build-native.mjs
  */
-import { execSync } from 'child_process';
-import { mkdirSync, copyFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { execSync } from "child_process";
+import { mkdirSync, copyFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
+const root = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
-const outDir = join(root, 'prebuilds', `${platform}-${arch}`);
-
-// macOS: auto-detect libwebp via brew
-if (platform === 'darwin' && !process.env.LIBWEBP_ROOT) {
-  const brewPrefix = execSync('brew --prefix webp').toString().trim();
-  process.env.LIBWEBP_ROOT = brewPrefix;
-  console.log(`LIBWEBP_ROOT=${brewPrefix}`);
-}
-
-if (!process.env.LIBWEBP_ROOT) {
-  console.error('Error: LIBWEBP_ROOT is not set.');
-  console.error('  Windows: set LIBWEBP_ROOT=C:/vcpkg/installed/x64-windows-static');
-  process.exit(1);
-}
+const outDir = join(root, "prebuilds", `${platform}-${arch}`);
 
 mkdirSync(outDir, { recursive: true });
 
-const nativeDir = join(root, 'src', 'native', 'webp-alpha');
-process.chdir(nativeDir);
+// ── macOS: auto-detect library roots via brew ─────────────────────────────────
 
-console.log(`Building webp-alpha for ${platform}-${arch}...`);
-execSync('node-gyp rebuild', { stdio: 'inherit' });
+if (platform === "darwin") {
+  if (!process.env.LIBWEBP_ROOT) {
+    const brewPrefix = execSync("brew --prefix webp").toString().trim();
+    process.env.LIBWEBP_ROOT = brewPrefix;
+    console.log(`LIBWEBP_ROOT=${brewPrefix}`);
+  }
+  if (!process.env.LIBPNG_ROOT) {
+    const brewPrefix = execSync("brew --prefix libpng").toString().trim();
+    process.env.LIBPNG_ROOT = brewPrefix;
+    console.log(`LIBPNG_ROOT=${brewPrefix}`);
+  }
+}
 
-const src = join('build', 'Release', 'webp_alpha.node');
-const dest = join(outDir, 'webp-alpha.node');
-copyFileSync(src, dest);
-console.log(`Done: prebuilds/${platform}-${arch}/webp-alpha.node`);
+// vcpkg: LIBWEBP_ROOT and LIBPNG_ROOT are the same triplet directory.
+// If only one is set, mirror it to the other.
+if (process.env.LIBWEBP_ROOT && !process.env.LIBPNG_ROOT) {
+  process.env.LIBPNG_ROOT = process.env.LIBWEBP_ROOT;
+  console.log(
+    `LIBPNG_ROOT=${process.env.LIBPNG_ROOT} (mirrored from LIBWEBP_ROOT)`,
+  );
+}
+if (process.env.LIBPNG_ROOT && !process.env.LIBWEBP_ROOT) {
+  process.env.LIBWEBP_ROOT = process.env.LIBPNG_ROOT;
+  console.log(
+    `LIBWEBP_ROOT=${process.env.LIBWEBP_ROOT} (mirrored from LIBPNG_ROOT)`,
+  );
+}
+
+// ── Build helper ──────────────────────────────────────────────────────────────
+
+function buildAddon({ name, dir, rootEnv, srcNode, destNode }) {
+  if (!process.env[rootEnv]) {
+    console.warn(`Warning: ${rootEnv} is not set — skipping ${name}.`);
+    console.warn(
+      `  Windows: set ${rootEnv}=C:/vcpkg/installed/x64-windows-static`,
+    );
+    return;
+  }
+
+  console.log(`\nBuilding ${name} for ${platform}-${arch}...`);
+  process.chdir(dir);
+
+  try {
+    execSync("node-gyp rebuild", { stdio: "inherit" });
+    const src = join("build", "Release", srcNode);
+    const dest = join(outDir, destNode);
+    copyFileSync(src, dest);
+    console.log(`Done: prebuilds/${platform}-${arch}/${destNode}`);
+  } catch (err) {
+    console.error(`Failed to build ${name}: ${err.message}`);
+    process.exitCode = 1;
+  }
+}
+
+// ── webp-alpha ────────────────────────────────────────────────────────────────
+
+buildAddon({
+  name: "webp-alpha",
+  dir: join(root, "src", "native", "webp-alpha"),
+  rootEnv: "LIBWEBP_ROOT",
+  srcNode: "webp_alpha.node",
+  destNode: "webp-alpha.node",
+});
+
+// ── konomi-image (libpng + DCT pHash + NAI LSB) ───────────────────────────────
+
+buildAddon({
+  name: "konomi-image",
+  dir: join(root, "src", "native", "konomi-image"),
+  rootEnv: "LIBPNG_ROOT",
+  srcNode: "konomi_image.node",
+  destNode: "konomi-image.node",
+});

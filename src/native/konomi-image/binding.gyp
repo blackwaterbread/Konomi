@@ -1,7 +1,7 @@
 {
   "targets": [{
-    "target_name": "webp_alpha",
-    "sources": ["webp-alpha.cpp"],
+    "target_name": "konomi_image",
+    "sources": ["konomi-image.cpp"],
     "include_dirs": [
       "<!@(node -p \"require('node-addon-api').include\")",
       "<!@(node gyp_helpers/get-include.js)"
@@ -15,7 +15,7 @@
         "msvs_settings": {
           "VCCLCompilerTool": {
             "RuntimeLibrary": 0,
-            "AdditionalOptions": ["/Brepro"]
+            "AdditionalOptions": ["/O2", "/Brepro", "/utf-8"]
           },
           "VCLinkerTool": {
             "AdditionalOptions": ["/Brepro"]
@@ -24,8 +24,12 @@
       }],
       ["OS=='mac'", {
         "xcode_settings": {
-          "MACOSX_DEPLOYMENT_TARGET": "11.0"
+          "MACOSX_DEPLOYMENT_TARGET": "11.0",
+          "OTHER_CFLAGS": ["-O2"]
         }
+      }],
+      ["OS=='linux'", {
+        "cflags": ["-O2"]
       }]
     ]
   }]

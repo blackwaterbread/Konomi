@@ -5,6 +5,7 @@ import { readMidjourneyMetaFromBuffer } from "./midjourney";
 import { readWebuiMetaFromBuffer } from "./webui";
 import { readPngTextChunks } from "./png-meta";
 import { decodeWebpAlpha } from "./webp-alpha";
+import { extractNaiLsb } from "./konomi-image";
 
 const PAETH = (a: number, b: number, c: number): number => {
   const p = a + b - c;
@@ -94,7 +95,7 @@ function decodeNaiStealth(
   return tryDecode(bA) ?? tryDecode(bRgb);
 }
 
-function tryDecode(bits: number[]): Record<string, unknown> | null {
+function tryDecode(bits: ArrayLike<number>): Record<string, unknown> | null {
   const MAGIC_BITS = 15 * 8;
   if (bits.length < MAGIC_BITS + 32) return null;
 
@@ -264,6 +265,16 @@ function readNaiMetaFromPngText(buf: Buffer): NovelAIMeta | null {
 
 function readNaiMetaFromLsb(buf: Buffer): NovelAIMeta | null {
   try {
+    // Try native path first (libpng decode + C++ LSB extraction)
+    const lsb = extractNaiLsb(buf);
+    if (lsb !== null) {
+      const raw =
+        tryDecode(lsb.alpha ?? new Uint8Array(0)) ?? tryDecode(lsb.rgb);
+      if (!raw || !isNovelAI(raw)) return null;
+      return parseNaiComment(raw);
+    }
+
+    // Fallback: pure JS implementation
     const { px, w, h, ch } = decodePng(buf);
     const raw = decodeNaiStealth(px, w, h, ch);
     if (!raw || !isNovelAI(raw)) return null;

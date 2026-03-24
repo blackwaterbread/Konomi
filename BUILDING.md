@@ -40,10 +40,19 @@ git clone https://github.com/microsoft/vcpkg.git <YOUR_VCPKG_PATH>
 <YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static
 ```
 
-**Build the addon:**
+**Set environment variables (permanent):**
+
+1. Win + R → `sysdm.cpl` → Advanced → Environment Variables
+2. Under "User variables", add:
+   - `LIBWEBP_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
+   - `LIBPNG_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
+3. Restart your terminal after saving
+
+> `set VAR=...` in cmd is session-only and will not persist.
+
+**Build the addons:**
 
 ```powershell
-set LIBWEBP_ROOT=<YOUR_VCPKG_PATH>\installed\x64-windows-static
 bun run prebuild:native
 ```
 

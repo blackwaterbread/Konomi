@@ -1,6 +1,7 @@
 import { parentPort } from "worker_threads";
 import { readFileSync } from "fs";
 import { inflateSync } from "zlib";
+import { computePHash as computePHashNative } from "./konomi-image";
 
 const HASH_SIZE = 8;
 const DCT_SIZE = 32;
@@ -117,6 +118,12 @@ function dct1d(arr: number[]): number[] {
 // ── pHash (synchronous, runs in worker thread) ────────────────────────────────
 function computePHashSync(filePath: string): string {
   const buf = readFileSync(filePath);
+
+  // Try native addon first (libpng + C++ DCT — significantly faster)
+  const nativeHash = computePHashNative(buf);
+  if (nativeHash !== null) return nativeHash;
+
+  // Fallback: pure JS implementation
   const { px, w, h, ch } = decodePng(buf);
   const pixels = toGrayscaleGrid(px, w, h, ch, DCT_SIZE, DCT_SIZE);
 
