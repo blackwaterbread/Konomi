@@ -7,9 +7,9 @@
 | [Node.js](https://nodejs.org/) | 22+ | |
 | [Bun](https://bun.sh/) | latest | Package manager & script runner |
 | [Git](https://git-scm.com/) | any | |
-| **Windows** — [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | 2019+ | C++ workload required for native addon |
-| **Windows** — [vcpkg](https://vcpkg.io/) | any | For libwebp static library |
-| **macOS** — [Homebrew](https://brew.sh/) | any | For libwebp |
+| **Windows** — [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | 2019+ | C++ workload required for native addons |
+| **Windows** — [vcpkg](https://vcpkg.io/) | any | For libwebp and libpng static libraries |
+| **macOS** — [Homebrew](https://brew.sh/) | any | For libwebp and libpng (auto-detected) |
 
 ---
 
@@ -23,21 +23,25 @@ bun install
 
 ---
 
-## 2. Build the Native Addon (WebP support)
+## 2. Build the Native Addons
 
-Konomi uses a custom C++ native addon (`webp-alpha`) to decode WebP images.
-Prebuilt binaries are committed to the repository under `prebuilds/`, so this
-step is only needed when building from source for the first time, or after
-modifying `src/native/webp-alpha/`.
+Konomi uses two C++ native addons. Prebuilt binaries are committed to the
+repository under `prebuilds/`, so this step is only needed when building from
+source for the first time, or after modifying addon sources.
+
+| Addon | Source | Purpose |
+|-------|--------|---------|
+| `webp-alpha` | `src/native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
+| `konomi-image` | `src/native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
 
 ### Windows
 
-**Install libwebp via vcpkg (one-time setup):**
+**Install libraries via vcpkg (one-time setup):**
 
 ```powershell
 git clone https://github.com/microsoft/vcpkg.git <YOUR_VCPKG_PATH>
 <YOUR_VCPKG_PATH>\bootstrap-vcpkg.bat
-<YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static
+<YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static libpng:x64-windows-static
 ```
 
 **Set environment variables (permanent):**
@@ -58,28 +62,34 @@ bun run prebuild:native
 
 ### macOS
 
-**Install libwebp via Homebrew (one-time setup):**
+**Install libraries via Homebrew (one-time setup):**
 
 ```bash
-brew install webp
+brew install webp libpng
 ```
 
-**Build the addon (LIBWEBP_ROOT is auto-detected from brew):**
+**Build the addons (LIBWEBP_ROOT and LIBPNG_ROOT are auto-detected from brew):**
 
 ```bash
 bun run prebuild:native
 ```
 
-The script outputs the built binary to:
+The script outputs built binaries to:
 
 ```
 prebuilds/
-  win32-x64/webp-alpha.node
-  darwin-x64/webp-alpha.node
-  darwin-arm64/webp-alpha.node
+  win32-x64/
+    webp-alpha.node
+    konomi-image.node
+  darwin-x64/
+    webp-alpha.node
+    konomi-image.node
+  darwin-arm64/
+    webp-alpha.node
+    konomi-image.node
 ```
 
-Commit the generated `.node` file when updating the native addon.
+Commit the generated `.node` files when updating native addons.
 
 ---
 
@@ -117,7 +127,8 @@ bun run build:linux  # Linux AppImage / deb
 ## Project Structure
 
 ```
-src/native/webp-alpha/     C++ native addon source (libwebp binding)
+src/native/webp-alpha/     C++ native addon — WebP alpha decode (libwebp)
+src/native/konomi-image/   C++ native addon — PNG pHash + NAI LSB (libpng)
 prebuilds/             Prebuilt .node binaries (committed to git)
 prisma/                Prisma schema + migrations
 resources/             Bundled assets (prompts.db, icons)
@@ -137,7 +148,7 @@ bun run dev              # Start dev server
 bun run build            # Typecheck + build
 bun run typecheck        # Run typechecks
 bun run lint             # ESLint
-bun run prebuild:native  # Rebuild native WebP addon
+bun run prebuild:native  # Rebuild native addons
 bun run db:migrate       # Run Prisma migrations
 bun run db:generate      # Regenerate Prisma client
 ```

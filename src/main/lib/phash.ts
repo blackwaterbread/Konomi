@@ -2,6 +2,7 @@ import path from "path";
 import { Worker } from "worker_threads";
 import { getDB } from "./db";
 import { withConcurrency } from "./scanner";
+import { computeAllPairs, type AllPairsInput } from "./konomi-image";
 
 const SIMILARITY_THRESHOLD = 10;
 const HASH_WRITE_BATCH_SIZE = 32;
@@ -432,6 +433,89 @@ function buildSimilarityImages(rows: SimilaritySourceRow[]): {
   return { images, idfMap };
 }
 
+// Encode SimilarityImage[] into flat typed arrays for the native addon.
+function encodeImagesForNative(
+  images: SimilarityImage[],
+  idfMap: Map<string, number>,
+): AllPairsInput {
+  const vocab = new Map<string, number>();
+  for (const token of idfMap.keys()) vocab.set(token, vocab.size);
+  const vsz = vocab.size;
+  const N = images.length;
+
+  const imageIds = new Int32Array(N);
+  const pHashHex: string[] = new Array(N);
+  const promptWts = new Float64Array(N);
+  const charWts = new Float64Array(N);
+  const negWts = new Float64Array(N);
+  const posWts = new Float64Array(N);
+  const hasPrompt = new Uint8Array(N);
+  const hasChar = new Uint8Array(N);
+
+  let tp = 0, tc = 0, tn = 0, tx = 0;
+  for (const img of images) {
+    tp += img.prompt.size;
+    tc += img.character.size;
+    tn += img.negative.size;
+    tx += img.positive.size;
+  }
+
+  const promptData = new Uint32Array(tp);
+  const promptOffsets = new Int32Array(N + 1);
+  const charData = new Uint32Array(tc);
+  const charOffsets = new Int32Array(N + 1);
+  const negData = new Uint32Array(tn);
+  const negOffsets = new Int32Array(N + 1);
+  const posData = new Uint32Array(tx);
+  const posOffsets = new Int32Array(N + 1);
+
+  let pi = 0, ci = 0, ni = 0, xi = 0;
+  for (let i = 0; i < N; i++) {
+    const img = images[i];
+    imageIds[i] = img.id;
+    pHashHex[i] = img.pHash?.length === 16 ? img.pHash : "";
+    promptWts[i] = img.promptWeightSum;
+    charWts[i] = img.characterWeightSum;
+    negWts[i] = img.negativeWeightSum;
+    posWts[i] = img.positiveWeightSum;
+    hasPrompt[i] = img.prompt.size > 0 ? 1 : 0;
+    hasChar[i] = img.character.size > 0 ? 1 : 0;
+
+    promptOffsets[i] = pi;
+    for (const t of img.prompt) { const id = vocab.get(t); if (id !== undefined) promptData[pi++] = id; }
+    charOffsets[i] = ci;
+    for (const t of img.character) { const id = vocab.get(t); if (id !== undefined) charData[ci++] = id; }
+    negOffsets[i] = ni;
+    for (const t of img.negative) { const id = vocab.get(t); if (id !== undefined) negData[ni++] = id; }
+    posOffsets[i] = xi;
+    for (const t of img.positive) { const id = vocab.get(t); if (id !== undefined) posData[xi++] = id; }
+  }
+  promptOffsets[N] = pi;
+  charOffsets[N] = ci;
+  negOffsets[N] = ni;
+  posOffsets[N] = xi;
+
+  const tokenWeights = new Float64Array(vsz);
+  for (const [token, w] of idfMap) {
+    const id = vocab.get(token);
+    if (id !== undefined) tokenWeights[id] = w;
+  }
+
+  return {
+    imageIds, pHashHex,
+    promptData, promptOffsets, charData, charOffsets,
+    negData, negOffsets, posData, posOffsets,
+    promptWts, charWts, negWts, posWts,
+    hasPrompt, hasChar, tokenWeights,
+    uiThresholdMax: UI_THRESHOLD_MAX,
+    textThreshold: LOOSE_THRESHOLD_CONFIG.textLinkThreshold,
+    hybridThreshold: LOOSE_THRESHOLD_CONFIG.hybridLinkThreshold,
+    hybridPHashWeight: HYBRID_PHASH_WEIGHT,
+    hybridTextWeight: HYBRID_TEXT_WEIGHT,
+    conflictPenaltyWeight: CONFLICT_PENALTY_WEIGHT,
+  };
+}
+
 function normalizeImageIds(imageIds: number[]): number[] {
   return [
     ...new Set(imageIds.filter((id) => Number.isInteger(id) && id > 0)),
@@ -617,6 +701,22 @@ export async function refreshSimilarityCacheForImageIds(
   const existingTargetIds = targetIds.filter((id) => imageById.has(id));
   if (existingTargetIds.length === 0) return;
   const isFullCoverage = existingTargetIds.length === sourceRows.length;
+
+  // ── Native fast path (full coverage only) ────────────────────────────────
+  // Uses C++ inverted token index + pHash pass, significantly faster than
+  // the O(N²) JS loop. Only used when rebuilding the full cache.
+  if (isFullCoverage) {
+    const nativeRows = computeAllPairs(encodeImagesForNative(images, idfMap));
+    if (nativeRows !== null) {
+      onProgress?.(0, nativeRows.length);
+      await upsertSimilarityCacheRows(nativeRows);
+      onProgress?.(nativeRows.length, nativeRows.length);
+      await markSimilarityCachePrimed();
+      return;
+    }
+  }
+
+  // ── JS fallback ───────────────────────────────────────────────────────────
 
   const targetIdSet = new Set(existingTargetIds);
   const pending: SimilarityCacheRow[] = [];
