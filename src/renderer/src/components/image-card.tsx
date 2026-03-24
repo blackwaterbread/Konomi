@@ -91,6 +91,7 @@ export const ImageCard = memo(function ImageCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [hoverPreviewReady, setHoverPreviewReady] = useState(false);
   const [contextMenuReady, setContextMenuReady] = useState(false);
+  const [favoritePopping, setFavoritePopping] = useState(false);
   const previewTokens = useMemo(
     () => image.tokens.slice(0, TOKEN_PREVIEW_LIMIT),
     [image.tokens],
@@ -298,12 +299,44 @@ export const ImageCard = memo(function ImageCard({
               </div>
             </div>
 
-            {/* Favorite Badge */}
-            {image.isFavorite && (
-              <div className="absolute top-3 right-3">
-                <Heart className="h-5 w-5 fill-favorite text-favorite" />
-              </div>
-            )}
+            {/* Favorite Button */}
+            <button
+              className={cn(
+                "absolute top-2 right-2 p-1.5 rounded-full bg-black/40 backdrop-blur-sm transition-opacity",
+                image.isFavorite
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                setFavoritePopping(true);
+                onToggleFavorite(image.id);
+                setTimeout(() => setFavoritePopping(false), 450);
+              }}
+            >
+              {favoritePopping && (
+                <span
+                  className="absolute inset-0 rounded-full border-2 border-favorite pointer-events-none"
+                  style={{ animation: "heart-ripple 0.45s ease-out forwards" }}
+                />
+              )}
+              <Heart
+                className={cn(
+                  "h-4 w-4 relative",
+                  image.isFavorite
+                    ? "fill-favorite text-favorite"
+                    : "text-white",
+                )}
+                style={
+                  favoritePopping
+                    ? {
+                        animation:
+                          "heart-pop 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards",
+                      }
+                    : undefined
+                }
+              />
+            </button>
 
             {selectionMode && (
               <div
