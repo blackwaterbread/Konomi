@@ -21,7 +21,9 @@ function pendingUpdatePath(): string {
 function savePendingUpdate(version: string): void {
   try {
     writeFileSync(pendingUpdatePath(), JSON.stringify({ version }));
-  } catch {}
+  } catch {
+    // Best-effort: if write fails, user simply won't be re-notified after restart
+  }
 }
 
 function loadPendingUpdate(): { version: string } | null {
@@ -37,7 +39,9 @@ function loadPendingUpdate(): { version: string } | null {
 function clearPendingUpdate(): void {
   try {
     rmSync(pendingUpdatePath(), { force: true });
-  } catch {}
+  } catch {
+    // Best-effort: if delete fails, user may see the update toast once more on next restart
+  }
 }
 
 export function initAutoUpdater(wc: WebContents): void {
