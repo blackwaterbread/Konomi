@@ -32,6 +32,23 @@ export function useFolderSelection() {
     });
   }, []);
 
+  const toggleFolderWithCascade = useCallback(
+    (id: number, descendantIds: number[]) => {
+      setSelectedFolderIds((prev) => {
+        const next = new Set(prev);
+        const willBeOn = !prev.has(id);
+        if (willBeOn) next.add(id);
+        else next.delete(id);
+        for (const descId of descendantIds) {
+          if (willBeOn) next.add(descId);
+          else next.delete(descId);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
   const addSelectedFolder = useCallback((id: number) => {
     setSelectedFolderIds((prev) => new Set([...prev, id]));
   }, []);
@@ -47,6 +64,7 @@ export function useFolderSelection() {
   return {
     selectedFolderIds,
     toggleFolder,
+    toggleFolderWithCascade,
     addSelectedFolder,
     removeSelectedFolder,
   };

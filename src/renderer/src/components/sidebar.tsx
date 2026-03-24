@@ -12,6 +12,8 @@
   Tag,
   Shuffle,
   RefreshCw,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import {
   forwardRef,
@@ -46,6 +48,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
+import { buildFolderTree, type FolderTreeNode } from "@/lib/folder-tree";
 import { useTranslation } from "react-i18next";
 
 interface SidebarViewState {
@@ -56,6 +59,7 @@ interface SidebarViewState {
 interface SidebarFolderState {
   folders: FolderRecord[];
   selectedFolderIds?: Set<number>;
+  collapsedFolderIds?: Set<number>;
   rollbackRequest?: { id: number; folderIds: number[] } | null;
   scanningFolderIds?: Set<number>;
   scanning?: boolean;
@@ -67,6 +71,7 @@ interface SidebarFolderActions {
   renameFolder: (id: number, name: string) => Promise<void>;
   reorderFolders: (ids: number[]) => void;
   onFolderToggle?: (id: number) => void;
+  onFolderToggleCollapse?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
   onFolderCancelled?: (id: number) => void;
@@ -344,15 +349,19 @@ interface SidebarFolderRowProps {
   isDragging: boolean;
   scanning?: boolean;
   isAnalyzing?: boolean;
+  depth?: number;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
   onRename: (id: number, name: string) => Promise<void>;
   onToggle?: (id: number) => void;
+  onToggleCollapse?: (id: number) => void;
   onDeleteRequest: (target: { id: number; name: string }) => void;
   onReveal: (folderId: number) => void;
   onRescan: (folder: FolderRecord) => void;
-  onDragStart: (id: number) => void;
-  onDragOver: (id: number) => void;
-  onDrop: (id: number) => void;
-  onDragEnd: () => void;
+  onDragStart?: (id: number) => void;
+  onDragOver?: (id: number) => void;
+  onDrop?: (id: number) => void;
+  onDragEnd?: () => void;
 }
 
 const SidebarFolderRow = memo(function SidebarFolderRow({
@@ -363,8 +372,12 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   isDragging,
   scanning,
   isAnalyzing,
+  depth = 0,
+  hasChildren = false,
+  isCollapsed = false,
   onRename,
   onToggle,
+  onToggleCollapse,
   onDeleteRequest,
   onReveal,
   onRescan,
@@ -459,33 +472,64 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
     setEditingName(null);
   }, [currentEditingName, folder.id, folder.name, onRename, t]);
 
+  const depthPadding = [
+    "px-2",
+    "pl-5 pr-2",
+    "pl-8 pr-2",
+    "pl-11 pr-2",
+  ] as const;
+  const paddingClass = depthPadding[Math.min(depth, 3)];
+  // depth >= 2에서는 eye 아이콘도 hover에서만 표시 (공간 절약)
+  const eyeHoverOnly = depth >= 2;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          draggable={!isEditing}
+          draggable={!isEditing && depth === 0}
           onDragStart={(e) => {
-            if (isEditing) return;
-            onDragStart(folder.id);
+            if (isEditing || depth !== 0) return;
+            onDragStart?.(folder.id);
             e.dataTransfer.effectAllowed = "move";
           }}
           onDragOver={(e) => {
-            if (isEditing) return;
+            if (isEditing || depth !== 0) return;
             e.preventDefault();
-            onDragOver(folder.id);
+            onDragOver?.(folder.id);
           }}
           onDrop={(e) => {
+            if (depth !== 0) return;
             e.preventDefault();
-            onDrop(folder.id);
+            onDrop?.(folder.id);
           }}
-          onDragEnd={onDragEnd}
+          onDragEnd={() => onDragEnd?.()}
           className={cn(
-            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            "group flex items-center gap-2 py-1.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            paddingClass,
             isDragTarget && "bg-sidebar-accent ring-1 ring-primary/40",
             isDragging && "opacity-60",
           )}
         >
-          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 cursor-grab active:cursor-grabbing" />
+          {/* 왼쪽 아이콘: 자식 있으면 chevron, root이면 grip, 그 외 spacer */}
+          {hasChildren ? (
+            <button
+              className="h-3.5 w-3.5 shrink-0 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCollapse?.(folder.id);
+              }}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : depth === 0 ? (
+            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 cursor-grab active:cursor-grabbing" />
+          ) : (
+            <span className="h-3.5 w-3.5 shrink-0" />
+          )}
           <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           {isEditing ? (
             <input
@@ -522,6 +566,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 size="icon"
                 className={cn(
                   "h-5 w-5",
+                  eyeHoverOnly && "opacity-0 group-hover:opacity-100",
                   isSelected
                     ? "text-primary"
                     : "text-muted-foreground hover:text-primary",
@@ -834,6 +879,7 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
 interface SidebarFoldersSectionProps {
   folders: FolderRecord[];
   selectedFolderIds?: Set<number>;
+  collapsedFolderIds?: Set<number>;
   scanningFolderIds?: Set<number>;
   draggingFolderId: number | null;
   folderDropTargetId: number | null;
@@ -841,6 +887,7 @@ interface SidebarFoldersSectionProps {
   isAnalyzing?: boolean;
   onOpenNewFolder: () => void;
   onToggle?: (id: number) => void;
+  onToggleCollapse?: (id: number) => void;
   onRename: (id: number, name: string) => Promise<void>;
   onDeleteRequest: (target: { id: number; name: string }) => void;
   onReveal: (folderId: number) => void;
@@ -854,6 +901,7 @@ interface SidebarFoldersSectionProps {
 const SidebarFoldersSection = memo(function SidebarFoldersSection({
   folders,
   selectedFolderIds,
+  collapsedFolderIds,
   scanningFolderIds,
   draggingFolderId,
   folderDropTargetId,
@@ -861,6 +909,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isAnalyzing,
   onOpenNewFolder,
   onToggle,
+  onToggleCollapse,
   onRename,
   onDeleteRequest,
   onReveal,
@@ -871,6 +920,53 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   onDragEnd,
 }: SidebarFoldersSectionProps) {
   const { t } = useTranslation();
+  const folderTree = buildFolderTree(folders);
+
+  function renderNodes(
+    nodes: FolderTreeNode[],
+    depth: number,
+  ): React.ReactNode {
+    return nodes.map((node) => {
+      const { folder, children } = node;
+      const isScanning = scanningFolderIds?.has(folder.id) ?? false;
+      const isSelected = selectedFolderIds?.has(folder.id) ?? false;
+      const hasChildren = children.length > 0;
+      const isCollapsed = collapsedFolderIds?.has(folder.id) ?? false;
+      const isDragTarget =
+        depth === 0 &&
+        draggingFolderId !== null &&
+        draggingFolderId !== folder.id &&
+        folderDropTargetId === folder.id;
+
+      return (
+        <div key={folder.id}>
+          <SidebarFolderRow
+            folder={folder}
+            depth={depth}
+            hasChildren={hasChildren}
+            isCollapsed={isCollapsed}
+            isScanning={isScanning}
+            isSelected={isSelected}
+            isDragTarget={isDragTarget}
+            isDragging={draggingFolderId === folder.id}
+            scanning={scanning}
+            isAnalyzing={isAnalyzing}
+            onRename={onRename}
+            onToggle={onToggle}
+            onToggleCollapse={onToggleCollapse}
+            onDeleteRequest={onDeleteRequest}
+            onReveal={onReveal}
+            onRescan={onRescan}
+            onDragStart={depth === 0 ? onDragStart : undefined}
+            onDragOver={depth === 0 ? onDragOver : undefined}
+            onDrop={depth === 0 ? onDrop : undefined}
+            onDragEnd={depth === 0 ? onDragEnd : undefined}
+          />
+          {hasChildren && !isCollapsed && renderNodes(children, depth + 1)}
+        </div>
+      );
+    });
+  }
 
   return (
     <div className="pt-4 border-t border-border" data-tour="sidebar-folders">
@@ -899,38 +995,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
           {t("sidebar.folders.empty")}
         </p>
       ) : (
-        <div className="space-y-1">
-          {folders.map((folder) => {
-            const isScanning = scanningFolderIds?.has(folder.id) ?? false;
-            const isSelected = selectedFolderIds?.has(folder.id) ?? false;
-            const isDragTarget =
-              draggingFolderId !== null &&
-              draggingFolderId !== folder.id &&
-              folderDropTargetId === folder.id;
-
-            return (
-              <SidebarFolderRow
-                key={folder.id}
-                folder={folder}
-                isScanning={isScanning}
-                isSelected={isSelected}
-                isDragTarget={isDragTarget}
-                isDragging={draggingFolderId === folder.id}
-                scanning={scanning}
-                isAnalyzing={isAnalyzing}
-                onRename={onRename}
-                onToggle={onToggle}
-                onDeleteRequest={onDeleteRequest}
-                onReveal={onReveal}
-                onRescan={onRescan}
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                onDragEnd={onDragEnd}
-              />
-            );
-          })}
-        </div>
+        <div className="space-y-1">{renderNodes(folderTree, 0)}</div>
       )}
     </div>
   );
@@ -1042,6 +1107,7 @@ export const Sidebar = memo(
     const {
       folders,
       selectedFolderIds,
+      collapsedFolderIds,
       rollbackRequest,
       scanningFolderIds,
       scanning,
@@ -1052,6 +1118,7 @@ export const Sidebar = memo(
       renameFolder,
       reorderFolders,
       onFolderToggle,
+      onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
       onFolderCancelled,
@@ -1375,6 +1442,7 @@ export const Sidebar = memo(
               <SidebarFoldersSection
                 folders={folders}
                 selectedFolderIds={selectedFolderIds}
+                collapsedFolderIds={collapsedFolderIds}
                 scanningFolderIds={scanningFolderIds}
                 draggingFolderId={draggingFolderId}
                 folderDropTargetId={folderDropTargetId}
@@ -1382,6 +1450,7 @@ export const Sidebar = memo(
                 isAnalyzing={isAnalyzing}
                 onOpenNewFolder={handleOpenFolderDialog}
                 onToggle={onFolderToggle}
+                onToggleCollapse={onFolderToggleCollapse}
                 onRename={handleFolderRename}
                 onDeleteRequest={handleDeleteFolderRequest}
                 onReveal={handleRevealFolderInExplorer}

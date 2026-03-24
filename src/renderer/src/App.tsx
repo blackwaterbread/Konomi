@@ -66,6 +66,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
     renameFolder,
     reorderFolders,
     folderCount,
+    collapsedFolderIds,
+    toggleCollapse,
   } = useFolderController(initialFolderCount);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
@@ -283,12 +285,14 @@ export default function App({ initialFolderCount = null }: AppProps) {
     () => ({
       folders,
       selectedFolderIds,
+      collapsedFolderIds,
       rollbackRequest: folderRollbackRequest,
       scanningFolderIds: activeScanFolderIds,
       scanning,
     }),
     [
       activeScanFolderIds,
+      collapsedFolderIds,
       folders,
       folderRollbackRequest,
       scanning,
@@ -303,6 +307,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       renameFolder,
       reorderFolders,
       onFolderToggle: toggleFolder,
+      onFolderToggleCollapse: toggleCollapse,
       onFolderRemoved: handleFolderRemoved,
       onFolderAdded: handleFolderAdded,
       onFolderCancelled: handleFolderCancelled,
@@ -317,6 +322,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       removeFolder,
       renameFolder,
       reorderFolders,
+      toggleCollapse,
       toggleFolder,
     ],
   );
