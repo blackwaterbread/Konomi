@@ -744,6 +744,7 @@ const ko = {
     availableMac: "새 버전 {{version}}이 출시되었습니다",
     downloaded: "업데이트 {{version}} 준비 완료",
     installNow: "지금 설치",
+    later: "나중에",
     downloadNow: "다운로드",
   },
 } as const;

@@ -31,6 +31,10 @@ export function useAutoUpdate(): void {
           label: t("update.installNow"),
           onClick: () => window.appInfo.installUpdate(),
         },
+        cancel: {
+          label: t("update.later"),
+          onClick: () => {},
+        },
       });
     });
 

@@ -752,6 +752,7 @@ const en = {
     availableMac: "New version {{version}} is available",
     downloaded: "Update {{version}} ready to install",
     installNow: "Install Now",
+    later: "Later",
     downloadNow: "Download",
   },
 } as const;
