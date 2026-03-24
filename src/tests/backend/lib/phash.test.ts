@@ -87,9 +87,7 @@ async function seedConfiguredSimilarityImages(specs: SimilaritySeedSpec[]) {
           promptTokens: tokens(spec.promptTokens),
           negativePromptTokens: tokens(spec.negativePromptTokens ?? []),
           characterPromptTokens: tokens(spec.characterPromptTokens ?? []),
-          fileModifiedAt: new Date(
-            `2026-03-20T00:0${Math.min(i, 9)}:00.000Z`,
-          ),
+          fileModifiedAt: new Date(`2026-03-20T00:0${Math.min(i, 9)}:00.000Z`),
         },
       }),
     );
@@ -142,11 +140,8 @@ describe("phash", () => {
 
   it("computes hashes, refreshes similarity cache, and classifies reasons", async () => {
     const { imageA, imageB, imageC } = await seedSimilarityImages();
-    const {
-      computeAllHashes,
-      getSimilarGroups,
-      getSimilarityReasons,
-    } = await import("../../../main/lib/phash");
+    const { computeAllHashes, getSimilarGroups, getSimilarityReasons } =
+      await import("../../../main/lib/phash");
     const onHashProgress = vi.fn();
     const onSimilarityProgress = vi.fn();
 

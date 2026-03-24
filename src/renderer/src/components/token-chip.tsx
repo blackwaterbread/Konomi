@@ -559,17 +559,15 @@ function TokenChipCore({
   };
 
   const handleInlineBlur = () => {
-    if (
-      inlineHandlingRef.current !== null ||
-      selectingTagSuggestionRef.current
-    )
+    if (inlineHandlingRef.current !== null || selectingTagSuggestionRef.current)
       return;
     applyInlineEdit(false);
   };
 
   // TODO: 프롬프트 강조 문법 깨짐 감지 표시가 TokenChip상태에선 좀 완벽하진 않다. 예를 들어 앞에서 시작된 깨짐인데 뒤의 토큰에 엉뚱하게 전염됨. 추후 개선
   const weighted = Math.abs(token.weight - 1.0) > 0.001;
-  const emphasisSyntaxIssue = syntaxIssueKind ?? getPromptEmphasisSyntaxIssueKind(raw);
+  const emphasisSyntaxIssue =
+    syntaxIssueKind ?? getPromptEmphasisSyntaxIssueKind(raw);
   const hasEmphasisSyntaxIssue = emphasisSyntaxIssue !== null;
   const chipClass = cn(
     "px-1.5 py-1 text-xs rounded border border-border/40 transition-colors cursor-text hover:brightness-105",
@@ -928,9 +926,7 @@ function TokenChipCore({
               <button
                 key={`${suggestion.tag}-${suggestion.count}`}
                 type="button"
-                onMouseDown={(e) =>
-                  handleTagSuggestionMouseDown(e, suggestion)
-                }
+                onMouseDown={(e) => handleTagSuggestionMouseDown(e, suggestion)}
                 className={cn(
                   "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors",
                   index === tagSuggestionIndex

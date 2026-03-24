@@ -23,9 +23,7 @@ describe("prompt db integration", () => {
     expect(categories.length).toBeGreaterThan(0);
     expect(categories.every((category) => category.isBuiltin)).toBe(true);
     expect(categories.map((category) => category.order)).toEqual(
-      [...categories]
-        .map((category) => category.order)
-        .sort((a, b) => a - b),
+      [...categories].map((category) => category.order).sort((a, b) => a - b),
     );
   });
 
@@ -47,7 +45,9 @@ describe("prompt db integration", () => {
 
     const categories = await listCategories();
     const savedCategory = categories.find((item) => item.id === category.id);
-    const savedGroup = savedCategory?.groups.find((item) => item.id === group.id);
+    const savedGroup = savedCategory?.groups.find(
+      (item) => item.id === group.id,
+    );
 
     expect(savedCategory).toMatchObject({
       id: category.id,

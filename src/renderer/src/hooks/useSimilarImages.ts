@@ -36,7 +36,9 @@ export function useSimilarImages({
     }
 
     const imageId = parseInt(selectedImageId, 10);
-    const group = similarGroups.find((entry) => entry.imageIds.includes(imageId));
+    const group = similarGroups.find((entry) =>
+      entry.imageIds.includes(imageId),
+    );
     if (!group || group.imageIds.length === 0) {
       setSimilarImagesLoading(false);
       return;

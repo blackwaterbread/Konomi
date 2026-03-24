@@ -104,9 +104,9 @@ export function DuplicateResolutionDialog({
                   ? t("duplicateResolution.description.rescan", {
                       count: items.length,
                     })
-                : t("duplicateResolution.description.folderAdd", {
-                    count: items.length,
-                  })}
+                  : t("duplicateResolution.description.folderAdd", {
+                      count: items.length,
+                    })}
             </p>
             {items.length > 1 && (
               <div className="space-y-2">

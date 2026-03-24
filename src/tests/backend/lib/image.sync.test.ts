@@ -15,7 +15,7 @@ const syncState = vi.hoisted(() => ({
 vi.mock("../../../main/lib/scanner", () => ({
   scanPngFiles: async (folderPath: string) =>
     syncState.scanResults.get(folderPath) ?? [],
-  withConcurrency: async <T,>(
+  withConcurrency: async <T>(
     items: T[],
     _concurrency: number,
     worker: (item: T) => Promise<void> | void,
@@ -66,9 +66,7 @@ function tokens(values: string[]) {
 function sortResolutions(
   values: Array<{ width: number; height: number }>,
 ): Array<{ width: number; height: number }> {
-  return [...values].sort(
-    (a, b) => a.width - b.width || a.height - b.height,
-  );
+  return [...values].sort((a, b) => a.width - b.width || a.height - b.height);
 }
 
 beforeEach(async () => {
@@ -134,9 +132,8 @@ describe("image sync integration", () => {
     const folderEnds: number[] = [];
     const progressCalls: Array<[number, number]> = [];
 
-    const { getImageSearchPresetStats, syncAllFolders } = await import(
-      "../../../main/lib/image"
-    );
+    const { getImageSearchPresetStats, syncAllFolders } =
+      await import("../../../main/lib/image");
     const initialStats = await getImageSearchPresetStats();
     expect(sortResolutions(initialStats.availableResolutions)).toEqual([
       { width: 640, height: 640 },
@@ -195,10 +192,7 @@ describe("image sync integration", () => {
       { width: 832, height: 1216 },
       { width: 1024, height: 1024 },
     ]);
-    expect(finalStats.availableModels).toEqual([
-      "current-model",
-      "new-model",
-    ]);
+    expect(finalStats.availableModels).toEqual(["current-model", "new-model"]);
   });
 
   it("detects duplicate incoming files before import and skips them until resolved", async () => {

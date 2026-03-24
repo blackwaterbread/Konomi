@@ -817,7 +817,9 @@ describe("PromptInput", () => {
     fireEvent.keyDown(lastChip, { key: "Backspace" });
 
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith("sparkles"));
-    expect(screen.queryByRole("button", { name: "sunset" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "sunset" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not remove a chip when Backspace is pressed with a non-empty draft", async () => {
@@ -853,9 +855,15 @@ describe("PromptInput", () => {
         "rose petals, glowing eyes, soft light",
       ),
     );
-    expect(screen.getByRole("button", { name: "rose petals" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "glowing eyes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "soft light" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "rose petals" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "glowing eyes" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "soft light" }),
+    ).toBeInTheDocument();
   });
 
   it("renders a wildcard chip for %{opt1|opt2} values", () => {
@@ -864,7 +872,9 @@ describe("PromptInput", () => {
     expect(
       screen.getByRole("button", { name: "%{beach|forest}" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "sparkles" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "sparkles" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "stars" })).toBeInTheDocument();
   });
 
@@ -931,7 +941,9 @@ describe("PromptInput", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(screen.getByRole("button", { name: "sunflower" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "sunflower" }),
+    ).toBeInTheDocument();
   });
 
   it("selects the third suggestion when ArrowDown is pressed three times", async () => {
@@ -980,9 +992,7 @@ describe("PromptInput", () => {
     fireEvent.contextMenu(textarea);
     fireEvent.click(await screen.findByText("Delete"));
 
-    await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith(" sunset"),
-    );
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(" sunset"));
   });
 
   it("shows 'Select all' in the raw-text context menu", async () => {

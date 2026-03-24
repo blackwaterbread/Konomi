@@ -102,7 +102,9 @@ function bindThemePreference(theme: ThemeId): () => void {
 function ClickableToaster() {
   const { toasts } = useSonner();
   const toasterRef = useRef<HTMLElement | null>(null);
-  const toastIdByElementRef = useRef(new WeakMap<HTMLElement, string | number>());
+  const toastIdByElementRef = useRef(
+    new WeakMap<HTMLElement, string | number>(),
+  );
 
   useEffect(() => {
     const toaster = toasterRef.current;

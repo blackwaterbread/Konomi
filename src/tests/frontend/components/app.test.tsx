@@ -34,9 +34,8 @@ vi.mock("@/hooks/useImageAnalysis", () => ({
 }));
 
 vi.mock("@/lib/i18n", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/i18n")>(
-    "@/lib/i18n",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/i18n")>("@/lib/i18n");
   return {
     ...actual,
     applyAppLanguagePreference: vi.fn().mockResolvedValue("en"),
@@ -73,7 +72,9 @@ vi.mock("@/components/header", () => ({
   }) => (
     <div>
       <div data-testid="header-search-query">{searchQuery}</div>
-      <div data-testid="header-filter-count">{String(advancedFilters.length)}</div>
+      <div data-testid="header-filter-count">
+        {String(advancedFilters.length)}
+      </div>
       <div data-testid="header-active-panel">{activePanel}</div>
       <button type="button" onClick={() => onSearchChange("sunset beach")}>
         Search Sunset
@@ -226,9 +227,7 @@ vi.mock("@/components/image-gallery", () => ({
         </button>
         <button
           type="button"
-          onClick={() =>
-            actions.onBulkChangeCategory?.([image, secondImage])
-          }
+          onClick={() => actions.onBulkChangeCategory?.([image, secondImage])}
         >
           Gallery Bulk Change Category
         </button>
@@ -377,13 +376,7 @@ vi.mock("@/components/image-detail", () => ({
 }));
 
 vi.mock("@/components/feature-tour", () => ({
-  FeatureTour: ({
-    open,
-    onClose,
-  }: {
-    open: boolean;
-    onClose: () => void;
-  }) =>
+  FeatureTour: ({ open, onClose }: { open: boolean; onClose: () => void }) =>
     open ? (
       <div data-testid="feature-tour">
         <button type="button" onClick={onClose}>
@@ -543,7 +536,9 @@ describe("App", () => {
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "Clear Pending Import" }));
+    await user.click(
+      screen.getByRole("button", { name: "Clear Pending Import" }),
+    );
     expect(screen.getByTestId("generation-pending-import")).toHaveTextContent(
       "none",
     );
@@ -557,7 +552,9 @@ describe("App", () => {
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "Clear Pending Source" }));
+    await user.click(
+      screen.getByRole("button", { name: "Clear Pending Source" }),
+    );
     expect(screen.getByTestId("generation-pending-source")).toHaveTextContent(
       "none",
     );
@@ -568,9 +565,9 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByTestId("sidebar-folder-dialog-request")).toHaveTextContent(
-      "0",
-    );
+    expect(
+      screen.getByTestId("sidebar-folder-dialog-request"),
+    ).toHaveTextContent("0");
 
     await user.click(
       screen.getByRole("button", { name: "Gallery Add Tag To Generator" }),
@@ -592,7 +589,9 @@ describe("App", () => {
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "Gallery Add Folder" }));
+    await user.click(
+      screen.getByRole("button", { name: "Gallery Add Folder" }),
+    );
 
     await waitFor(() =>
       expect(
@@ -623,8 +622,12 @@ describe("App", () => {
       screen.getByRole("button", { name: "Gallery Change Category" }),
     );
 
-    expect(screen.getByTestId("category-dialog-single")).toHaveTextContent("11");
-    expect(screen.getByTestId("category-dialog-bulk")).toHaveTextContent("none");
+    expect(screen.getByTestId("category-dialog-single")).toHaveTextContent(
+      "11",
+    );
+    expect(screen.getByTestId("category-dialog-bulk")).toHaveTextContent(
+      "none",
+    );
 
     await user.click(
       screen.getByRole("button", { name: "Close Category Dialog" }),
@@ -728,7 +731,9 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Gallery Delete Image" }));
+    await user.click(
+      screen.getByRole("button", { name: "Gallery Delete Image" }),
+    );
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(preloadMocks.image.delete).toHaveBeenCalledWith(
@@ -851,7 +856,9 @@ describe("App", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Gallery Open Detail" }));
+    await user.click(
+      screen.getByRole("button", { name: "Gallery Open Detail" }),
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId("image-detail-image-id")).toHaveTextContent(
@@ -872,7 +879,9 @@ describe("App", () => {
       0.6,
     );
 
-    await user.click(screen.getByRole("button", { name: "Open First Similar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Open First Similar" }),
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId("image-detail-image-id")).toHaveTextContent(
@@ -1085,9 +1094,9 @@ describe("App", () => {
         screen.queryByTestId("initial-language-screen"),
       ).not.toBeInTheDocument(),
     );
-    expect(localStorage.getItem("konomi-initial-language-selection-completed")).toBe(
-      "true",
-    );
+    expect(
+      localStorage.getItem("konomi-initial-language-selection-completed"),
+    ).toBe("true");
     expect(screen.getByTestId("feature-tour")).toBeInTheDocument();
   });
 

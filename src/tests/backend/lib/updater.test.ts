@@ -142,7 +142,6 @@ describe("initAutoUpdater — macOS", () => {
       releaseUrl: "https://github.com/blackwaterbread/Konomi/releases/latest",
     });
   });
-
 });
 
 describe("initAutoUpdater — checkForUpdates scheduling", () => {

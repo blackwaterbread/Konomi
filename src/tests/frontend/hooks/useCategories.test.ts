@@ -27,10 +27,7 @@ describe("useCategories", () => {
 
     await waitFor(() =>
       expect(result.current.categories.map((category) => category.id)).toEqual([
-        1,
-        2,
-        4,
-        3,
+        1, 2, 4, 3,
       ]),
     );
 
@@ -70,9 +67,7 @@ describe("useCategories", () => {
       await result.current.createCategory("Drafts");
     });
     expect(result.current.categories.map((category) => category.id)).toEqual([
-      1,
-      2,
-      7,
+      1, 2, 7,
     ]);
 
     await act(async () => {
@@ -86,9 +81,7 @@ describe("useCategories", () => {
       result.current.reorderCategories([7]);
     });
     expect(result.current.categories.map((category) => category.id)).toEqual([
-      1,
-      2,
-      7,
+      1, 2, 7,
     ]);
     expect(localStorage.getItem("konomi-category-order")).toBe("[7]");
 
@@ -110,8 +103,7 @@ describe("useCategories", () => {
       await result.current.deleteCategory(7);
     });
     expect(result.current.categories.map((category) => category.id)).toEqual([
-      1,
-      2,
+      1, 2,
     ]);
     expect(result.current.selectedCategoryId).toBeNull();
   });

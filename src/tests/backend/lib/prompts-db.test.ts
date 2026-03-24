@@ -7,9 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
-  const dir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "konomi-prompts-db-test-"),
-  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "konomi-prompts-db-test-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -65,9 +63,8 @@ afterEach(async () => {
 
 describe("prompts-db", () => {
   it("reads schema version metadata and returns null for missing files", async () => {
-    const { readPromptsDBSchemaVersion } = await import(
-      "../../../main/lib/prompts-db"
-    );
+    const { readPromptsDBSchemaVersion } =
+      await import("../../../main/lib/prompts-db");
     const dbPath = createPromptDb({
       meta: {
         schema_version: "7",
@@ -75,9 +72,9 @@ describe("prompts-db", () => {
     });
 
     expect(readPromptsDBSchemaVersion(dbPath)).toBe(7);
-    expect(readPromptsDBSchemaVersion(path.join(path.dirname(dbPath), "missing.db"))).toBe(
-      null,
-    );
+    expect(
+      readPromptsDBSchemaVersion(path.join(path.dirname(dbPath), "missing.db")),
+    ).toBe(null);
   });
 
   it("suggests normalized tags, applies exclusions, and reuses metadata stats", async () => {
@@ -97,9 +94,8 @@ describe("prompts-db", () => {
     });
     process.env.KONOMI_PROMPTS_DB_PATH = dbPath;
 
-    const { normalizePromptTerm, suggestPromptTags } = await import(
-      "../../../main/lib/prompts-db"
-    );
+    const { normalizePromptTerm, suggestPromptTags } =
+      await import("../../../main/lib/prompts-db");
     const result = suggestPromptTags({
       prefix: " Sun ",
       limit: 2,

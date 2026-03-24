@@ -166,12 +166,13 @@ describe("image db integration", () => {
       imageA.id,
     ]);
 
-    await expect(listImagesByIds([imageB.id, imageA.id, imageC.id])).resolves
-      .toMatchObject([
-        { id: imageB.id },
-        { id: imageA.id },
-        { id: imageC.id },
-      ]);
+    await expect(
+      listImagesByIds([imageB.id, imageA.id, imageC.id]),
+    ).resolves.toMatchObject([
+      { id: imageB.id },
+      { id: imageA.id },
+      { id: imageC.id },
+    ]);
   });
 
   it("rebuilds search preset stats and suggests normalized tags", async () => {
@@ -190,9 +191,7 @@ describe("image db integration", () => {
       { width: 1024, height: 1024 },
     ]);
     expect(stats.availableModels).toEqual(["model-a", "model-b"]);
-    expect(tagSuggestions).toEqual([
-      { tag: "sunset_beach", count: 1 },
-    ]);
+    expect(tagSuggestions).toEqual([{ tag: "sunset_beach", count: 1 }]);
   });
 
   it("maintains search stat tables incrementally across add, replace, and remove operations", async () => {
@@ -234,7 +233,9 @@ describe("image db integration", () => {
       availableResolutions: [{ width: 1024, height: 1024 }],
       availableModels: ["model-b"],
     });
-    await expect(suggestImageSearchTags({ prefix: "gol" })).resolves.toEqual([]);
+    await expect(suggestImageSearchTags({ prefix: "gol" })).resolves.toEqual(
+      [],
+    );
     await expect(suggestImageSearchTags({ prefix: "sun" })).resolves.toEqual([
       { tag: "sunset_beach", count: 1 },
     ]);
@@ -244,7 +245,9 @@ describe("image db integration", () => {
       availableResolutions: [],
       availableModels: [],
     });
-    await expect(suggestImageSearchTags({ prefix: "sun" })).resolves.toEqual([]);
+    await expect(suggestImageSearchTags({ prefix: "sun" })).resolves.toEqual(
+      [],
+    );
   });
 
   it("finds exact duplicate groups and respects ignored duplicate state", async () => {
@@ -277,8 +280,9 @@ describe("image db integration", () => {
 
     await forgetIgnoredDuplicatePath(incomingPath);
     await expect(isIgnoredDuplicatePath(incomingPath)).resolves.toBe(false);
-    await expect(findDuplicateGroupForIncomingPath(incomingPath)).resolves
-      .not.toBeNull();
+    await expect(
+      findDuplicateGroupForIncomingPath(incomingPath),
+    ).resolves.not.toBeNull();
   });
 
   it("finds folder duplicate groups while excluding ignored incoming paths", async () => {
@@ -306,9 +310,9 @@ describe("image db integration", () => {
     expect(groups[0]?.existingEntries).toMatchObject([
       { imageId: existingImage.id, path: existingPath },
     ]);
-    expect(groups[0]?.incomingEntries.map((entry) => entry.path).sort()).toEqual(
-      [incomingA, incomingB].sort(),
-    );
+    expect(
+      groups[0]?.incomingEntries.map((entry) => entry.path).sort(),
+    ).toEqual([incomingA, incomingB].sort());
   });
 
   it("resolves duplicates by keeping existing files", async () => {

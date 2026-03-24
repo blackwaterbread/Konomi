@@ -6,9 +6,8 @@ import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 const applyAppLanguagePreferenceMock = vi.fn();
 
 vi.mock("@/lib/i18n", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/i18n")>(
-    "@/lib/i18n",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/i18n")>("@/lib/i18n");
   return {
     ...actual,
     applyAppLanguagePreference: (...args: unknown[]) =>

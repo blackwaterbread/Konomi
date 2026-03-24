@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import {
-  DEFAULTS,
-  readStoredSettings,
-  useSettings,
-} from "@/hooks/useSettings";
+import { DEFAULTS, readStoredSettings, useSettings } from "@/hooks/useSettings";
 
 describe("useSettings", () => {
   it("migrates legacy stored settings into the current shape", () => {
@@ -51,7 +47,9 @@ describe("useSettings", () => {
       language: "en",
       recentDays: 30,
     });
-    expect(JSON.parse(localStorage.getItem("konomi-settings") ?? "{}")).toMatchObject({
+    expect(
+      JSON.parse(localStorage.getItem("konomi-settings") ?? "{}"),
+    ).toMatchObject({
       theme: "white",
       language: "en",
       recentDays: 30,

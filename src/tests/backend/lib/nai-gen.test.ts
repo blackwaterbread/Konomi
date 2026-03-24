@@ -89,21 +89,20 @@ afterEach(async () => {
 
 describe("nai-gen", () => {
   it("creates and updates the persisted NovelAI config", async () => {
-    const { getNaiConfig, updateNaiConfig } = await import(
-      "../../../main/lib/nai-gen"
-    );
+    const { getNaiConfig, updateNaiConfig } =
+      await import("../../../main/lib/nai-gen");
 
     await expect(getNaiConfig()).resolves.toMatchObject({
       id: 1,
       apiKey: "",
     });
 
-    await expect(updateNaiConfig({ apiKey: "secret-key" })).resolves.toMatchObject(
-      {
-        id: 1,
-        apiKey: "secret-key",
-      },
-    );
+    await expect(
+      updateNaiConfig({ apiKey: "secret-key" }),
+    ).resolves.toMatchObject({
+      id: 1,
+      apiKey: "secret-key",
+    });
     await expect(getNaiConfig()).resolves.toMatchObject({
       id: 1,
       apiKey: "secret-key",
@@ -145,9 +144,8 @@ describe("nai-gen", () => {
   });
 
   it("streams previews, saves the final image, and patches V4 requests", async () => {
-    const { generateImage, updateNaiConfig } = await import(
-      "../../../main/lib/nai-gen"
-    );
+    const { generateImage, updateNaiConfig } =
+      await import("../../../main/lib/nai-gen");
     const outputFolder = path.join(ctx.userDataDir, "generated");
     const previewBytes = Buffer.from("preview-image");
     const finalBytes = Buffer.from("final-image");

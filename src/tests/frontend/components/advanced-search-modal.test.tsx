@@ -86,10 +86,7 @@ describe("AdvancedSearchModal", () => {
 
     renderAdvancedSearchModal({
       onFiltersChange,
-      availableModels: [
-        "nai-diffusion-4-5-full",
-        "nai-diffusion-4-5-curated",
-      ],
+      availableModels: ["nai-diffusion-4-5-full", "nai-diffusion-4-5-curated"],
     });
 
     const modelInput = screen.getByPlaceholderText("Enter model name");

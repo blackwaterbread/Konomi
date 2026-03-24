@@ -12,8 +12,8 @@ function readSelectedFolderIds(): Set<number> {
 }
 
 export function useFolderSelection() {
-  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(
-    () => readSelectedFolderIds(),
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<number>>(() =>
+    readSelectedFolderIds(),
   );
 
   useEffect(() => {

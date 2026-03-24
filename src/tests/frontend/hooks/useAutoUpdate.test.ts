@@ -39,7 +39,8 @@ describe("useAutoUpdate", () => {
       }),
     );
 
-    const { action } = (toast.info as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const { action } = (toast.info as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
     act(() => {
       action.onClick();
     });
@@ -63,7 +64,8 @@ describe("useAutoUpdate", () => {
       }),
     );
 
-    const { action } = (toast.success as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const { action } = (toast.success as ReturnType<typeof vi.fn>).mock
+      .calls[0][1];
     act(() => {
       action.onClick();
     });

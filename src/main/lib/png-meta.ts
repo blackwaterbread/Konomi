@@ -1,6 +1,8 @@
 import { inflateSync } from "zlib";
 
-function readPlainTextChunk(data: Buffer): { key: string; value: string } | null {
+function readPlainTextChunk(
+  data: Buffer,
+): { key: string; value: string } | null {
   const nullIdx = data.indexOf(0);
   if (nullIdx === -1) return null;
   return {

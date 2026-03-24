@@ -12,7 +12,11 @@ describe("TokenChip", () => {
   it("can show a syntax warning from an external prompt-level override", () => {
     const { container } = render(
       <TokenChip
-        token={{ text: "artist:oda_eiichirou", weight: 0.75, raw: "0.75::artist:oda_eiichirou::" }}
+        token={{
+          text: "artist:oda_eiichirou",
+          weight: 0.75,
+          raw: "0.75::artist:oda_eiichirou::",
+        }}
         raw="0.75::artist:oda_eiichirou::"
         syntaxIssueKind="invalidExplicitWeight"
       />,
@@ -31,7 +35,11 @@ describe("TokenChip", () => {
   it("shows a warning affordance for malformed explicit emphasis syntax", () => {
     const { container } = render(
       <TokenChip
-        token={{ text: "1.2::oda_eiichirou", weight: 1, raw: "1.2::oda_eiichirou" }}
+        token={{
+          text: "1.2::oda_eiichirou",
+          weight: 1,
+          raw: "1.2::oda_eiichirou",
+        }}
         raw="1.2::oda_eiichirou"
       />,
     );
@@ -90,9 +98,7 @@ describe("TokenChip", () => {
       }),
     );
 
-    fireEvent.mouseDown(
-      await screen.findByRole("button", { name: /sunset/i }),
-    );
+    fireEvent.mouseDown(await screen.findByRole("button", { name: /sunset/i }));
 
     await waitFor(() =>
       expect(screen.getByPlaceholderText("tag")).toHaveValue("sunset"),

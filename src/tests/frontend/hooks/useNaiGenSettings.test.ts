@@ -21,7 +21,9 @@ describe("useNaiGenSettings", () => {
     });
 
     expect(result.current.outputFolder).toBe("D:/next-output");
-    expect(JSON.parse(localStorage.getItem("konomi-nai-gen-settings") ?? "{}")).toEqual({
+    expect(
+      JSON.parse(localStorage.getItem("konomi-nai-gen-settings") ?? "{}"),
+    ).toEqual({
       outputFolder: "D:/next-output",
       model: "nai-diffusion-4",
     });
@@ -31,7 +33,9 @@ describe("useNaiGenSettings", () => {
     });
 
     expect(result.current.outputFolder).toBe("");
-    expect(JSON.parse(localStorage.getItem("konomi-nai-gen-settings") ?? "{}")).toEqual({
+    expect(
+      JSON.parse(localStorage.getItem("konomi-nai-gen-settings") ?? "{}"),
+    ).toEqual({
       outputFolder: "",
       model: "nai-diffusion-4",
     });

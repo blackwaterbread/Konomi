@@ -1,21 +1,28 @@
 import React, { type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ImageGallery } from "@/components/image-gallery";
 import { createGalleryImage } from "../helpers/gallery-image";
 
 type ImageGalleryOverrides = Partial<
-  Omit<ComponentProps<typeof ImageGallery>, "gallery" | "actions" | "pagination">
+  Omit<
+    ComponentProps<typeof ImageGallery>,
+    "gallery" | "actions" | "pagination"
+  >
 > & {
   gallery?: Partial<ComponentProps<typeof ImageGallery>["gallery"]>;
   actions?: Partial<ComponentProps<typeof ImageGallery>["actions"]>;
   pagination?: Partial<ComponentProps<typeof ImageGallery>["pagination"]>;
 };
 
-function renderImageGallery(
-  overrides: ImageGalleryOverrides = {},
-) {
+function renderImageGallery(overrides: ImageGalleryOverrides = {}) {
   const baseProps: ComponentProps<typeof ImageGallery> = {
     gallery: {
       images: [],
@@ -80,7 +87,9 @@ describe("ImageGallery", () => {
 
   it("does not show the Reset button when searchQuery is empty", () => {
     renderImageGallery({ gallery: { searchQuery: "", totalCount: 5 } });
-    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reset" }),
+    ).not.toBeInTheDocument();
   });
 
   it("calls onSortChange when the sort dropdown is changed", async () => {
@@ -112,7 +121,9 @@ describe("ImageGallery", () => {
 
     // View mode buttons are icon-only (no accessible name); pick by position in their container
     const viewGroup = container.querySelector(".bg-secondary.rounded-lg");
-    const [, compactBtn] = within(viewGroup as HTMLElement).getAllByRole("button");
+    const [, compactBtn] = within(viewGroup as HTMLElement).getAllByRole(
+      "button",
+    );
     await user.click(compactBtn);
 
     expect(onViewModeChange).toHaveBeenCalledWith("compact");
@@ -128,7 +139,9 @@ describe("ImageGallery", () => {
     });
 
     const viewGroup = container.querySelector(".bg-secondary.rounded-lg");
-    const [, , listBtn] = within(viewGroup as HTMLElement).getAllByRole("button");
+    const [, , listBtn] = within(viewGroup as HTMLElement).getAllByRole(
+      "button",
+    );
     await user.click(listBtn);
 
     expect(onViewModeChange).toHaveBeenCalledWith("list");
@@ -158,10 +171,14 @@ describe("ImageGallery", () => {
     renderImageGallery({ gallery: { totalCount: 0 } });
 
     await user.click(screen.getByRole("button", { name: "Select" }));
-    expect(screen.getByRole("button", { name: "Exit Selection" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Exit Selection" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Exit Selection" }));
-    expect(screen.queryByRole("button", { name: "Exit Selection" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Exit Selection" }),
+    ).not.toBeInTheDocument();
   });
 
   it("clears the selection when Clear Selection is clicked", async () => {
@@ -171,13 +188,17 @@ describe("ImageGallery", () => {
     renderImageGallery({ gallery: { images: pageImages, totalCount: 1 } });
 
     await user.click(screen.getByRole("button", { name: "Select" }));
-    await user.click(screen.getByRole("button", { name: "Select Current Page" }));
+    await user.click(
+      screen.getByRole("button", { name: "Select Current Page" }),
+    );
 
     expect(screen.getByText("1 selected")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear Selection" }));
 
-    await waitFor(() => expect(screen.queryByText("1 selected")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText("1 selected")).not.toBeInTheDocument(),
+    );
   });
 
   it("shows 'Deselect Current Page' toggle after selecting the current page", async () => {
@@ -187,7 +208,9 @@ describe("ImageGallery", () => {
     renderImageGallery({ gallery: { images: pageImages, totalCount: 1 } });
 
     await user.click(screen.getByRole("button", { name: "Select" }));
-    await user.click(screen.getByRole("button", { name: "Select Current Page" }));
+    await user.click(
+      screen.getByRole("button", { name: "Select Current Page" }),
+    );
 
     expect(
       screen.getByRole("button", { name: "Deselect Current Page" }),
@@ -275,7 +298,10 @@ describe("ImageGallery", () => {
   it("calls onImageClick when an image card is clicked", async () => {
     const user = userEvent.setup();
     const onImageClick = vi.fn();
-    const image = createGalleryImage({ id: "img-1", prompt: "sparkling night sky" });
+    const image = createGalleryImage({
+      id: "img-1",
+      prompt: "sparkling night sky",
+    });
 
     renderImageGallery({
       gallery: { images: [image], totalCount: 1 },
@@ -338,7 +364,10 @@ describe("ImageGallery", () => {
 
   it("calls onDelete via the context menu", async () => {
     const onDelete = vi.fn();
-    const image = createGalleryImage({ id: "img-del", prompt: "abandoned tower" });
+    const image = createGalleryImage({
+      id: "img-del",
+      prompt: "abandoned tower",
+    });
 
     renderImageGallery({
       gallery: { images: [image], totalCount: 1 },
@@ -353,7 +382,10 @@ describe("ImageGallery", () => {
 
   it("calls onChangeCategory via the context menu", async () => {
     const onChangeCategory = vi.fn();
-    const image = createGalleryImage({ id: "img-cat", prompt: "cherry blossoms" });
+    const image = createGalleryImage({
+      id: "img-cat",
+      prompt: "cherry blossoms",
+    });
 
     renderImageGallery({
       gallery: { images: [image], totalCount: 1 },
@@ -381,9 +413,7 @@ describe("ImageGallery", () => {
       },
     });
 
-    await user.click(
-      screen.getByRole("button", { name: "Add Image Folder" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Add Image Folder" }));
 
     expect(onAddFolder).toHaveBeenCalledTimes(1);
   });

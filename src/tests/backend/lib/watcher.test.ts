@@ -67,9 +67,7 @@ type WatcherRecord = {
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
-  const dir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "konomi-watcher-test-"),
-  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "konomi-watcher-test-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -82,36 +80,34 @@ function createSender() {
 }
 
 function mockFsWatch(records: WatcherRecord[]) {
-  return vi.spyOn(fs, "watch").mockImplementation(
-    ((
-      folderPath: fs.PathLike,
-      _options: fs.WatchOptions,
-      listener?: fs.WatchListener<string>,
-    ) => {
-      const close = vi.fn();
-      const callback: WatchCallback =
-        typeof listener === "function"
-          ? (eventType, filename) =>
-              (
-                listener as (
-                  eventType: string,
-                  filename: string | Buffer | null,
-                ) => void
-              )(eventType, filename)
-          : () => undefined;
+  return vi.spyOn(fs, "watch").mockImplementation(((
+    folderPath: fs.PathLike,
+    _options: fs.WatchOptions,
+    listener?: fs.WatchListener<string>,
+  ) => {
+    const close = vi.fn();
+    const callback: WatchCallback =
+      typeof listener === "function"
+        ? (eventType, filename) =>
+            (
+              listener as (
+                eventType: string,
+                filename: string | Buffer | null,
+              ) => void
+            )(eventType, filename)
+        : () => undefined;
 
-      records.push({
-        path: String(folderPath),
-        callback,
-        close,
-      });
+    records.push({
+      path: String(folderPath),
+      callback,
+      close,
+    });
 
-      return {
-        close,
-        on: vi.fn(),
-      } as unknown as fs.FSWatcher;
-    }) as typeof fs.watch,
-  );
+    return {
+      close,
+      on: vi.fn(),
+    } as unknown as fs.FSWatcher;
+  }) as typeof fs.watch);
 }
 
 async function loadWatcher() {
@@ -251,7 +247,9 @@ describe("watcher", () => {
       hash: "hash-1",
       previewPath: incomingPath,
       previewFileName: "incoming.png",
-      existingEntries: [{ imageId: 5, path: "C:/existing.png", fileName: "existing.png" }],
+      existingEntries: [
+        { imageId: 5, path: "C:/existing.png", fileName: "existing.png" },
+      ],
       incomingEntries: [{ path: incomingPath, fileName: "incoming.png" }],
     };
     const imageRow = {
@@ -372,8 +370,7 @@ describe("watcher", () => {
       where: { id: { in: [11, 12] } },
     });
     expect(mocks.deleteSimilarityCacheForImageIds).toHaveBeenCalledWith([
-      11,
-      12,
+      11, 12,
     ]);
     expect(mocks.decrementImageSearchStatsForRows).toHaveBeenCalledWith(
       [missingRowA, missingRowB],

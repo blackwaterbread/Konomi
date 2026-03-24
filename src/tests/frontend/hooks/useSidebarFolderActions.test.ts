@@ -63,8 +63,7 @@ function renderSidebarFolderActions(options?: {
 
 describe("useSidebarFolderActions", () => {
   it("adds a folder into selection and clears rollback state after a successful scan", async () => {
-    const { result, runScan, scheduleAnalysis } =
-      renderSidebarFolderActions();
+    const { result, runScan, scheduleAnalysis } = renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(7);
@@ -80,8 +79,7 @@ describe("useSidebarFolderActions", () => {
   });
 
   it("removes folders from selection and scan state when cancelled or removed", async () => {
-    const { result, runScan, scheduleAnalysis } =
-      renderSidebarFolderActions();
+    const { result, runScan, scheduleAnalysis } = renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(9);

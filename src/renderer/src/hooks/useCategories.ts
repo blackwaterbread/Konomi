@@ -135,27 +135,24 @@ export function useCategories() {
     setCategories((prev) => applyCategoryOrder(prev, ids));
   }, []);
 
-  const deleteCategory = useCallback(
-    async (id: number): Promise<boolean> => {
-      log.info("Deleting category", { categoryId: id });
-      try {
-        await window.category.delete(id);
-        setCategories((prev) =>
-          applyCategoryOrder(prev.filter((category) => category.id !== id)),
-        );
-        setSelectedCategoryId((prev) => (prev === id ? null : prev));
-        return true;
-      } catch (error: unknown) {
-        toast.error(
-          i18n.t("error.categoryDeleteFailed", {
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
-        return false;
-      }
-    },
-    [],
-  );
+  const deleteCategory = useCallback(async (id: number): Promise<boolean> => {
+    log.info("Deleting category", { categoryId: id });
+    try {
+      await window.category.delete(id);
+      setCategories((prev) =>
+        applyCategoryOrder(prev.filter((category) => category.id !== id)),
+      );
+      setSelectedCategoryId((prev) => (prev === id ? null : prev));
+      return true;
+    } catch (error: unknown) {
+      toast.error(
+        i18n.t("error.categoryDeleteFailed", {
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return false;
+    }
+  }, []);
 
   const addCategoryByPrompt = useCallback(
     async (id: number, query: string): Promise<boolean> => {

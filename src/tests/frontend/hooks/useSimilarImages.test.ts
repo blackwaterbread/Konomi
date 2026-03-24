@@ -93,11 +93,19 @@ describe("useSimilarImages", () => {
     const promptThresholdRef = { current: 0.6 };
     const firstRows = deferred<ReturnType<typeof createImageRow>[]>();
     const firstReasons = deferred<
-      Array<{ imageId: number; reason: "visual" | "prompt" | "both"; score: number }>
+      Array<{
+        imageId: number;
+        reason: "visual" | "prompt" | "both";
+        score: number;
+      }>
     >();
     const secondRows = deferred<ReturnType<typeof createImageRow>[]>();
     const secondReasons = deferred<
-      Array<{ imageId: number; reason: "visual" | "prompt" | "both"; score: number }>
+      Array<{
+        imageId: number;
+        reason: "visual" | "prompt" | "both";
+        score: number;
+      }>
     >();
 
     preloadMocks.image.listByIds.mockImplementation((ids: number[]) =>

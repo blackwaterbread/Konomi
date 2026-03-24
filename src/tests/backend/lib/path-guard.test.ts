@@ -43,9 +43,7 @@ describe("path-guard", () => {
     expect(isSupportedImagePath("image.JPG")).toBe(true);
     expect(isSupportedImagePath("note.txt")).toBe(false);
     expect(getImageContentType("image.avif")).toBe("image/avif");
-    expect(getImageContentType("unknown.bin")).toBe(
-      "application/octet-stream",
-    );
+    expect(getImageContentType("unknown.bin")).toBe("application/octet-stream");
   });
 
   it("allows files inside managed folder roots", async () => {

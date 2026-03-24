@@ -25,20 +25,39 @@ function createEventChannel<T>() {
   };
 }
 
-const imageBatch = createEventChannel<Window["image"] extends { onBatch: (cb: infer T) => unknown } ? T extends (payload: infer P) => unknown ? P : never : never>();
+const imageBatch =
+  createEventChannel<
+    Window["image"] extends { onBatch: (cb: infer T) => unknown }
+      ? T extends (payload: infer P) => unknown
+        ? P
+        : never
+      : never
+  >();
 const imageRemoved = createEventChannel<number[]>();
-const imageWatchDuplicate = createEventChannel<Parameters<Parameters<Window["image"]["onWatchDuplicate"]>[0]>[0]>();
+const imageWatchDuplicate =
+  createEventChannel<
+    Parameters<Parameters<Window["image"]["onWatchDuplicate"]>[0]>[0]
+  >();
 const imageHashProgress = createEventChannel<{ done: number; total: number }>();
-const imageSimilarityProgress = createEventChannel<{ done: number; total: number }>();
+const imageSimilarityProgress = createEventChannel<{
+  done: number;
+  total: number;
+}>();
 const imageScanProgress = createEventChannel<{ done: number; total: number }>();
-const imageSearchStatsProgress = createEventChannel<{ done: number; total: number }>();
+const imageSearchStatsProgress = createEventChannel<{
+  done: number;
+  total: number;
+}>();
 const imageScanFolder = createEventChannel<{
   folderId: number;
   folderName?: string;
   active: boolean;
 }>();
 const naiGeneratePreview = createEventChannel<string>();
-const appUpdateAvailable = createEventChannel<{ version: string; releaseUrl?: string }>();
+const appUpdateAvailable = createEventChannel<{
+  version: string;
+  releaseUrl?: string;
+}>();
 const appUpdateDownloaded = createEventChannel<{ version: string }>();
 
 export const preloadEvents = {
@@ -260,7 +279,9 @@ export function resetPreloadMocks(): void {
   preloadMocks.folder.list.mockReset().mockResolvedValue([]);
   preloadMocks.folder.create.mockReset();
   preloadMocks.folder.findDuplicates.mockReset().mockResolvedValue([]);
-  preloadMocks.folder.resolveDuplicates.mockReset().mockResolvedValue(undefined);
+  preloadMocks.folder.resolveDuplicates
+    .mockReset()
+    .mockResolvedValue(undefined);
   preloadMocks.folder.delete.mockReset().mockResolvedValue(undefined);
   preloadMocks.folder.rename.mockReset();
   preloadMocks.folder.revealInExplorer.mockReset().mockResolvedValue(undefined);
@@ -269,7 +290,9 @@ export function resetPreloadMocks(): void {
     valid: true,
     tier: "Scroll",
   });
-  preloadMocks.nai.getConfig.mockReset().mockResolvedValue({ id: 1, apiKey: "" });
+  preloadMocks.nai.getConfig
+    .mockReset()
+    .mockResolvedValue({ id: 1, apiKey: "" });
   preloadMocks.nai.updateConfig
     .mockReset()
     .mockResolvedValue({ id: 1, apiKey: "" });

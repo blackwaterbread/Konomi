@@ -28,7 +28,10 @@ function parseMidjourneyDescription(
   const prompt =
     firstParamIdx === -1
       ? withoutJobId.replace(/[,\s]+$/, "").trim()
-      : withoutJobId.slice(0, firstParamIdx).replace(/[,\s]+$/, "").trim();
+      : withoutJobId
+          .slice(0, firstParamIdx)
+          .replace(/[,\s]+$/, "")
+          .trim();
   const paramsText =
     firstParamIdx === -1 ? "" : withoutJobId.slice(firstParamIdx).trim();
 
@@ -63,9 +66,10 @@ function hasMidjourneySignals(
 ): boolean {
   const hasAuthorSignal = /^u\d+$/i.test(author);
   const hasJobSignal = Boolean(jobId);
-  const hasParamSignal = /(?:^|\s)--(?:ar|v(?:ersion)?|niji|seed|stylize|chaos|quality|q|weird|iw|sref|oref|cref|no|tile|raw)\b/i.test(
-    parsed.paramsText,
-  );
+  const hasParamSignal =
+    /(?:^|\s)--(?:ar|v(?:ersion)?|niji|seed|stylize|chaos|quality|q|weird|iw|sref|oref|cref|no|tile|raw)\b/i.test(
+      parsed.paramsText,
+    );
   const hasXmpSignal =
     Boolean(extractXmpGuid(xmp)) || /trainedAlgorithmicMedia/i.test(xmp);
 

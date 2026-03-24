@@ -9,9 +9,7 @@ export type IsolatedDbTestContext = {
 };
 
 export async function setupIsolatedDbTest(): Promise<IsolatedDbTestContext> {
-  const userDataDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "konomi-db-test-"),
-  );
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "konomi-db-test-"));
 
   process.env.KONOMI_USER_DATA = userDataDir;
   process.env.KONOMI_MIGRATIONS_PATH = path.resolve(

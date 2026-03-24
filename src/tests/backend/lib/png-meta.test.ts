@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deflateSync } from "zlib";
-import {
-  readPngSize,
-  readPngTextChunks,
-} from "../../../main/lib/png-meta";
+import { readPngSize, readPngTextChunks } from "../../../main/lib/png-meta";
 
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -106,7 +103,10 @@ describe("png-meta", () => {
     const buf = createPng({
       chunks: [
         createCompressedTextChunk("Comment", "compressed"),
-        createInternationalTextChunk("Source", "NovelAI Diffusion V4.5 1229B44F"),
+        createInternationalTextChunk(
+          "Source",
+          "NovelAI Diffusion V4.5 1229B44F",
+        ),
       ],
     });
 
@@ -117,7 +117,10 @@ describe("png-meta", () => {
   });
 
   it("ignores malformed text chunks and stops reading after IEND", () => {
-    const malformedText = createChunk("tEXt", Buffer.from("badchunk", "latin1"));
+    const malformedText = createChunk(
+      "tEXt",
+      Buffer.from("badchunk", "latin1"),
+    );
     const textAfterEnd = createTextChunk("Hidden", "ignored");
     const buf = Buffer.concat([
       PNG_SIGNATURE,

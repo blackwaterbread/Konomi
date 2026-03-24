@@ -69,9 +69,13 @@ describe("SettingsView", () => {
     await user.click(screen.getByRole("button", { name: "Clear List" }));
 
     await waitFor(() =>
-      expect(preloadMocks.image.clearIgnoredDuplicates).toHaveBeenCalledTimes(1),
+      expect(preloadMocks.image.clearIgnoredDuplicates).toHaveBeenCalledTimes(
+        1,
+      ),
     );
-    await waitFor(() => expect(screen.getByText("0 total")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("0 total")).toBeInTheDocument(),
+    );
 
     expect(screen.queryByText("C:\\dupe-a.png")).not.toBeInTheDocument();
     expect(preloadMocks.image.listIgnoredDuplicates).toHaveBeenCalledTimes(2);

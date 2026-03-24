@@ -51,7 +51,9 @@ describe("AppInfoDialog", () => {
       expect(screen.getByText(/Konomi v0\.2\.0/)).toBeInTheDocument(),
     );
 
-    expect(screen.queryByText("Loading information...")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Loading information..."),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Loading environment..."),
     ).not.toBeInTheDocument();

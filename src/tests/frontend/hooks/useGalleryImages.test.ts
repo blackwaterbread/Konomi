@@ -64,7 +64,9 @@ describe("useGalleryImages", () => {
 
     const { result } = renderHook(() => useGalleryImages(query));
 
-    await waitFor(() => expect(preloadMocks.image.listPage).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(preloadMocks.image.listPage).toHaveBeenCalledTimes(1),
+    );
     vi.useFakeTimers();
     preloadMocks.image.listPage.mockClear();
 
