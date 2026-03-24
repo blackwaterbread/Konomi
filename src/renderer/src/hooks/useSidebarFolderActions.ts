@@ -42,6 +42,7 @@ export function useSidebarFolderActions({
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
       void runScan().then((ok) => {
         if (!ok) return;
+        void refreshSubfolders([folderId]);
         setRollbackFolderIds((prev) => {
           const next = new Set(prev);
           next.delete(folderId);
@@ -52,6 +53,7 @@ export function useSidebarFolderActions({
     },
     [
       addSelectedFolder,
+      refreshSubfolders,
       runScan,
       scheduleAnalysis,
       setActiveScanFolderIds,
