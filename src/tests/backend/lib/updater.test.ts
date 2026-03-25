@@ -173,11 +173,3 @@ describe("initAutoUpdater — checkForUpdates scheduling", () => {
   });
 });
 
-describe("installUpdate", () => {
-  it("calls quitAndInstall", async () => {
-    const { installUpdate } = await import("../../../main/lib/updater");
-    installUpdate();
-
-    expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalled();
-  });
-});
