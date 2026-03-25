@@ -165,6 +165,7 @@ export const preloadMocks = {
   },
   dialog: {
     selectDirectory: vi.fn().mockResolvedValue(null),
+    selectDirectories: vi.fn().mockResolvedValue(null),
   },
   folder: {
     list: vi.fn().mockResolvedValue([]),
@@ -283,6 +284,7 @@ export function resetPreloadMocks(): void {
   preloadMocks.image.cancelScan.mockReset().mockResolvedValue(undefined);
 
   preloadMocks.dialog.selectDirectory.mockReset().mockResolvedValue(null);
+  preloadMocks.dialog.selectDirectories.mockReset().mockResolvedValue(null);
 
 
   preloadMocks.folder.list.mockReset().mockResolvedValue([]);
