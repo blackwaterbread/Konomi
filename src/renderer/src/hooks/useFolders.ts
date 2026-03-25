@@ -86,6 +86,38 @@ export function useFolders() {
     [load],
   );
 
+  const addFolders = useCallback(
+    async (
+      paths: string[],
+    ): Promise<{
+      added: Folder[];
+      errors: { path: string; message: string }[];
+    }> => {
+      const added: Folder[] = [];
+      const errors: { path: string; message: string }[] = [];
+      for (const folderPath of paths) {
+        const name =
+          folderPath.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ||
+          folderPath;
+        try {
+          log.info("Creating folder (batch)", { name, path: folderPath });
+          const folder = await window.folder.create(name, folderPath);
+          added.push(folder);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          log.warn("Failed to add folder (batch)", {
+            path: folderPath,
+            error: message,
+          });
+          errors.push({ path: folderPath, message });
+        }
+      }
+      if (added.length > 0) await load();
+      return { added, errors };
+    },
+    [load],
+  );
+
   const removeFolder = useCallback(
     async (id: number) => {
       log.info("Removing folder", { id });
@@ -112,6 +144,7 @@ export function useFolders() {
     folders,
     hasLoaded,
     addFolder,
+    addFolders,
     removeFolder,
     renameFolder,
     reorderFolders,

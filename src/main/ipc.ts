@@ -65,6 +65,12 @@ export function registerIpcHandlers(): void {
     });
     return result.canceled ? null : result.filePaths[0];
   });
+  ipcMain.handle("selectDirectories", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "multiSelections"],
+    });
+    return result.canceled ? null : result.filePaths;
+  });
   ipcMain.handle("image:revealInExplorer", async (_, path: string) => {
     await assertManagedImagePath(path);
     shell.showItemInFolder(path);

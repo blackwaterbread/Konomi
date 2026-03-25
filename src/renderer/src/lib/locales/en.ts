@@ -739,6 +739,9 @@ const en = {
       empty: "No folders added",
       addDisabled:
         "You cannot add folders while similarity analysis is running",
+      addOne: "Add Folder",
+      addMultiple: "Add Multiple Folders",
+      addedMultiple: "{{count}} folders added",
     },
     dialog: {
       newCategoryTitle: "New Category",
@@ -752,6 +755,10 @@ const en = {
       deleteFolderTitle: "Delete Folder",
       deleteFolderDescription: 'Delete folder "{{name}}"?',
       deleting: "Deleting...",
+      multiFolderTitle: "Add Multiple Folders",
+      multiFolderEmpty: "Select folders to add",
+      multiFolderBrowse: "Select Folders",
+      addCount: "Add {{count}}",
       newFolderTitle: "Add Folder",
       name: "Name",
       namePlaceholder: "Folder name",

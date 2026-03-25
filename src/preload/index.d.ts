@@ -308,6 +308,7 @@ declare global {
     };
     dialog: {
       selectDirectory: () => Promise<string | null>;
+      selectDirectories: () => Promise<string[] | null>;
     };
     folder: {
       list: () => Promise<Folder[]>;

@@ -62,6 +62,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     addSelectedFolder,
     removeSelectedFolder,
     addFolder,
+    addFolders,
     removeFolder,
     renameFolder,
     reorderFolders,
@@ -336,6 +337,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const sidebarFolderActions = useMemo(
     () => ({
       createFolder: addFolder,
+      addFolders,
       deleteFolder: removeFolder,
       renameFolder,
       reorderFolders,
@@ -349,6 +351,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     }),
     [
       addFolder,
+      addFolders,
       handleFolderAdded,
       handleFolderCancelled,
       handleFolderRemoved,

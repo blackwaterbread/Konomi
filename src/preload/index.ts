@@ -223,6 +223,8 @@ contextBridge.exposeInMainWorld("image", {
 contextBridge.exposeInMainWorld("dialog", {
   selectDirectory: (): Promise<string | null> =>
     ipcRenderer.invoke("selectDirectory"),
+  selectDirectories: (): Promise<string[] | null> =>
+    ipcRenderer.invoke("selectDirectories"),
 });
 contextBridge.exposeInMainWorld("promptBuilder", {
   listCategories: () => ipcRenderer.invoke("prompt:listCategories"),
