@@ -51,11 +51,15 @@ function renderBold(text: string): ReactNode[] {
   });
 }
 
-export function AnnouncementModal() {
+interface AnnouncementModalProps {
+  disabled?: boolean;
+}
+
+export function AnnouncementModal({ disabled }: AnnouncementModalProps) {
   const { t } = useTranslation();
   const [announcement, setAnnouncement] = useState(getLatestUnacknowledged);
 
-  if (!announcement) return null;
+  if (!announcement || disabled) return null;
 
   const handleConfirm = () => {
     try {

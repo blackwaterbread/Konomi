@@ -612,7 +612,9 @@ export default function App({ initialFolderCount = null }: AppProps) {
         onContinue={handleInitialLanguageContinue}
       />
 
-      <AnnouncementModal />
+      <AnnouncementModal
+        disabled={initialLanguageScreenOpen || showFeatureTour}
+      />
     </div>
   );
 }
