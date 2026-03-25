@@ -773,6 +773,13 @@ const ko = {
       loadingFiles: "파일 목록 로드 중...",
     },
   },
+  announcement: {
+    confirm: "확인했습니다",
+    v060SimilarityFix: {
+      title: "중요 공지사항",
+      body: "v0.3.0 버전부터 적용된 이미지 유사도 연산 Native 모듈이 유사도 정확성을 부정확하게 만드는 버그를 수정했습니다.따라서 설정에 들어가셔서 **유사도 값 재계산을 진행하시기를 강력하게 권장합니다.**",
+    },
+  },
   update: {
     available: "새 버전 {{version}}을 다운로드하는 중입니다...",
     availableMac: "새 버전 {{version}}이 출시되었습니다",

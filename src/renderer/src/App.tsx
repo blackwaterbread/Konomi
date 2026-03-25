@@ -19,6 +19,7 @@ import {
 } from "@/components/generation-view";
 import { FeatureTour } from "@/components/feature-tour";
 import { InitialLanguageScreen } from "@/components/initial-language-screen";
+import { AnnouncementModal } from "@/components/announcement-modal";
 import {
   Dialog,
   DialogContent,
@@ -610,6 +611,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
         onLanguageChange={(language) => handleSettingsUpdate({ language })}
         onContinue={handleInitialLanguageContinue}
       />
+
+      <AnnouncementModal />
     </div>
   );
 }

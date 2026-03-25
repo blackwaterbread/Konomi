@@ -780,6 +780,13 @@ const en = {
       loadingFiles: "Loading file list...",
     },
   },
+  announcement: {
+    confirm: "I understand",
+    v060SimilarityFix: {
+      title: "Important Notice",
+      body: "A bug has been fixed where the native image similarity module, applied since v0.3.0, was producing inaccurate similarity results.**We strongly recommend going to Settings and recalculating similarity values.**",
+    },
+  },
   update: {
     available: "Downloading new version {{version}}...",
     availableMac: "New version {{version}} is available",
