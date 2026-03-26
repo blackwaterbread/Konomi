@@ -528,6 +528,10 @@ export function ImageDetail({
   const deferredImage = useDeferredValue(image);
   const infoPanelPending = isOpen && image?.id !== deferredImage?.id;
 
+  // Defer similar images so heavy SimilarThumb mount/unmount doesn't block
+  // panel open/close transitions.
+  const deferredSimilarImages = useDeferredValue(similarImages);
+
   // Lock the anchor image when the panel opens; clear when it closes
   useEffect(() => {
     if (isOpen && image?.id) {
@@ -538,12 +542,12 @@ export function ImageDetail({
   }, [isOpen, image?.id]);
 
   const effectiveAnchorId = anchorId ?? image?.id ?? null;
-  const hasSimilar = similarImages && similarImages.length > 1;
+  const hasSimilar = deferredSimilarImages && deferredSimilarImages.length > 1;
   const currentThumb = hasSimilar
-    ? (similarImages.find((img) => img.id === effectiveAnchorId) ?? null)
+    ? (deferredSimilarImages.find((img) => img.id === effectiveAnchorId) ?? null)
     : null;
   const otherSimilar = hasSimilar
-    ? similarImages.filter((img) => img.id !== effectiveAnchorId)
+    ? deferredSimilarImages.filter((img) => img.id !== effectiveAnchorId)
     : [];
   // Page 0: anchor takes 1 slot, so (pageSize - 1) non-anchor items.
   // Pages 1+: pageSize non-anchor items each (no anchor shown).
