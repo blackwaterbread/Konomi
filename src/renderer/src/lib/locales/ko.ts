@@ -113,6 +113,7 @@ const ko = {
       date: "Date",
       phash: "P-Hash",
       unavailable: "-",
+      viewWorkflow: "워크플로우",
     },
   },
   gallery: {

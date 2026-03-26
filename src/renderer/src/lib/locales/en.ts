@@ -113,6 +113,7 @@ const en = {
       date: "Date",
       phash: "P-Hash",
       unavailable: "-",
+      viewWorkflow: "Workflow",
     },
   },
   gallery: {

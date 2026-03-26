@@ -17,6 +17,7 @@ import {
   Minimize2,
   Loader2,
   Pin,
+  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,11 +27,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { parsePromptTokens, isGroupRef, type PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
 import type { ImageData } from "./image-card";
 import { TokenContainer } from "./token-container";
+import { ComfyWorkflowViewer } from "./comfy-workflow-viewer";
 import { useTranslation } from "react-i18next";
 
 type SimilarityReason = "visual" | "prompt" | "both";
@@ -231,12 +239,14 @@ const InfoPanel = memo(function InfoPanel({
   onCopy,
   onAddTagToSearch,
   onAddTagToGenerator,
+  onViewWorkflow,
 }: {
   image: ImageData;
   copiedKey: string | null;
   onCopy: (key: string, text: string) => void;
   onAddTagToSearch: (tag: string) => void;
   onAddTagToGenerator: (tag: string) => void;
+  onViewWorkflow?: () => void;
 }) {
   const { t } = useTranslation();
   const { formatDate } = useLocaleFormatters();
@@ -434,6 +444,17 @@ const InfoPanel = memo(function InfoPanel({
               </>
             ) : null}
           </div>
+          {image.source === "comfyui" && onViewWorkflow && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2 w-full gap-1.5 text-xs"
+              onClick={onViewWorkflow}
+            >
+              <Workflow className="h-3.5 w-3.5" />
+              {t("imageDetail.info.viewWorkflow")}
+            </Button>
+          )}
         </div>
       </div>
     </ScrollArea>
@@ -489,6 +510,12 @@ export function ImageDetail({
   const [similarPage, setSimilarPage] = useState(0);
   const [anchorId, setAnchorId] = useState<string | null>(null);
   const panelOpenedRef = useRef(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [workflowRaw, setWorkflowRaw] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
 
   // Defer image for InfoPanel so heavy token rendering doesn't block panel open.
   // Show a spinner while deferred value catches up (never stale data).
@@ -573,6 +600,20 @@ export function ImageDetail({
   const handleFitModeToggle = useCallback(() => {
     setFitMode((m) => (m === "fit" ? "actual" : "fit"));
   }, []);
+
+  const handleViewWorkflow = useCallback(async () => {
+    if (!image) return;
+    setWorkflowOpen(true);
+    setWorkflowLoading(true);
+    try {
+      const meta = await window.image.readNaiMeta(image.path);
+      setWorkflowRaw(meta?.raw ?? null);
+    } catch {
+      setWorkflowRaw(null);
+    } finally {
+      setWorkflowLoading(false);
+    }
+  }, [image]);
 
   // Prefetch adjacent images
   useEffect(() => {
@@ -796,10 +837,44 @@ export function ImageDetail({
               onCopy={handleCopy}
               onAddTagToSearch={onAddTagToSearch}
               onAddTagToGenerator={onAddTagToGenerator}
+              onViewWorkflow={
+                image.source === "comfyui" ? handleViewWorkflow : undefined
+              }
             />
           )}
         </div>
       </div>
+
+      {/* ComfyUI Workflow Dialog */}
+      <Dialog open={workflowOpen} onOpenChange={setWorkflowOpen}>
+        <DialogContent className="max-w-[90vw] h-[85vh] p-0 gap-0 bg-[#1e1e2e] border-[#3a3a5c] [&>button]:text-[#a0a0b8] [&>button]:hover:text-white [&>button]:top-2.5 [&>button]:right-3">
+          <DialogHeader className="px-4 py-2 mb-0 border-b border-[#3a3a5c] shrink-0">
+            <DialogTitle className="text-sm text-[#e0e0e0]">
+              {t("imageDetail.info.viewWorkflow")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0">
+            <ComfyWorkflowViewer
+              raw={workflowRaw}
+              loading={workflowLoading}
+              meta={
+                image
+                  ? {
+                      fileName: image.path.split(/[\\/]/).pop() ?? "",
+                      model: image.model,
+                      width: image.width,
+                      height: image.height,
+                      seed: image.seed,
+                      sampler: image.sampler,
+                      steps: image.steps,
+                      cfgScale: image.cfgScale,
+                    }
+                  : null
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
