@@ -564,6 +564,7 @@ export const PromptInput = memo(function PromptInput({
 
   useLayoutEffect(() => {
     if (!isRawMode) {
+      setRawScrollPosition({ top: 0, left: 0 });
       setRawOverlayScrollbarWidth(0);
       return;
     }
