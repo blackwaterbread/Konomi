@@ -10,6 +10,12 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type {
   PromptCategory,
   PromptGroup,
@@ -131,33 +137,38 @@ interface PromptGroupPanelProps {
 }
 
 function DraggableGroupChip({ groupName }: { groupName: string }) {
-  const { t } = useTranslation();
   const [dragging, setDragging] = useState(false);
 
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData(
-          DRAG_MIME,
-          JSON.stringify({ kind: "group", groupName }),
-        );
-        e.dataTransfer.effectAllowed = "copy";
-        setDragging(true);
-      }}
-      onDragEnd={() => setDragging(false)}
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs",
-        "cursor-grab active:cursor-grabbing select-none transition-opacity shrink-0",
-        "bg-group/14 text-group border-group/35",
-        dragging && "opacity-40",
-      )}
-      title={t("promptGroupPanel.dragGroupToPrompt")}
-    >
-      <GripVertical className="h-2.5 w-2.5 text-group/70 shrink-0 -ml-0.5" />
-      <span className="font-semibold text-group">@</span>
-      <span className="truncate max-w-20">{`{${groupName}}`}</span>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(
+                DRAG_MIME,
+                JSON.stringify({ kind: "group", groupName }),
+              );
+              e.dataTransfer.effectAllowed = "copy";
+              setDragging(true);
+            }}
+            onDragEnd={() => setDragging(false)}
+            className={cn(
+              "inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-xs",
+              "cursor-grab active:cursor-grabbing select-none transition-opacity shrink-0",
+              "bg-group/14 text-group border-group/35",
+              dragging && "opacity-40",
+            )}
+          >
+            <GripVertical className="h-2.5 w-2.5 text-group/70 shrink-0 -ml-0.5" />
+            <span className="font-semibold text-group">@</span>
+            <span className="truncate max-w-20">{`{${groupName}}`}</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{`@{${groupName}}`}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
