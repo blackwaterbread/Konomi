@@ -15,10 +15,12 @@ import {
 import { createPortal } from "react-dom";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -88,6 +90,95 @@ const ENABLE_BLOCK_MODE_CUSTOM_CURSOR = false;
 // Block mode keeps the older chip editor around, but the between-chip custom
 // cursor has been the most fragile part of that UI. Keep the old path behind a
 // flag so we can revisit it later without losing the implementation entirely.
+
+// ---------------------------------------------------------------------------
+// Cross-input drag-and-drop
+// ---------------------------------------------------------------------------
+// When a token chip is dragged out of one PromptInput's DndContext and released
+// over another PromptInput, the module-level tracking below bridges the two
+// isolated DndContexts via custom DOM events.
+
+const CROSS_DROP_EVENT = "konomi:cross-input-token-drop";
+const CROSS_DROP_ENTER_EVENT = "konomi:cross-drag-enter";
+const CROSS_DROP_LEAVE_EVENT = "konomi:cross-drag-leave";
+const CROSS_DROP_ZONE_ATTR = "data-prompt-drop-zone";
+
+const crossDragPointer = { x: 0, y: 0 };
+let crossDragActiveZone: Element | null = null;
+let crossDragCleanup: (() => void) | null = null;
+
+function startCrossDragTracking(sourceZone: Element): void {
+  stopCrossDragTracking();
+
+  let lastHitCheck = 0;
+
+  const onPointerMove = (e: PointerEvent): void => {
+    crossDragPointer.x = e.clientX;
+    crossDragPointer.y = e.clientY;
+
+    const now = performance.now();
+    if (now - lastHitCheck < 50) return;
+    lastHitCheck = now;
+
+    const hit =
+      document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find(
+          (el) => el.hasAttribute(CROSS_DROP_ZONE_ATTR) && el !== sourceZone,
+        ) ?? null;
+
+    if (hit !== crossDragActiveZone) {
+      crossDragActiveZone?.dispatchEvent(
+        new CustomEvent(CROSS_DROP_LEAVE_EVENT),
+      );
+      hit?.dispatchEvent(new CustomEvent(CROSS_DROP_ENTER_EVENT));
+      crossDragActiveZone = hit;
+    }
+  };
+
+  document.addEventListener("pointermove", onPointerMove, true);
+
+  crossDragCleanup = () => {
+    document.removeEventListener("pointermove", onPointerMove, true);
+    crossDragActiveZone?.dispatchEvent(new CustomEvent(CROSS_DROP_LEAVE_EVENT));
+    crossDragActiveZone = null;
+    crossDragCleanup = null;
+  };
+}
+
+function stopCrossDragTracking(): void {
+  crossDragCleanup?.();
+}
+
+function findCrossDropTarget(sourceZone: Element): Element | null {
+  return (
+    document
+      .elementsFromPoint(crossDragPointer.x, crossDragPointer.y)
+      .find(
+        (el) => el.hasAttribute(CROSS_DROP_ZONE_ATTR) && el !== sourceZone,
+      ) ?? null
+  );
+}
+
+function tokenToDropPayload(token: EditableToken): string {
+  if (isGroupRef(token)) {
+    return JSON.stringify({
+      kind: "group",
+      groupName: token.groupName,
+      ...("overrideTags" in token && token.overrideTags
+        ? { overrideTags: token.overrideTags }
+        : {}),
+    });
+  }
+  if (isWildcard(token)) {
+    return JSON.stringify({ text: tokenToRawString(token), weight: 1 });
+  }
+  return JSON.stringify({
+    text: (token as PromptToken).text,
+    weight: (token as PromptToken).weight,
+    raw: tokenToRawString(token),
+  });
+}
 
 interface PromptInputProps {
   value: string;
@@ -261,6 +352,8 @@ export const PromptInput = memo(function PromptInput({
 }: PromptInputProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t("promptInput.placeholder");
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const crossDropHandlerRef = useRef<(data: string) => void>(() => {});
   const rawInputRef = useRef<HTMLTextAreaElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const inputAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -283,6 +376,9 @@ export const PromptInput = memo(function PromptInput({
   const lastRawEmittedRef = useRef<string>(value);
 
   const [externalDragOver, setExternalDragOver] = useState(false);
+  const [activeDragToken, setActiveDragToken] = useState<EditableToken | null>(
+    null,
+  );
   const [tokens, setTokens] = useState<EditableToken[]>(() =>
     toEditableTokens(parsePromptTokens(value)),
   );
@@ -952,13 +1048,58 @@ export const PromptInput = memo(function PromptInput({
     emit(nextTokens, draft);
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const token = tokens.find((t) => t.id === event.active.id);
+    if (token) setActiveDragToken(token);
+
+    if (!allowExternalDrop) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const initial = event.activatorEvent as PointerEvent;
+    crossDragPointer.x = initial.clientX;
+    crossDragPointer.y = initial.clientY;
+    startCrossDragTracking(wrapper);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragToken(null);
+    stopCrossDragTracking();
+
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = tokens.findIndex((token) => token.id === active.id);
-    const newIndex = tokens.findIndex((token) => token.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    emit(arrayMove(tokens, oldIndex, newIndex), draft);
+    if (over && active.id !== over.id) {
+      const oldIndex = tokens.findIndex((token) => token.id === active.id);
+      const newIndex = tokens.findIndex((token) => token.id === over.id);
+      if (oldIndex >= 0 && newIndex >= 0) {
+        emit(arrayMove(tokens, oldIndex, newIndex), draft);
+      }
+      return;
+    }
+
+    // No valid sort target → try cross-input drop (move)
+    if (!over && allowExternalDrop) {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+      const target = findCrossDropTarget(wrapper);
+      if (target) {
+        const token = tokens.find((t) => t.id === active.id);
+        if (token) {
+          target.dispatchEvent(
+            new CustomEvent(CROSS_DROP_EVENT, {
+              detail: tokenToDropPayload(token),
+              bubbles: false,
+            }),
+          );
+          // Remove from source
+          const nextTokens = tokens.filter((t) => t.id !== active.id);
+          emit(nextTokens, draft);
+        }
+      }
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragToken(null);
+    stopCrossDragTracking();
   };
 
   const setTokenRef = (id: string, node: HTMLDivElement | null) => {
@@ -1343,6 +1484,69 @@ export const PromptInput = memo(function PromptInput({
     });
   };
 
+  const handleBlockDrop = (data: string) => {
+    try {
+      const parsed = JSON.parse(data) as Record<string, unknown>;
+      if (parsed.kind === "group" && typeof parsed.groupName === "string") {
+        emit(
+          [
+            ...tokens,
+            {
+              kind: "group" as const,
+              groupName: parsed.groupName,
+              ...(Array.isArray(parsed.overrideTags)
+                ? { overrideTags: parsed.overrideTags as string[] }
+                : {}),
+              id: createTokenId(),
+            },
+          ],
+          draft,
+        );
+      } else if (typeof parsed.text === "string") {
+        emit(
+          [
+            ...tokens,
+            {
+              text: parsed.text,
+              weight: typeof parsed.weight === "number" ? parsed.weight : 1,
+              raw: typeof parsed.raw === "string" ? parsed.raw : undefined,
+              id: createTokenId(),
+            },
+          ],
+          draft,
+        );
+      }
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } catch {
+      // ignore invalid data
+    }
+  };
+
+  // Cross-input drop handler ref — always up-to-date with latest closures
+  crossDropHandlerRef.current = isRawMode ? handleRawDrop : handleBlockDrop;
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || !allowExternalDrop) return;
+
+    const onDrop = (e: Event) => {
+      const data = (e as CustomEvent).detail as string;
+      if (data) crossDropHandlerRef.current(data);
+    };
+    const onEnter = () => setExternalDragOver(true);
+    const onLeave = () => setExternalDragOver(false);
+
+    el.addEventListener(CROSS_DROP_EVENT, onDrop);
+    el.addEventListener(CROSS_DROP_ENTER_EVENT, onEnter);
+    el.addEventListener(CROSS_DROP_LEAVE_EVENT, onLeave);
+
+    return () => {
+      el.removeEventListener(CROSS_DROP_EVENT, onDrop);
+      el.removeEventListener(CROSS_DROP_ENTER_EVENT, onEnter);
+      el.removeEventListener(CROSS_DROP_LEAVE_EVENT, onLeave);
+    };
+  }, [allowExternalDrop, isRawMode]);
+
   const queueRawSelection = (start: number, end = start) => {
     window.requestAnimationFrame(() => {
       const textarea = rawInputRef.current;
@@ -1713,6 +1917,8 @@ export const PromptInput = memo(function PromptInput({
           }}
         >
           <div
+            ref={wrapperRef}
+            {...(allowExternalDrop ? { [CROSS_DROP_ZONE_ATTR]: "" } : {})}
             className={cn(
               "relative w-full min-w-0 rounded-lg border bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
               externalDragOver ? "border-primary/60" : "border-border/60",
@@ -1994,6 +2200,8 @@ export const PromptInput = memo(function PromptInput({
 
   return (
     <div
+      ref={wrapperRef}
+      {...(allowExternalDrop ? { [CROSS_DROP_ZONE_ATTR]: "" } : {})}
       className={cn(
         "w-full min-w-0 rounded-lg border bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
         externalDragOver ? "border-primary/60" : "border-border/60",
@@ -2031,48 +2239,17 @@ export const PromptInput = memo(function PromptInput({
               const data = e.dataTransfer.getData(DRAG_TOKEN_MIME);
               if (!data) return;
               e.preventDefault();
-              try {
-                const parsed = JSON.parse(data) as Record<string, unknown>;
-                if (
-                  parsed.kind === "group" &&
-                  typeof parsed.groupName === "string"
-                ) {
-                  const groupToken: EditableToken = {
-                    kind: "group",
-                    groupName: parsed.groupName,
-                    ...(Array.isArray(parsed.overrideTags)
-                      ? { overrideTags: parsed.overrideTags as string[] }
-                      : {}),
-                    id: createTokenId(),
-                  };
-                  emit([...tokens, groupToken], draft);
-                } else if (typeof parsed.text === "string") {
-                  emit(
-                    [
-                      ...tokens,
-                      {
-                        text: parsed.text,
-                        weight:
-                          typeof parsed.weight === "number" ? parsed.weight : 1,
-                        raw:
-                          typeof parsed.raw === "string"
-                            ? parsed.raw
-                            : undefined,
-                        id: createTokenId(),
-                      },
-                    ],
-                    draft,
-                  );
-                }
-                requestAnimationFrame(() => inputRef.current?.focus());
-              } catch {
-                // ignore invalid data
-              }
+              handleBlockDrop(data);
             }
           : undefined
       }
     >
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext
           items={tokens.map((token) => token.id)}
           strategy={rectSortingStrategy}
@@ -2299,6 +2476,24 @@ export const PromptInput = memo(function PromptInput({
             )}
           </div>
         </SortableContext>
+        <DragOverlay dropAnimation={null}>
+          {activeDragToken ? (
+            isGroupRef(activeDragToken) ? (
+              <GroupChip
+                token={activeDragToken}
+                groups={groups}
+                readOnly={true}
+              />
+            ) : isWildcard(activeDragToken) ? (
+              <WildcardChip token={activeDragToken} />
+            ) : (
+              <TokenChip
+                token={activeDragToken as PromptToken & { id: string }}
+                raw={tokenToRawString(activeDragToken)}
+              />
+            )
+          ) : null}
+        </DragOverlay>
       </DndContext>
       {autocompletePortal}
     </div>
