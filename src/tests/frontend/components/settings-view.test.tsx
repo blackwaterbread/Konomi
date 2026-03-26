@@ -23,6 +23,7 @@ function renderSettingsView(
     onReset: vi.fn(),
     onClose: vi.fn(),
     onResetHashes: vi.fn().mockResolvedValue(undefined),
+    onRefreshPrompts: vi.fn().mockResolvedValue(0),
     isAnalyzing: false,
     ...overrides,
   };

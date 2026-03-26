@@ -286,6 +286,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:resetHashes", () =>
     bridge.request("image:resetHashes"),
   );
+  ipcMain.handle("image:refreshPrompts", () =>
+    bridge.request("image:refreshPrompts"),
+  );
 
   ipcMain.handle("category:list", () => bridge.request("category:list"));
   ipcMain.handle("category:create", (_, name: string) =>

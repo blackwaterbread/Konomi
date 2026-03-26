@@ -15,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { DEFAULTS, type Settings } from "@/hooks/useSettings";
 import { THEMES } from "@/lib/themes";
@@ -28,6 +29,7 @@ interface SettingsViewProps {
   onReset: (keys?: (keyof Settings)[]) => void;
   onClose: () => void;
   onResetHashes: () => Promise<void>;
+  onRefreshPrompts: () => Promise<number>;
   isAnalyzing: boolean;
 }
 
@@ -144,10 +146,12 @@ export function SettingsView({
   onReset,
   onClose,
   onResetHashes,
+  onRefreshPrompts,
   isAnalyzing,
 }: SettingsViewProps) {
   const { t } = useTranslation();
   const [resetting, setResetting] = useState(false);
+  const [refreshingPrompts, setRefreshingPrompts] = useState(false);
   const [ignoredDuplicates, setIgnoredDuplicates] = useState<string[]>([]);
   const [ignoredLoading, setIgnoredLoading] = useState(false);
   const [ignoredClearing, setIgnoredClearing] = useState(false);
@@ -227,6 +231,20 @@ export function SettingsView({
     setResetting(true);
     await onResetHashes();
     setResetting(false);
+  };
+
+  const handleRefreshPrompts = async () => {
+    setRefreshingPrompts(true);
+    try {
+      const count = await onRefreshPrompts();
+      if (count > 0) {
+        toast.success(t("settings.promptRefresh.success", { count }));
+      } else {
+        toast.info(t("settings.promptRefresh.noTargets"));
+      }
+    } finally {
+      setRefreshingPrompts(false);
+    }
   };
 
   const handleClearIgnoredDuplicates = async () => {
@@ -708,6 +726,26 @@ export function SettingsView({
               </span>
             </div>
           </div>
+        </div>
+
+        <Separator className="bg-border" />
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-foreground select-none">
+            {t("settings.promptRefresh.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground select-none">
+            {t("settings.promptRefresh.description")}
+          </p>
+          <Button
+            variant="secondary"
+            onClick={handleRefreshPrompts}
+            disabled={refreshingPrompts}
+          >
+            {refreshingPrompts
+              ? t("settings.promptRefresh.refreshing")
+              : t("settings.promptRefresh.action")}
+          </Button>
         </div>
 
         <Separator className="bg-border" />

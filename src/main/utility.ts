@@ -28,6 +28,7 @@ import {
   resolveFolderDuplicates,
   listIgnoredDuplicatePaths,
   clearIgnoredDuplicatePaths,
+  refreshImagePrompts,
 } from "./lib/image";
 import {
   listCategories as listPromptCategories,
@@ -358,6 +359,13 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
     case "image:resetHashes":
       return resetAllHashes();
+
+    case "image:refreshPrompts":
+      return refreshImagePrompts(
+        (done, total) =>
+          utilitySender.send("image:refreshPromptsProgress", { done, total }),
+        (images) => utilitySender.send("image:batch", images),
+      );
 
     case "category:list":
       return listCategories();

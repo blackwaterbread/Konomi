@@ -712,6 +712,14 @@ const ko = {
       loadError: "무시 목록을 불러오는 중 오류가 발생했습니다.",
       clearError: "무시 목록 초기화 중 오류가 발생했습니다.",
     },
+    promptRefresh: {
+      title: "프롬프트 정보 새로고침",
+      description: "메타데이터를 읽지 못한 이미지를 다시 분석합니다.",
+      refreshing: "새로고침 중...",
+      action: "새로고침",
+      success: "{{count}}개 이미지의 프롬프트 정보가 업데이트되었습니다.",
+      noTargets: "새로고침할 이미지가 없습니다.",
+    },
     database: {
       title: "데이터베이스 정보",
       imageSize: "이미지 데이터베이스 용량",

@@ -718,6 +718,14 @@ const en = {
       loadError: "An error occurred while loading the ignored list.",
       clearError: "An error occurred while clearing the ignored list.",
     },
+    promptRefresh: {
+      title: "Refresh Prompt Info",
+      description: "Re-analyze images whose metadata could not be read.",
+      refreshing: "Refreshing...",
+      action: "Refresh",
+      success: "Updated prompt info for {{count}} images.",
+      noTargets: "No images to refresh.",
+    },
     database: {
       title: "Database Info",
       imageSize: "Image database size",
