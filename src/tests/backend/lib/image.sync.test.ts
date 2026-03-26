@@ -274,3 +274,128 @@ describe("image sync integration", () => {
     expect(syncState.deleteSimilarityCacheForImageIds).not.toHaveBeenCalled();
   });
 });
+
+describe("refreshImagePrompts", () => {
+  it("re-parses unknown-source images and updates only those that resolve", async () => {
+    const { getDB } = await import("../../../main/lib/db");
+    const db = getDB();
+    const folderPath = path.join(ctx.userDataDir, "refresh-folder");
+    fs.mkdirSync(folderPath, { recursive: true });
+
+    const folder = await db.folder.create({
+      data: { name: "Refresh", path: folderPath },
+    });
+
+    const knownPath = path.join(folderPath, "known.png");
+    const unknownResolvablePath = path.join(folderPath, "resolvable.png");
+    const unknownStillPath = path.join(folderPath, "still-unknown.png");
+    fs.writeFileSync(knownPath, "known-binary");
+    fs.writeFileSync(unknownResolvablePath, "resolvable-binary");
+    fs.writeFileSync(unknownStillPath, "still-unknown-binary");
+
+    const knownStat = fs.statSync(knownPath);
+    const resolvableStat = fs.statSync(unknownResolvablePath);
+    const stillStat = fs.statSync(unknownStillPath);
+
+    await db.image.create({
+      data: {
+        path: knownPath,
+        folderId: folder.id,
+        promptTokens: tokens(["known tag"]),
+        source: "nai",
+        model: "known-model",
+        width: 832,
+        height: 1216,
+        fileSize: knownStat.size,
+        fileModifiedAt: knownStat.mtime,
+      },
+    });
+    await db.image.create({
+      data: {
+        path: unknownResolvablePath,
+        folderId: folder.id,
+        promptTokens: "[]",
+        source: "unknown",
+        model: "",
+        width: 0,
+        height: 0,
+        fileSize: resolvableStat.size,
+        fileModifiedAt: resolvableStat.mtime,
+      },
+    });
+    await db.image.create({
+      data: {
+        path: unknownStillPath,
+        folderId: folder.id,
+        promptTokens: "[]",
+        source: "unknown",
+        model: "",
+        width: 0,
+        height: 0,
+        fileSize: stillStat.size,
+        fileModifiedAt: stillStat.mtime,
+      },
+    });
+
+    // resolvable image now returns comfyui meta
+    syncState.workerResults.set(unknownResolvablePath, {
+      prompt: "comfy sunset",
+      negativePrompt: "lowres",
+      characterPrompts: [],
+      source: "comfyui",
+      model: "comfy-model",
+      seed: 42,
+      width: 1024,
+      height: 1024,
+      sampler: "Euler a",
+      steps: 20,
+      cfgScale: 7,
+      cfgRescale: 0,
+      noiseSchedule: "",
+      varietyPlus: false,
+    });
+    // still-unknown returns null (no metadata found)
+    syncState.workerResults.set(unknownStillPath, null);
+
+    const batches: string[][] = [];
+    const progressCalls: Array<[number, number]> = [];
+
+    const { refreshImagePrompts } = await import("../../../main/lib/image");
+
+    const updated = await refreshImagePrompts(
+      (done, total) => progressCalls.push([done, total]),
+      (images) => batches.push(images.map((img) => img.path)),
+    );
+
+    expect(updated).toBe(1);
+    expect(batches).toEqual([[unknownResolvablePath]]);
+    expect(progressCalls.at(-1)).toEqual([2, 2]);
+
+    // resolvable image should be updated
+    const resolvableRow = await db.image.findUnique({
+      where: { path: unknownResolvablePath },
+    });
+    expect(resolvableRow!.source).toBe("comfyui");
+    expect(resolvableRow!.model).toBe("comfy-model");
+    expect(resolvableRow!.prompt).toBe("comfy sunset");
+
+    // still-unknown image should remain unchanged
+    const stillRow = await db.image.findUnique({
+      where: { path: unknownStillPath },
+    });
+    expect(stillRow!.source).toBe("unknown");
+
+    // known image should not have been touched at all
+    const knownRow = await db.image.findUnique({
+      where: { path: knownPath },
+    });
+    expect(knownRow!.source).toBe("nai");
+    expect(knownRow!.model).toBe("known-model");
+  });
+
+  it("returns 0 when there are no unknown-source images", async () => {
+    const { refreshImagePrompts } = await import("../../../main/lib/image");
+    const updated = await refreshImagePrompts();
+    expect(updated).toBe(0);
+  });
+});

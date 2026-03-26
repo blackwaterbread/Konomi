@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { SettingsView } from "@/components/settings-view";
 import { DEFAULTS, type Settings } from "@/hooks/useSettings";
 import { preloadMocks } from "../helpers/preload-mocks";
@@ -80,6 +81,41 @@ describe("SettingsView", () => {
 
     expect(screen.queryByText("C:\\dupe-a.png")).not.toBeInTheDocument();
     expect(preloadMocks.image.listIgnoredDuplicates).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls onRefreshPrompts and shows success toast on click", async () => {
+    const user = userEvent.setup();
+    const onRefreshPrompts = vi.fn().mockResolvedValue(3);
+
+    renderSettingsView({ onRefreshPrompts });
+
+    const section = screen.getByText("Refresh Prompt Info").closest("div")!;
+    const button = within(section).getByRole("button", { name: "Refresh" });
+    await user.click(button);
+
+    await waitFor(() =>
+      expect(onRefreshPrompts).toHaveBeenCalledTimes(1),
+    );
+    expect(toast.success).toHaveBeenCalledWith(
+      "Updated prompt info for 3 images.",
+    );
+  });
+
+  it("shows info toast when no images need refreshing", async () => {
+    const user = userEvent.setup();
+    const onRefreshPrompts = vi.fn().mockResolvedValue(0);
+
+    renderSettingsView({ onRefreshPrompts });
+
+    const section = screen.getByText("Refresh Prompt Info").closest("div")!;
+    await user.click(
+      within(section).getByRole("button", { name: "Refresh" }),
+    );
+
+    await waitFor(() =>
+      expect(onRefreshPrompts).toHaveBeenCalledTimes(1),
+    );
+    expect(toast.info).toHaveBeenCalledWith("No images to refresh.");
   });
 
   it("bootstraps advanced similarity thresholds from the basic threshold", async () => {
