@@ -174,6 +174,11 @@ export function useSubfolderState() {
     });
   }, []);
 
+  const hasSubfolderOverrides = useCallback(
+    (folderId: number) => (deselected.get(folderId)?.size ?? 0) > 0,
+    [deselected],
+  );
+
   const subfolderFilters = useMemo<SubfolderFilter[]>(() => {
     const filters: SubfolderFilter[] = [];
     for (const [folderId, deselectedPaths] of deselected) {
@@ -192,6 +197,7 @@ export function useSubfolderState() {
     subfoldersByFolder,
     isSubfolderVisible,
     isRootVisible,
+    hasSubfolderOverrides,
     toggleSubfolder,
     toggleRoot,
     setFolderSubfoldersVisible,

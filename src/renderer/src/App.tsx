@@ -59,6 +59,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const {
     folders,
     selectedFolderIds,
+    effectiveFolderIds,
+    isFolderPartial,
     toggleFolder,
     addSelectedFolder,
     removeSelectedFolder,
@@ -155,7 +157,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
   } = useGalleryController({
     pageSize: settings.pageSize,
     recentDays: settings.recentDays,
-    selectedFolderIds,
+    selectedFolderIds: effectiveFolderIds,
     queryFragment,
     resolutionFilters,
     modelFilters,
@@ -329,6 +331,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       subfoldersByFolder,
       isSubfolderVisible,
       isRootVisible,
+      isFolderPartial,
     }),
     [
       activeScanFolderIds,
@@ -340,6 +343,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
       subfoldersByFolder,
       isSubfolderVisible,
       isRootVisible,
+      isFolderPartial,
     ],
   );
 

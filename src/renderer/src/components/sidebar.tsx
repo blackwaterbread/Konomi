@@ -76,6 +76,7 @@ interface SidebarFolderState {
   subfoldersByFolder?: Map<number, Subfolder[]>;
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
+  isFolderPartial?: (folderId: number) => boolean;
 }
 
 interface SidebarFolderActions {
@@ -525,6 +526,7 @@ interface SidebarFolderRowProps {
   folder: FolderRecord;
   isScanning: boolean;
   isSelected: boolean;
+  isPartial?: boolean;
   dragTargetPosition: "before" | "after" | null;
   isDragging: boolean;
   scanning?: boolean;
@@ -550,6 +552,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   folder,
   isScanning,
   isSelected,
+  isPartial = false,
   dragTargetPosition,
   isDragging,
   scanning,
@@ -760,9 +763,11 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 className={cn(
                   "h-5 w-5",
                   eyeHoverOnly && "opacity-0 group-hover:opacity-100",
-                  isSelected
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-primary",
+                  isPartial
+                    ? "text-primary/50 hover:text-primary"
+                    : isSelected
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-primary",
                 )}
                 onClick={() => onToggle?.(folder.id)}
                 title={t("sidebar.folders.toggleAll")}
@@ -1148,6 +1153,7 @@ interface SidebarFoldersSectionProps {
   subfoldersByFolder?: Map<number, Subfolder[]>;
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
+  isFolderPartial?: (folderId: number) => boolean;
   onOpenNewFolder: () => void;
   onAddMultipleFolders: () => void;
   onToggle?: (id: number) => void;
@@ -1179,6 +1185,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   subfoldersByFolder,
   isSubfolderVisible,
   isRootVisible,
+  isFolderPartial,
   onOpenNewFolder,
   onAddMultipleFolders,
   onToggle,
@@ -1263,6 +1270,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                   isCollapsed={isCollapsed}
                   isScanning={scanningFolderIds?.has(folder.id) ?? false}
                   isSelected={selectedFolderIds?.has(folder.id) ?? false}
+                  isPartial={isFolderPartial?.(folder.id) ?? false}
                   dragTargetPosition={isDropTarget ? folderDropPosition : null}
                   isDragging={draggingFolderId === folder.id}
                   scanning={scanning || checkingDuplicates}
@@ -1440,6 +1448,7 @@ export const Sidebar = memo(
       subfoldersByFolder,
       isSubfolderVisible,
       isRootVisible,
+      isFolderPartial,
     } = folderState;
     const {
       createFolder,
@@ -1824,6 +1833,7 @@ export const Sidebar = memo(
                 subfoldersByFolder={subfoldersByFolder}
                 isSubfolderVisible={isSubfolderVisible}
                 isRootVisible={isRootVisible}
+                isFolderPartial={isFolderPartial}
                 onOpenNewFolder={handleOpenFolderDialog}
                 onAddMultipleFolders={handleAddMultipleFolders}
                 onToggle={onFolderToggle}
