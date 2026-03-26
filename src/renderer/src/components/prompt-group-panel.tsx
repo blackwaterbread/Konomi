@@ -180,7 +180,7 @@ function DraggableGroupChip({ groupName }: { groupName: string }) {
             <span className="truncate max-w-20">{`{${groupName}}`}</span>
           </div>
         </TooltipTrigger>
-        <TooltipContent>{`@{${groupName}}`}</TooltipContent>
+        <TooltipContent side="right">{`@{${groupName}}`}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

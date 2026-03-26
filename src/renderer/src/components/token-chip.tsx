@@ -9,10 +9,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  Check,
   Copy,
   ImagePlus,
   Minus,
   Plus,
+  Scissors,
   Search,
   Trash2,
   TriangleAlert,
@@ -182,6 +184,7 @@ function TokenChipCore({
   );
   const tagSuggestRequestSeqRef = useRef(0);
   const [internalEditorOpen, setInternalEditorOpen] = useState(false);
+  const [popoverCopied, setPopoverCopied] = useState(false);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
   const [inlineSuggestionStyle, setInlineSuggestionStyle] =
     useState<CSSProperties | null>(null);
@@ -224,6 +227,7 @@ function TokenChipCore({
     open: boolean,
     reason?: "cancel" | "apply" | "advance",
   ) => {
+    if (!open) setPopoverCopied(false);
     if (!isEditorOpenControlled) setInternalEditorOpen(open);
     onEditorOpenChange?.(open, reason);
   };
@@ -1088,22 +1092,59 @@ function TokenChipCore({
             </div>
 
             <div className="mt-3 flex items-center justify-between gap-1.5">
-              {onDelete ? (
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  className="h-7 w-7 rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive flex items-center justify-center transition-colors"
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded border transition-colors",
+                    popoverCopied
+                      ? "border-primary/50 text-primary"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
                   onClick={() => {
-                    setEditorOpenState(false);
-                    onDelete();
+                    void navigator.clipboard.writeText(previewRawToken);
+                    setPopoverCopied(true);
+                    setTimeout(() => setPopoverCopied(false), 1200);
                   }}
-                  title={t("common.delete")}
-                  aria-label={t("common.delete")}
+                  title={t("promptInput.context.copy")}
+                  aria-label={t("promptInput.context.copy")}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {popoverCopied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
                 </button>
-              ) : (
-                <span />
-              )}
+                {onDelete ? (
+                  <button
+                    type="button"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(previewRawToken);
+                      setEditorOpenState(false);
+                      onDelete();
+                    }}
+                    title={t("promptInput.context.cut")}
+                    aria-label={t("promptInput.context.cut")}
+                  >
+                    <Scissors className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+                {onDelete ? (
+                  <button
+                    type="button"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    onClick={() => {
+                      setEditorOpenState(false);
+                      onDelete();
+                    }}
+                    title={t("common.delete")}
+                    aria-label={t("common.delete")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"

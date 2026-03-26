@@ -11,6 +11,8 @@ export type GroupRefToken = {
   kind: "group";
   groupName: string;
   overrideTags?: string[]; // if set, overrides the DB group's tokens (one-time local edit)
+  weight?: number; // per-instance weight (default 1.0), serialized as #weight suffix
+  weightExpression?: TokenWeightExpression; // how weight is applied to expanded tags (default "numerical")
 };
 
 export type WildcardToken = {
@@ -64,11 +66,17 @@ function parseBracketWeight(raw: string): PromptToken {
 
 export function tokenToRawString(token: AnyToken): string {
   if (isGroupRef(token)) {
+    const exprSuffix = token.weightExpression === "keyword" ? "k" : "";
+    const weightSuffix =
+      token.weight !== undefined && Math.abs(token.weight - 1.0) > 0.001
+        ? `#${token.weight.toFixed(2).replace(/\.?0+$/, "")}${exprSuffix}`
+        : exprSuffix
+          ? `#1${exprSuffix}`
+          : "";
     if (token.overrideTags !== undefined) {
-      // Serialize override tags with | separator (safe since tags don't contain |)
-      return `@{${token.groupName}:${token.overrideTags.join("|")}}`;
+      return `@{${token.groupName}:${token.overrideTags.join("|")}${weightSuffix}}`;
     }
-    return `@{${token.groupName}}`;
+    return `@{${token.groupName}${weightSuffix}}`;
   }
   if (isWildcard(token)) {
     return `%{${token.options.join("|")}}`;
@@ -171,18 +179,28 @@ function parseWildcardToken(raw: string): WildcardToken | null {
 }
 
 function parseGroupToken(raw: string): GroupRefToken | null {
-  // Matches @{groupName} or @{groupName:tag1|tag2|tag3}
-  const m = raw.match(/^@\{([^:}]+)(?::([^}]*))?\}$/);
+  // Matches @{groupName}, @{groupName:tag1|tag2}, @{groupName#1.3},
+  // @{groupName:tag1|tag2#0.8}, @{groupName#1.3k} (k = keyword expression)
+  const m = raw.match(/^@\{([^:}#]+)(?::([^}#]*?))?(?:#(-?[\d.]+)(k)?)?\}$/);
   if (!m) return null;
   const groupName = m[1];
+  const result: GroupRefToken = { kind: "group", groupName };
   if (m[2] !== undefined) {
-    const overrideTags = m[2]
+    result.overrideTags = m[2]
       .split("|")
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
-    return { kind: "group", groupName, overrideTags };
   }
-  return { kind: "group", groupName };
+  if (m[3] !== undefined) {
+    const w = parseFloat(m[3]);
+    if (Number.isFinite(w) && Math.abs(w - 1.0) > 0.001) {
+      result.weight = w;
+    }
+  }
+  if (m[4] === "k") {
+    result.weightExpression = "keyword";
+  }
+  return result;
 }
 
 export function parseRawToken(raw: string): AnyToken {

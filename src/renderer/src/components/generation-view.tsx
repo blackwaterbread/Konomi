@@ -714,25 +714,58 @@ function useLatestRef<T>(value: T) {
   return ref;
 }
 
+const BRACKET_MULT = 1.05;
+
+function applyWeightToTags(
+  tags: string[],
+  weight: number,
+  expression: "numerical" | "keyword" = "numerical",
+): string {
+  const joined = tags.join(", ");
+  if (Math.abs(weight - 1.0) <= 0.001) return joined;
+  if (expression === "keyword") {
+    const power = Math.round(
+      Math.log(Math.abs(weight)) / Math.log(BRACKET_MULT),
+    );
+    if (power > 0) return "{".repeat(power) + joined + "}".repeat(power);
+    if (power < 0) return "[".repeat(-power) + joined + "]".repeat(-power);
+    return joined;
+  }
+  const w = weight.toFixed(2).replace(/\.?0+$/, "");
+  return `${w}::${joined}::`;
+}
+
 function expandGroupRefsFromCategories(
   text: string,
   categories: PromptCategory[],
 ): string {
   return text.replace(
-    /@\{([^:}]+)(?::([^}]*))?\}/g,
-    (_, name: string, overrideStr?: string) => {
+    /@\{([^:}#]+)(?::([^}#]*?))?(?:#(-?[\d.]+)(k)?)?\}/g,
+    (
+      _,
+      name: string,
+      overrideStr?: string,
+      weightStr?: string,
+      exprFlag?: string,
+    ) => {
+      const weight = weightStr !== undefined ? parseFloat(weightStr) : 1;
+      const expression = exprFlag === "k" ? "keyword" : "numerical";
       if (overrideStr !== undefined) {
         const tags = overrideStr
           .split("|")
           .map((tag) => tag.trim())
           .filter((tag) => tag.length > 0);
-        return tags.join(", ");
+        return applyWeightToTags(tags, weight, expression);
       }
       const group = categories
         .flatMap((category) => category.groups)
         .find((groupItem) => groupItem.name === name);
       if (!group || group.tokens.length === 0) return "";
-      return group.tokens.map((token) => token.label).join(", ");
+      return applyWeightToTags(
+        group.tokens.map((token) => token.label),
+        weight,
+        expression,
+      );
     },
   );
 }
@@ -2953,10 +2986,7 @@ function GenerationServiceSelector({
               title="Refresh"
             >
               <RefreshCw
-                className={cn(
-                  "h-2.5 w-2.5",
-                  anlasLoading && "animate-spin",
-                )}
+                className={cn("h-2.5 w-2.5", anlasLoading && "animate-spin")}
               />
             </button>
           </div>
@@ -3500,7 +3530,12 @@ function ValidateResultModal({
   result,
   onClose,
 }: {
-  result: { valid: boolean; tier?: string; anlas?: number; error?: string } | null;
+  result: {
+    valid: boolean;
+    tier?: string;
+    anlas?: number;
+    error?: string;
+  } | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();

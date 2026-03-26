@@ -6,18 +6,62 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Minus,
+  Plus,
+  // RotateCcw, // [DISABLED] editor popover 전용
+  Scissors,
+  Trash2,
+} from "lucide-react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import type { GroupRefToken } from "@/lib/token";
+import type { GroupRefToken, TokenWeightExpression } from "@/lib/token";
 import type { PromptGroup } from "@preload/index.d";
 
 const POPOVER_WIDTH = 264;
 const POPOVER_GAP = 6;
 const POPOVER_EDGE_PADDING = 8;
+
+const MIN_WEIGHT = -1;
+const MAX_WEIGHT = 3;
+const WEIGHT_STEP = 0.1;
+
+function clampWeight(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, value));
+}
+
+function formatWeight(weight: number): string {
+  if (!Number.isFinite(weight)) return "1";
+  return weight.toFixed(2).replace(/\.?0+$/, "");
+}
+
+const BRACKET_MULT = 1.05;
+
+function previewWeightedTags(
+  tags: string[],
+  weight: number,
+  expression: "numerical" | "keyword",
+): string {
+  const joined = tags.join(", ");
+  if (Math.abs(weight - 1.0) <= 0.001) return joined;
+  if (expression === "keyword") {
+    const power = Math.round(
+      Math.log(Math.abs(weight)) / Math.log(BRACKET_MULT),
+    );
+    if (power > 0) return "{".repeat(power) + joined + "}".repeat(power);
+    if (power < 0) return "[".repeat(-power) + joined + "]".repeat(-power);
+    return joined;
+  }
+  const w = weight.toFixed(2).replace(/\.?0+$/, "");
+  return `${w}::${joined}::`;
+}
 
 interface SortableBindings {
   setNodeRef: (node: HTMLDivElement | null) => void;
@@ -45,7 +89,7 @@ interface GroupChipProps {
 function GroupChipCore({
   token,
   groups,
-  isEditable = false,
+  // isEditable = false, // [DISABLED] editor popover 전용
   readOnly = false,
   onChange,
   onDelete,
@@ -60,77 +104,94 @@ function GroupChipCore({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-  const newTagInputRef = useRef<HTMLInputElement | null>(null);
 
   const [activePopup, setActivePopup] = useState<
-    "preview" | "editor" | "delete" | null
+    "preview" | "editor" | "actions" | null
   >(null);
+  const [actionsCopied, setActionsCopied] = useState(false);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
-  const [draftName, setDraftName] = useState(token.groupName);
-  const [draftTags, setDraftTags] = useState<string[]>([]);
-  const [newTagDraft, setNewTagDraft] = useState("");
+  const [draftWeight, setDraftWeight] = useState(token.weight ?? 1);
+  const [draftExpression, setDraftExpression] = useState<TokenWeightExpression>(
+    token.weightExpression ?? "numerical",
+  );
+
+  // ── [DISABLED] editor popover 전용 state ──
+  // 기획상 editor popover를 사용하지 않기로 결정. 향후 재활성화 가능성을 위해 코드 보존.
+  // const newTagInputRef = useRef<HTMLInputElement | null>(null);
+  // const [draftName, setDraftName] = useState(token.groupName);
+  // const [draftTags, setDraftTags] = useState<string[]>([]);
+  // const [newTagDraft, setNewTagDraft] = useState("");
 
   const group = groups.find((item) => item.name === token.groupName);
   const currentTags =
     token.overrideTags ?? group?.tokens.map((item) => item.label) ?? [];
   const hasOverride = token.overrideTags !== undefined;
 
-  const openEditor = () => {
-    const currentGroup = groups.find((item) => item.name === token.groupName);
-    setDraftName(token.groupName);
-    setDraftTags(
-      token.overrideTags ??
-        currentGroup?.tokens.map((item) => item.label) ??
-        [],
-    );
-    setNewTagDraft("");
-    setActivePopup("editor");
-  };
+  // ── [DISABLED] editor popover 전용 핸들러 ──
+  // const openEditor = () => {
+  //   const currentGroup = groups.find((item) => item.name === token.groupName);
+  //   setDraftName(token.groupName);
+  //   setDraftTags(
+  //     token.overrideTags ??
+  //       currentGroup?.tokens.map((item) => item.label) ??
+  //       [],
+  //   );
+  //   setDraftWeight(token.weight ?? 1);
+  //   setDraftExpression(token.weightExpression ?? "numerical");
+  //   setNewTagDraft("");
+  //   setActivePopup("editor");
+  // };
+  //
+  // const handleApply = () => {
+  //   const trimmedName = draftName.trim() || token.groupName;
+  //   const targetGroup = groups.find((item) => item.name === trimmedName);
+  //   const dbTags = targetGroup?.tokens.map((item) => item.label) ?? [];
+  //   const tagsMatchDb =
+  //     draftTags.length === dbTags.length &&
+  //     draftTags.every((tag, index) => tag === dbTags[index]);
+  //
+  //   const hasWeight = Math.abs(draftWeight - 1.0) > 0.001;
+  //   onChange?.({
+  //     kind: "group",
+  //     groupName: trimmedName,
+  //     ...(tagsMatchDb ? {} : { overrideTags: draftTags }),
+  //     ...(hasWeight ? { weight: draftWeight } : {}),
+  //     ...(draftExpression === "keyword"
+  //       ? { weightExpression: "keyword" as const }
+  //       : {}),
+  //   });
+  //   setActivePopup(null);
+  // };
+  //
+  // const handleCancel = () => {
+  //   setActivePopup(null);
+  // };
+  //
+  // const handleResetTags = () => {
+  //   const targetGroup = groups.find((item) => item.name === draftName.trim());
+  //   setDraftTags(targetGroup?.tokens.map((item) => item.label) ?? []);
+  // };
+  //
+  // const handleAddTag = () => {
+  //   const tag = newTagDraft.trim();
+  //   if (!tag) return;
+  //   setDraftTags((previous) => [...previous, tag]);
+  //   setNewTagDraft("");
+  //   requestAnimationFrame(() => newTagInputRef.current?.focus());
+  // };
+  //
+  // const handleDeleteTag = (index: number) => {
+  //   setDraftTags((previous) => previous.filter((_, i) => i !== index));
+  // };
 
-  const handleApply = () => {
-    const trimmedName = draftName.trim() || token.groupName;
-    const targetGroup = groups.find((item) => item.name === trimmedName);
-    const dbTags = targetGroup?.tokens.map((item) => item.label) ?? [];
-    const tagsMatchDb =
-      draftTags.length === dbTags.length &&
-      draftTags.every((tag, index) => tag === dbTags[index]);
-
-    onChange?.({
-      kind: "group",
-      groupName: trimmedName,
-      ...(tagsMatchDb ? {} : { overrideTags: draftTags }),
-    });
-    setActivePopup(null);
-  };
-
-  const handleCancel = () => {
-    setActivePopup(null);
-  };
-
-  const handleResetTags = () => {
-    const targetGroup = groups.find((item) => item.name === draftName.trim());
-    setDraftTags(targetGroup?.tokens.map((item) => item.label) ?? []);
-  };
-
-  const handleAddTag = () => {
-    const tag = newTagDraft.trim();
-    if (!tag) return;
-    setDraftTags((previous) => [...previous, tag]);
-    setNewTagDraft("");
-    requestAnimationFrame(() => newTagInputRef.current?.focus());
-  };
-
-  const handleDeleteTag = (index: number) => {
-    setDraftTags((previous) => previous.filter((_, i) => i !== index));
-  };
-
-  useEffect(() => {
-    if (activePopup !== "editor") return;
-    const raf = window.requestAnimationFrame(() => {
-      newTagInputRef.current?.focus();
-    });
-    return () => window.cancelAnimationFrame(raf);
-  }, [activePopup]);
+  // ── [DISABLED] editor popover focus effect ──
+  // useEffect(() => {
+  //   if (activePopup !== "editor") return;
+  //   const raf = window.requestAnimationFrame(() => {
+  //     newTagInputRef.current?.focus();
+  //   });
+  //   return () => window.cancelAnimationFrame(raf);
+  // }, [activePopup]);
 
   useEffect(() => {
     if (activePopup === null) return;
@@ -143,7 +204,7 @@ function GroupChipCore({
       const viewportHeight = window.innerHeight;
       const popoverHeight =
         popoverRef.current?.offsetHeight ??
-        (activePopup === "editor" ? 300 : activePopup === "delete" ? 90 : 160);
+        (activePopup === "actions" ? 180 : 160);
 
       let left = rect.left;
       left = Math.max(POPOVER_EDGE_PADDING, left);
@@ -224,23 +285,35 @@ function GroupChipCore({
         tabIndex={0}
         data-token-chip="true"
         data-token-raw={`@{${token.groupName}}`}
-        onClick={() => {
-          if (readOnly) return;
-          if (activePopup === "editor") return;
-          setActivePopup((previous) =>
-            previous === "preview" ? null : "preview",
-          );
-        }}
-        onDoubleClick={() => {
-          if (readOnly) return;
-          if (isEditable) openEditor();
+        // onClick={(e) => {
+        //   if (readOnly) return;
+        //   if (activePopup === "editor") return;
+        //   if (e.detail === 2) {
+        //     setActionsCopied(false);
+        //     setDraftWeight(token.weight ?? 1);
+        //     setActivePopup((prev) => (prev === "actions" ? null : "actions"));
+        //     return;
+        //   }
+        //   setActivePopup((previous) =>
+        //     previous === "preview" ? null : "preview",
+        //   );
+        // }}
+        onDoubleClick={(e) => {
+          if (!onDelete) return;
+          e.preventDefault();
+          setActionsCopied(false);
+          setDraftWeight(token.weight ?? 1);
+          setDraftExpression(token.weightExpression ?? "numerical");
+          setActivePopup((prev) => (prev === "actions" ? null : "actions"));
+          return;
         }}
         onContextMenu={(e) => {
           if (!onDelete) return;
           e.preventDefault();
-          setActivePopup((previous) =>
-            previous === "delete" ? null : "delete",
-          );
+          setActionsCopied(false);
+          setDraftWeight(token.weight ?? 1);
+          setDraftExpression(token.weightExpression ?? "numerical");
+          setActivePopup((prev) => (prev === "actions" ? null : "actions"));
         }}
         onFocus={onTokenFocus}
         onKeyDown={(e) => {
@@ -265,6 +338,11 @@ function GroupChipCore({
       >
         <span className="shrink-0 font-semibold text-group">@</span>
         <span>{`{${token.groupName}}`}</span>
+        {token.weight !== undefined && Math.abs(token.weight - 1.0) > 0.001 ? (
+          <span className="font-mono text-[9px] text-group/60">
+            x{formatWeight(token.weight)}
+          </span>
+        ) : null}
         <ChevronDown className="h-2.5 w-2.5 shrink-0 text-group/80" />
       </div>
     </div>
@@ -304,7 +382,8 @@ function GroupChipCore({
             ))}
           </div>
         )}
-        {isEditable ? (
+        {/* [DISABLED] editor popover 진입 버튼 — 기획상 사용하지 않음 */}
+        {/* {isEditable ? (
           <div className="mt-2 flex items-center justify-between">
             <p className="text-[10px] text-muted-foreground/40">
               {t("groupChip.deleteHint")}
@@ -317,169 +396,385 @@ function GroupChipCore({
               {t("groupChip.edit")}
             </button>
           </div>
-        ) : null}
+        ) : null} */}
       </div>
     ) : null;
 
-  const editorPopover =
-    activePopup === "editor" ? (
+  // ── [DISABLED] editor popover JSX ──
+  // 기획상 editor popover를 사용하지 않기로 결정. 향후 재활성화 가능성을 위해 코드 보존.
+  // const editorPopover =
+  //   activePopup === "editor" ? (
+  //     <div
+  //       ref={popoverRef}
+  //       style={popoverStyle ?? hiddenStyle}
+  //       className="rounded-md border border-border bg-popover p-2.5 shadow-lg"
+  //       onClick={(e) => e.stopPropagation()}
+  //     >
+  //       <div className="mb-3">
+  //         <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted-foreground">
+  //           {t("groupChip.groupName")}
+  //         </label>
+  //         <input
+  //           value={draftName}
+  //           onChange={(e) => setDraftName(e.target.value)}
+  //           onKeyDown={(e) => {
+  //             if (e.key === "Enter") {
+  //               e.preventDefault();
+  //               handleApply();
+  //             }
+  //             if (e.key === "Escape") {
+  //               e.preventDefault();
+  //               handleCancel();
+  //             }
+  //           }}
+  //           className="h-8 w-full rounded border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60"
+  //         />
+  //       </div>
+  //
+  //       <div className="mb-3">
+  //         <div className="mb-1.5 flex items-center justify-between">
+  //           <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+  //             {t("groupChip.tags")}
+  //           </label>
+  //           <button
+  //             type="button"
+  //             onClick={handleResetTags}
+  //             title={t("groupChip.resetTags")}
+  //             aria-label={t("groupChip.resetTags")}
+  //             className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-muted-foreground"
+  //           >
+  //             <RotateCcw className="h-2.5 w-2.5" />
+  //           </button>
+  //         </div>
+  //
+  //         <div className="mb-1.5 max-h-30 space-y-1 overflow-y-auto">
+  //           {draftTags.length === 0 ? (
+  //             <p className="py-2 text-center text-xs text-muted-foreground/40">
+  //               {t("groupChip.noTags")}
+  //             </p>
+  //           ) : (
+  //             draftTags.map((tag, index) => (
+  //               <div
+  //                 key={index}
+  //                 className="group/tag flex items-center gap-1.5"
+  //               >
+  //                 <span className="flex-1 min-w-0 truncate rounded border border-border/40 bg-muted px-1.5 py-0.5 text-xs text-foreground/80">
+  //                   {tag}
+  //                 </span>
+  //                 <button
+  //                   type="button"
+  //                   onClick={() => handleDeleteTag(index)}
+  //                   title={t("common.delete")}
+  //                   aria-label={t("common.delete")}
+  //                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover/tag:opacity-100"
+  //                 >
+  //                   <Trash2 className="h-3 w-3" />
+  //                 </button>
+  //               </div>
+  //             ))
+  //           )}
+  //         </div>
+  //
+  //         <div className="flex gap-1">
+  //           <input
+  //             ref={newTagInputRef}
+  //             value={newTagDraft}
+  //             onChange={(e) => setNewTagDraft(e.target.value)}
+  //             onKeyDown={(e) => {
+  //               if (e.key === "Enter") {
+  //                 e.preventDefault();
+  //                 handleAddTag();
+  //               }
+  //               if (e.key === "Escape") {
+  //                 e.preventDefault();
+  //                 handleCancel();
+  //               }
+  //             }}
+  //             placeholder={t("groupChip.addTagPlaceholder")}
+  //             className="flex-1 min-w-0 h-7 rounded border border-border/60 bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
+  //           />
+  //           <button
+  //             type="button"
+  //             onClick={handleAddTag}
+  //             disabled={!newTagDraft.trim()}
+  //             title={t("promptGroupPanel.addTag")}
+  //             aria-label={t("promptGroupPanel.addTag")}
+  //             className="flex h-7 w-7 items-center justify-center rounded border border-primary/30 bg-primary/15 text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
+  //           >
+  //             <Plus className="h-3.5 w-3.5" />
+  //           </button>
+  //         </div>
+  //       </div>
+  //
+  //       <div className="mb-2.5">
+  //         <div className="flex items-center justify-between">
+  //           <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+  //             {t("tokenChip.editor.emphasis")}
+  //           </label>
+  //           <div className="flex items-center gap-1">
+  //             <button
+  //               type="button"
+  //               onClick={() =>
+  //                 setDraftWeight(clampWeight(draftWeight - WEIGHT_STEP))
+  //               }
+  //               disabled={draftWeight <= MIN_WEIGHT}
+  //               className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
+  //             >
+  //               <Minus className="h-2.5 w-2.5" />
+  //             </button>
+  //             <span className="w-7 text-center font-mono text-[10px] tabular-nums text-foreground/80">
+  //               {formatWeight(draftWeight)}
+  //             </span>
+  //             <button
+  //               type="button"
+  //               onClick={() =>
+  //                 setDraftWeight(clampWeight(draftWeight + WEIGHT_STEP))
+  //               }
+  //               disabled={draftWeight >= MAX_WEIGHT}
+  //               className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
+  //             >
+  //               <Plus className="h-2.5 w-2.5" />
+  //             </button>
+  //           </div>
+  //         </div>
+  //         <input
+  //           type="range"
+  //           min={MIN_WEIGHT}
+  //           max={MAX_WEIGHT}
+  //           step={0.01}
+  //           value={draftWeight}
+  //           onChange={(e) =>
+  //             setDraftWeight(clampWeight(Number(e.target.value)))
+  //           }
+  //           className="mt-1 h-1.5 w-full cursor-pointer accent-primary"
+  //         />
+  //         <div className="mt-2">
+  //           <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+  //             {t("tokenChip.editor.expression")}
+  //           </p>
+  //           <div className="flex items-center gap-3">
+  //             <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+  //               <input
+  //                 type="radio"
+  //                 name="group-editor-weight-expr"
+  //                 checked={draftExpression === "numerical"}
+  //                 onChange={() => setDraftExpression("numerical")}
+  //               />
+  //               {t("tokenChip.editor.numerical")}
+  //             </label>
+  //             <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+  //               <input
+  //                 type="radio"
+  //                 name="group-editor-weight-expr"
+  //                 checked={draftExpression === "keyword"}
+  //                 onChange={() => setDraftExpression("keyword")}
+  //               />
+  //               {t("tokenChip.editor.keyword")}
+  //             </label>
+  //           </div>
+  //         </div>
+  //       </div>
+  //
+  //       <p className="mb-2.5 text-[10px] text-muted-foreground/40">
+  //         {t("groupChip.note")}
+  //       </p>
+  //
+  //       <div className="flex items-center justify-end gap-1.5">
+  //         <button
+  //           type="button"
+  //           onClick={handleCancel}
+  //           className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
+  //         >
+  //           {t("common.cancel")}
+  //         </button>
+  //         <button
+  //           type="button"
+  //           onClick={handleApply}
+  //           className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
+  //         >
+  //           {t("groupChip.apply")}
+  //         </button>
+  //       </div>
+  //     </div>
+  //   ) : null;
+
+  const actionsRawText = previewWeightedTags(
+    currentTags,
+    draftWeight,
+    draftExpression,
+  );
+
+  const handleActionsApply = () => {
+    if (!onChange) return;
+    const hasWeight = Math.abs(draftWeight - 1.0) > 0.001;
+    onChange({
+      ...token,
+      weight: hasWeight ? draftWeight : undefined,
+      weightExpression: draftExpression === "keyword" ? "keyword" : undefined,
+    });
+    setActivePopup(null);
+  };
+
+  const actionsPopover =
+    activePopup === "actions" ? (
       <div
         ref={popoverRef}
         style={popoverStyle ?? hiddenStyle}
         className="rounded-md border border-border bg-popover p-2.5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3">
-          <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted-foreground">
-            {t("groupChip.groupName")}
+        <div className="mb-2">
+          <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+            {t("tokenChip.editor.rawToken")}
           </label>
           <input
-            value={draftName}
-            onChange={(e) => setDraftName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleApply();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                handleCancel();
-              }
-            }}
-            className="h-8 w-full rounded border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60"
+            value={actionsRawText}
+            readOnly
+            className="h-8 w-full rounded border border-border bg-background px-2 font-mono text-[11px] text-foreground/80 outline-none"
           />
         </div>
-
-        <div className="mb-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {t("groupChip.tags")}
-            </label>
-            <button
-              type="button"
-              onClick={handleResetTags}
-              title={t("groupChip.resetTags")}
-              aria-label={t("groupChip.resetTags")}
-              className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-muted-foreground"
-            >
-              <RotateCcw className="h-2.5 w-2.5" />
-            </button>
-          </div>
-
-          <div className="mb-1.5 max-h-30 space-y-1 overflow-y-auto">
-            {draftTags.length === 0 ? (
-              <p className="py-2 text-center text-xs text-muted-foreground/40">
-                {t("groupChip.noTags")}
-              </p>
-            ) : (
-              draftTags.map((tag, index) => (
-                <div
-                  key={index}
-                  className="group/tag flex items-center gap-1.5"
+        {onChange ? (
+          <div className="mb-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t("tokenChip.editor.emphasis")}
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraftWeight(clampWeight(draftWeight - WEIGHT_STEP))
+                  }
+                  disabled={draftWeight <= MIN_WEIGHT}
+                  className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
                 >
-                  <span className="flex-1 min-w-0 truncate rounded border border-border/40 bg-muted px-1.5 py-0.5 text-xs text-foreground/80">
-                    {tag}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteTag(index)}
-                    title={t("common.delete")}
-                    aria-label={t("common.delete")}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover/tag:opacity-100"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="flex gap-1">
+                  <Minus className="h-2.5 w-2.5" />
+                </button>
+                <span className="w-7 text-center font-mono text-[10px] tabular-nums text-foreground/80">
+                  {formatWeight(draftWeight)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraftWeight(clampWeight(draftWeight + WEIGHT_STEP))
+                  }
+                  disabled={draftWeight >= MAX_WEIGHT}
+                  className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
+                >
+                  <Plus className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            </div>
             <input
-              ref={newTagInputRef}
-              value={newTagDraft}
-              onChange={(e) => setNewTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  handleCancel();
-                }
-              }}
-              placeholder={t("groupChip.addTagPlaceholder")}
-              className="flex-1 min-w-0 h-7 rounded border border-border/60 bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
+              type="range"
+              min={MIN_WEIGHT}
+              max={MAX_WEIGHT}
+              step={0.01}
+              value={draftWeight}
+              onChange={(e) =>
+                setDraftWeight(clampWeight(Number(e.target.value)))
+              }
+              className="mt-1 h-1.5 w-full cursor-pointer accent-primary"
             />
+            <div className="mt-2">
+              <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t("tokenChip.editor.expression")}
+              </p>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+                  <input
+                    type="radio"
+                    name="group-weight-expr"
+                    checked={draftExpression === "numerical"}
+                    onChange={() => setDraftExpression("numerical")}
+                  />
+                  {t("tokenChip.editor.numerical")}
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+                  <input
+                    type="radio"
+                    name="group-weight-expr"
+                    checked={draftExpression === "keyword"}
+                    onChange={() => setDraftExpression("keyword")}
+                  />
+                  {t("tokenChip.editor.keyword")}
+                </label>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between gap-1.5 pt-2">
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={handleAddTag}
-              disabled={!newTagDraft.trim()}
-              title={t("promptGroupPanel.addTag")}
-              aria-label={t("promptGroupPanel.addTag")}
-              className="flex h-7 w-7 items-center justify-center rounded border border-primary/30 bg-primary/15 text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded border transition-colors",
+                actionsCopied
+                  ? "border-primary/50 text-primary"
+                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+              onClick={() => {
+                void navigator.clipboard.writeText(actionsRawText);
+                setActionsCopied(true);
+                setTimeout(() => setActionsCopied(false), 1200);
+              }}
+              title={t("promptInput.context.copy")}
+              aria-label={t("promptInput.context.copy")}
             >
-              <Plus className="h-3.5 w-3.5" />
+              {actionsCopied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
             </button>
+            {onDelete ? (
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                onClick={() => {
+                  void navigator.clipboard.writeText(actionsRawText);
+                  setActivePopup(null);
+                  onDelete();
+                }}
+                title={t("promptInput.context.cut")}
+                aria-label={t("promptInput.context.cut")}
+              >
+                <Scissors className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                onClick={() => {
+                  setActivePopup(null);
+                  onDelete();
+                }}
+                title={t("common.delete")}
+                aria-label={t("common.delete")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
-        </div>
-
-        <p className="mb-2.5 text-[10px] text-muted-foreground/40">
-          {t("groupChip.note")}
-        </p>
-
-        <div className="flex items-center justify-end gap-1.5">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
-          >
-            {t("groupChip.apply")}
-          </button>
-        </div>
-      </div>
-    ) : null;
-
-  const deletePopover =
-    activePopup === "delete" ? (
-      <div
-        ref={popoverRef}
-        style={popoverStyle ?? hiddenStyle}
-        className="rounded-md border border-border bg-popover p-2.5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="mb-2.5 text-xs text-foreground/80">
-          {t("groupChip.deleteConfirm", {
-            name: `@{${token.groupName}}`,
-          })}
-        </p>
-        <div className="flex items-center justify-end gap-1.5">
-          <button
-            type="button"
-            onClick={() => setActivePopup(null)}
-            className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActivePopup(null);
-              onDelete?.();
-            }}
-            className="flex h-7 items-center gap-1 rounded border border-destructive/50 bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20"
-          >
-            <Trash2 className="h-3 w-3" />
-            {t("common.delete")}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => setActivePopup(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            {onChange ? (
+              <button
+                type="button"
+                onClick={handleActionsApply}
+                className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
+              >
+                {t("groupChip.apply")}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     ) : null;
@@ -487,9 +782,9 @@ function GroupChipCore({
   const popoverContent =
     activePopup === "preview"
       ? previewPopover
-      : activePopup === "delete"
-        ? deletePopover
-        : editorPopover;
+      : activePopup === "actions"
+        ? actionsPopover
+        : null;
 
   const popover =
     activePopup !== null && typeof document !== "undefined"

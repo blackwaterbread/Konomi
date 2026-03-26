@@ -56,7 +56,6 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
@@ -81,10 +80,6 @@ const EMPTY_PROMPT_TAG_SUGGEST_STATS: PromptTagSuggestStats = {
   totalTags: 0,
   maxCount: 0,
   bucketThresholds: [],
-};
-const EMPTY_RAW_CONTEXT_MENU_STATE = {
-  hasSelection: false,
-  hasValue: false,
 };
 const ENABLE_BLOCK_MODE_CUSTOM_CURSOR = false;
 // Block mode keeps the older chip editor around, but the between-chip custom
@@ -411,14 +406,17 @@ export const PromptInput = memo(function PromptInput({
     useState<PromptTagSuggestStats>(EMPTY_PROMPT_TAG_SUGGEST_STATS);
   const [tagSuggestionOpen, setTagSuggestionOpen] = useState(false);
   const [tagSuggestionIndex, setTagSuggestionIndex] = useState(-1);
-  const [rawContextMenuState, setRawContextMenuState] = useState(
-    EMPTY_RAW_CONTEXT_MENU_STATE,
-  );
   const [rawScrollPosition, setRawScrollPosition] = useState({
     top: 0,
     left: 0,
   });
   const [rawOverlayScrollbarWidth, setRawOverlayScrollbarWidth] = useState(0);
+  const [rawContextMenu, setRawContextMenu] = useState<{
+    x: number;
+    y: number;
+    hasSelection: boolean;
+    hasValue: boolean;
+  } | null>(null);
   const tagSuggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1585,28 +1583,15 @@ export const PromptInput = memo(function PromptInput({
     );
     if (groupContext) {
       setGroupSearch(groupContext.search);
+      if (!groupDropdownOpen) {
+        setGroupDropdownIndex(0);
+      }
       setGroupDropdownOpen(true);
-      setGroupDropdownIndex(0);
     } else {
       setGroupDropdownOpen(false);
       setGroupSearch("");
     }
     return nextSnapshot;
-  };
-
-  const syncRawContextMenuState = () => {
-    const snapshot = syncRawSnapshot();
-    if (!snapshot) {
-      setRawContextMenuState({
-        hasSelection: false,
-        hasValue: value.length > 0,
-      });
-      return;
-    }
-    setRawContextMenuState({
-      hasSelection: snapshot.selectionStart !== snapshot.selectionEnd,
-      hasValue: snapshot.value.length > 0,
-    });
   };
 
   const commitRawValue = (
@@ -1694,7 +1679,7 @@ export const PromptInput = memo(function PromptInput({
 
   const replaceRawSelection = (nextText: string) => {
     const selection = getRawSelection();
-    if (!selection) return false;
+    if (!selection) return;
     const { currentValue, selectionStart, selectionEnd } = selection;
     const nextValue =
       currentValue.slice(0, selectionStart) +
@@ -1703,64 +1688,56 @@ export const PromptInput = memo(function PromptInput({
     const nextCursor = selectionStart + nextText.length;
     commitRawValue(
       nextValue,
-      {
-        start: nextCursor,
-        end: nextCursor,
-      },
-      {
-        value: currentValue,
-        selectionStart,
-        selectionEnd,
-      },
+      { start: nextCursor, end: nextCursor },
+      { value: currentValue, selectionStart, selectionEnd },
     );
-    return true;
   };
 
-  const handleRawCopy = async () => {
-    const selection = getRawSelection();
-    if (
-      !selection ||
-      selection.selectionStart === selection.selectionEnd ||
-      typeof navigator?.clipboard?.writeText !== "function"
-    ) {
-      return;
-    }
-    await navigator.clipboard.writeText(selection.selectedText);
-    queueRawSelection(selection.selectionStart, selection.selectionEnd);
+  const openRawContextMenu = (e: ReactMouseEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    const ta = e.currentTarget;
+    setRawContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      hasSelection: ta.selectionStart !== ta.selectionEnd,
+      hasValue: ta.value.length > 0,
+    });
   };
 
-  const handleRawCut = async () => {
-    const selection = getRawSelection();
-    if (
-      !selection ||
-      selection.selectionStart === selection.selectionEnd ||
-      typeof navigator?.clipboard?.writeText !== "function"
-    ) {
-      return;
-    }
-    await navigator.clipboard.writeText(selection.selectedText);
+  const closeRawContextMenu = () => setRawContextMenu(null);
+
+  const handleRawCut = () => {
+    const sel = getRawSelection();
+    if (!sel || sel.selectionStart === sel.selectionEnd) return;
+    void navigator.clipboard.writeText(sel.selectedText);
     replaceRawSelection("");
+    closeRawContextMenu();
   };
 
-  const handleRawPaste = async () => {
-    if (typeof navigator?.clipboard?.readText !== "function") return;
-    const pastedText = await navigator.clipboard.readText();
-    if (!pastedText) return;
-    replaceRawSelection(pastedText);
+  const handleRawCopy = () => {
+    const sel = getRawSelection();
+    if (!sel || sel.selectionStart === sel.selectionEnd) return;
+    void navigator.clipboard.writeText(sel.selectedText);
+    closeRawContextMenu();
+  };
+
+  const handleRawPaste = () => {
+    void navigator.clipboard.readText().then((text) => {
+      if (text) replaceRawSelection(text);
+    });
+    closeRawContextMenu();
   };
 
   const handleRawDelete = () => {
-    const selection = getRawSelection();
-    if (!selection || selection.selectionStart === selection.selectionEnd) {
-      return;
-    }
     replaceRawSelection("");
+    closeRawContextMenu();
   };
 
   const handleRawSelectAll = () => {
-    const selection = getRawSelection();
-    if (!selection || selection.currentValue.length === 0) return;
-    queueRawSelection(0, selection.currentValue.length);
+    const ta = rawInputRef.current;
+    if (!ta || ta.value.length === 0) return;
+    ta.setSelectionRange(0, ta.value.length);
+    closeRawContextMenu();
   };
 
   const handleRawKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -1911,279 +1888,351 @@ export const PromptInput = memo(function PromptInput({
   if (isRawMode) {
     return (
       <>
-        <ContextMenu
-          onOpenChange={(open) => {
-            if (open) syncRawContextMenuState();
-          }}
+        <div
+          ref={wrapperRef}
+          {...(allowExternalDrop ? { [CROSS_DROP_ZONE_ATTR]: "" } : {})}
+          className={cn(
+            "relative w-full min-w-0 rounded-lg border bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
+            externalDragOver ? "border-primary/60" : "border-border/60",
+            resizable && "resize-y",
+            className,
+          )}
+          style={{ minHeight, maxHeight }}
+          onDragOver={
+            allowExternalDrop
+              ? (e) => {
+                  if (e.dataTransfer.types.includes(DRAG_TOKEN_MIME)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                    setExternalDragOver(true);
+                  }
+                }
+              : undefined
+          }
+          onDragLeave={
+            allowExternalDrop ? () => setExternalDragOver(false) : undefined
+          }
+          onDrop={
+            allowExternalDrop
+              ? (e) => {
+                  setExternalDragOver(false);
+                  const data = e.dataTransfer.getData(DRAG_TOKEN_MIME);
+                  if (!data) return;
+                  e.preventDefault();
+                  handleRawDrop(data);
+                }
+              : undefined
+          }
         >
           <div
-            ref={wrapperRef}
-            {...(allowExternalDrop ? { [CROSS_DROP_ZONE_ATTR]: "" } : {})}
-            className={cn(
-              "relative w-full min-w-0 rounded-lg border bg-secondary/60 px-2 py-2 overflow-y-auto overflow-x-hidden",
-              externalDragOver ? "border-primary/60" : "border-border/60",
-              resizable && "resize-y",
-              className,
-            )}
-            style={{ minHeight, maxHeight }}
-            onDragOver={
-              allowExternalDrop
-                ? (e) => {
-                    if (e.dataTransfer.types.includes(DRAG_TOKEN_MIME)) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "copy";
-                      setExternalDragOver(true);
-                    }
-                  }
-                : undefined
-            }
-            onDragLeave={
-              allowExternalDrop ? () => setExternalDragOver(false) : undefined
-            }
-            onDrop={
-              allowExternalDrop
-                ? (e) => {
-                    setExternalDragOver(false);
-                    const data = e.dataTransfer.getData(DRAG_TOKEN_MIME);
-                    if (!data) return;
-                    e.preventDefault();
-                    handleRawDrop(data);
-                  }
-                : undefined
-            }
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-2 overflow-hidden"
           >
             <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-2 overflow-hidden"
+              data-prompt-raw-overlay-content=""
+              className="min-h-full w-full box-border px-1 py-0.5 text-sm leading-6 whitespace-pre-wrap break-words"
+              style={{
+                paddingRight: `calc(0.25rem + ${rawOverlayScrollbarWidth}px)`,
+                transform: `translate(${-rawScrollPosition.left}px, ${-rawScrollPosition.top}px)`,
+              }}
             >
-              <div
-                data-prompt-raw-overlay-content=""
-                className="min-h-full w-full box-border px-1 py-0.5 text-sm leading-6 whitespace-pre-wrap break-words"
-                style={{
-                  paddingRight: `calc(0.25rem + ${rawOverlayScrollbarWidth}px)`,
-                  transform: `translate(${-rawScrollPosition.left}px, ${-rawScrollPosition.top}px)`,
-                }}
-              >
-                {value.length === 0 ? (
-                  <span className="text-transparent">{"\u200b"}</span>
-                ) : (
-                  (() => {
-                    const segments: ReactNode[] = [];
-                    let cursor = 0;
+              {value.length === 0 ? (
+                <span className="text-transparent">{"\u200b"}</span>
+              ) : (
+                (() => {
+                  const segments: ReactNode[] = [];
+                  let cursor = 0;
 
-                    const decoratedRanges = [
-                      ...rawSyntaxIssueRanges.map((range) => ({
-                        ...range,
-                        decorationKind: "error" as const,
-                      })),
-                      ...rawHighlightRanges.map((range) => ({
-                        ...range,
-                        decorationKind: "highlight" as const,
-                      })),
-                    ].sort((left, right) =>
-                      left.start === right.start
-                        ? left.decorationKind === right.decorationKind
-                          ? right.end - left.end
-                          : left.decorationKind === "error"
-                            ? -1
-                            : 1
-                        : left.start - right.start,
+                  const decoratedRanges = [
+                    ...rawSyntaxIssueRanges.map((range) => ({
+                      ...range,
+                      decorationKind: "error" as const,
+                    })),
+                    ...rawHighlightRanges.map((range) => ({
+                      ...range,
+                      decorationKind: "highlight" as const,
+                    })),
+                  ].sort((left, right) =>
+                    left.start === right.start
+                      ? left.decorationKind === right.decorationKind
+                        ? right.end - left.end
+                        : left.decorationKind === "error"
+                          ? -1
+                          : 1
+                      : left.start - right.start,
+                  );
+
+                  decoratedRanges.forEach((range) => {
+                    if (range.start > cursor) {
+                      segments.push(
+                        <span
+                          key={`raw-plain-${cursor}`}
+                          className="text-transparent"
+                        >
+                          {value.slice(cursor, range.start)}
+                        </span>,
+                      );
+                    }
+
+                    segments.push(
+                      <span
+                        key={`raw-highlight-${range.start}-${range.end}`}
+                        data-prompt-raw-highlight={
+                          range.decorationKind === "highlight" ? "" : undefined
+                        }
+                        data-prompt-raw-syntax-error={
+                          range.decorationKind === "error" ? "" : undefined
+                        }
+                        className={cn(
+                          "rounded-[4px] box-decoration-clone",
+                          range.decorationKind === "error"
+                            ? "bg-destructive/42"
+                            : range.kind === "group"
+                              ? "bg-group/45"
+                              : getPromptWeightRawHighlightClass(range.weight),
+                          "text-transparent",
+                        )}
+                      >
+                        {value.slice(range.start, range.end)}
+                      </span>,
                     );
-
-                    decoratedRanges.forEach((range) => {
-                      if (range.start > cursor) {
-                        segments.push(
-                          <span
-                            key={`raw-plain-${cursor}`}
-                            className="text-transparent"
-                          >
-                            {value.slice(cursor, range.start)}
-                          </span>,
-                        );
-                      }
-
-                      segments.push(
-                        <span
-                          key={`raw-highlight-${range.start}-${range.end}`}
-                          data-prompt-raw-highlight={
-                            range.decorationKind === "highlight"
-                              ? ""
-                              : undefined
-                          }
-                          data-prompt-raw-syntax-error={
-                            range.decorationKind === "error" ? "" : undefined
-                          }
-                          className={cn(
-                            "rounded-[4px] box-decoration-clone",
-                            range.decorationKind === "error"
-                              ? "bg-destructive/42"
-                              : range.kind === "group"
-                                ? "bg-group/45"
-                                : getPromptWeightRawHighlightClass(
-                                    range.weight,
-                                  ),
-                            "text-transparent",
-                          )}
-                        >
-                          {value.slice(range.start, range.end)}
-                        </span>,
-                      );
-                      cursor = range.end;
-                    });
-
-                    if (cursor < value.length) {
-                      segments.push(
-                        <span
-                          key={`raw-plain-tail-${cursor}`}
-                          className="text-transparent"
-                        >
-                          {value.slice(cursor)}
-                        </span>,
-                      );
-                    }
-
-                    if (value.endsWith("\n")) {
-                      segments.push(
-                        <span
-                          key="raw-trailing-break"
-                          className="text-transparent"
-                        >
-                          {"\u200b"}
-                        </span>,
-                      );
-                    }
-
-                    return segments;
-                  })()
-                )}
-              </div>
-            </div>
-            <ContextMenuTrigger asChild>
-              <textarea
-                ref={rawInputRef}
-                value={value}
-                onChange={(e) =>
-                  commitRawValue(
-                    e.target.value,
-                    {
-                      start: e.target.selectionStart ?? e.target.value.length,
-                      end: e.target.selectionEnd ?? e.target.value.length,
-                    },
-                    rawSnapshotRef.current,
-                  )
-                }
-                onKeyDown={handleRawKeyDown}
-                onKeyUp={syncRawSnapshot}
-                onMouseUp={syncRawSnapshot}
-                onSelect={syncRawSnapshot}
-                onFocus={syncRawSnapshot}
-                onBlur={() => {
-                  setTimeout(() => {
-                    setGroupDropdownOpen(false);
-                  }, 150);
-                }}
-                onContextMenu={syncRawContextMenuState}
-                onScroll={(e) => {
-                  const nextTop = e.currentTarget.scrollTop;
-                  const nextLeft = e.currentTarget.scrollLeft;
-                  setRawScrollPosition((prev) => {
-                    if (prev.top === nextTop && prev.left === nextLeft) {
-                      return prev;
-                    }
-                    return { top: nextTop, left: nextLeft };
+                    cursor = range.end;
                   });
-                }}
-                aria-label={resolvedPlaceholder}
-                placeholder={resolvedPlaceholder}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                className="relative z-10 block w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/40"
-                style={{
-                  minHeight: Math.max(40, minHeight - 16),
-                  maxHeight: Math.max(40, maxHeight - 16),
+
+                  if (cursor < value.length) {
+                    segments.push(
+                      <span
+                        key={`raw-plain-tail-${cursor}`}
+                        className="text-transparent"
+                      >
+                        {value.slice(cursor)}
+                      </span>,
+                    );
+                  }
+
+                  if (value.endsWith("\n")) {
+                    segments.push(
+                      <span
+                        key="raw-trailing-break"
+                        className="text-transparent"
+                      >
+                        {"\u200b"}
+                      </span>,
+                    );
+                  }
+
+                  return segments;
+                })()
+              )}
+            </div>
+          </div>
+          <textarea
+            ref={rawInputRef}
+            value={value}
+            onChange={(e) =>
+              commitRawValue(
+                e.target.value,
+                {
+                  start: e.target.selectionStart ?? e.target.value.length,
+                  end: e.target.selectionEnd ?? e.target.value.length,
+                },
+                rawSnapshotRef.current,
+              )
+            }
+            onKeyDown={handleRawKeyDown}
+            onKeyUp={syncRawSnapshot}
+            onMouseUp={syncRawSnapshot}
+            onSelect={syncRawSnapshot}
+            onFocus={syncRawSnapshot}
+            onBlur={() => {
+              setTimeout(() => {
+                setGroupDropdownOpen(false);
+              }, 150);
+            }}
+            onContextMenu={openRawContextMenu}
+            onScroll={(e) => {
+              const nextTop = e.currentTarget.scrollTop;
+              const nextLeft = e.currentTarget.scrollLeft;
+              setRawScrollPosition((prev) => {
+                if (prev.top === nextTop && prev.left === nextLeft) {
+                  return prev;
+                }
+                return { top: nextTop, left: nextLeft };
+              });
+            }}
+            aria-label={resolvedPlaceholder}
+            placeholder={resolvedPlaceholder}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            className="relative z-10 block w-full resize-none bg-transparent px-1 py-0.5 text-sm leading-6 outline-none placeholder:text-muted-foreground/40"
+            style={{
+              minHeight: Math.max(40, minHeight - 16),
+              maxHeight: Math.max(40, maxHeight - 16),
+            }}
+          />
+        </div>
+        {autocompletePortal}
+        {rawContextMenu &&
+          createPortal(
+            <>
+              <div
+                role="presentation"
+                className="fixed inset-0 z-[3100]"
+                onClick={closeRawContextMenu}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  closeRawContextMenu();
                 }}
               />
-            </ContextMenuTrigger>
-            <ContextMenuContent className="min-w-40">
-              <ContextMenuItem
-                disabled={!rawContextMenuState.hasSelection}
-                onSelect={() => {
-                  void handleRawCut();
-                }}
+              <div
+                className="fixed z-[3200] min-w-40 rounded-md border border-border bg-popover py-1 shadow-lg"
+                style={{ top: rawContextMenu.y, left: rawContextMenu.x }}
+                onMouseDown={(e) => e.preventDefault()}
               >
-                {t("promptInput.context.cut")}
-              </ContextMenuItem>
-              <ContextMenuItem
-                disabled={!rawContextMenuState.hasSelection}
-                onSelect={() => {
-                  void handleRawCopy();
-                }}
-              >
-                {t("promptInput.context.copy")}
-              </ContextMenuItem>
-              <ContextMenuItem
-                onSelect={() => {
-                  void handleRawPaste();
-                }}
-              >
-                {t("promptInput.context.paste")}
-              </ContextMenuItem>
-              <ContextMenuItem
-                disabled={!rawContextMenuState.hasSelection}
-                onSelect={handleRawDelete}
-              >
-                {t("promptInput.context.delete")}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                disabled={!rawContextMenuState.hasValue}
-                onSelect={handleRawSelectAll}
-              >
-                {t("promptInput.context.selectAll")}
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </div>
-        </ContextMenu>
-        {autocompletePortal}
+                <button
+                  type="button"
+                  disabled={!rawContextMenu.hasSelection}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRawCut}
+                  className="flex w-full px-3 py-1.5 text-xs text-foreground/80 hover:bg-secondary disabled:opacity-40"
+                >
+                  {t("promptInput.context.cut")}
+                </button>
+                <button
+                  type="button"
+                  disabled={!rawContextMenu.hasSelection}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRawCopy}
+                  className="flex w-full px-3 py-1.5 text-xs text-foreground/80 hover:bg-secondary disabled:opacity-40"
+                >
+                  {t("promptInput.context.copy")}
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRawPaste}
+                  className="flex w-full px-3 py-1.5 text-xs text-foreground/80 hover:bg-secondary disabled:opacity-40"
+                >
+                  {t("promptInput.context.paste")}
+                </button>
+                <button
+                  type="button"
+                  disabled={!rawContextMenu.hasSelection}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRawDelete}
+                  className="flex w-full px-3 py-1.5 text-xs text-foreground/80 hover:bg-secondary disabled:opacity-40"
+                >
+                  {t("promptInput.context.delete")}
+                </button>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  disabled={!rawContextMenu.hasValue}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleRawSelectAll}
+                  className="flex w-full px-3 py-1.5 text-xs text-foreground/80 hover:bg-secondary disabled:opacity-40"
+                >
+                  {t("promptInput.context.selectAll")}
+                </button>
+              </div>
+            </>,
+            document.body,
+          )}
       </>
     );
   }
 
+  const getDraftSelection = () => {
+    const el = inputRef.current;
+    if (!el) return null;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    return { start, end, text: draft.slice(start, end) };
+  };
+
+  const handleDraftCopy = async () => {
+    const sel = getDraftSelection();
+    if (!sel || sel.start === sel.end) return;
+    await navigator.clipboard.writeText(sel.text);
+  };
+
+  const handleDraftCut = async () => {
+    const sel = getDraftSelection();
+    if (!sel || sel.start === sel.end) return;
+    await navigator.clipboard.writeText(sel.text);
+    const next = draft.slice(0, sel.start) + draft.slice(sel.end);
+    handleDraftChange(next);
+    requestAnimationFrame(() => {
+      inputRef.current?.setSelectionRange(sel.start, sel.start);
+    });
+  };
+
+  const handleDraftPaste = async () => {
+    const text = await navigator.clipboard.readText();
+    if (!text) return;
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? start;
+    const next = draft.slice(0, start) + text + draft.slice(end);
+    handleDraftChange(next);
+    const cursor = start + text.length;
+    requestAnimationFrame(() => {
+      inputRef.current?.setSelectionRange(cursor, cursor);
+    });
+  };
+
   const inputInner = (
     <>
-      <div
-        ref={inputAnchorRef}
-        className={cn(
-          "relative min-h-7 rounded-sm transition-colors",
-          isInputFocused && "bg-background/35",
-        )}
-      >
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => handleDraftChange(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          onPaste={handleInputPaste}
-          onFocus={() => {
-            setIsInputFocused(true);
-            setShowTrailingEmptyInput(true);
-            setInlineEditTokenId(null);
-            setChipCursorIndex(null);
-          }}
-          onBlur={handleInputBlur}
-          aria-label={resolvedPlaceholder}
-          placeholder={tokens.length === 0 ? resolvedPlaceholder : ""}
-          className="h-7 w-full bg-transparent px-1 text-sm leading-7 outline-none placeholder:text-muted-foreground/40"
-          style={{
-            color: "transparent",
-            caretColor: "var(--color-primary)",
-            textShadow:
-              draft.length > 0 ? "0 0 0 var(--color-foreground)" : undefined,
-          }}
-        />
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={inputAnchorRef}
+            className={cn(
+              "relative min-h-7 rounded-sm transition-colors",
+              isInputFocused && "bg-background/35",
+            )}
+          >
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => handleDraftChange(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onPaste={handleInputPaste}
+              onFocus={() => {
+                setIsInputFocused(true);
+                setShowTrailingEmptyInput(true);
+                setInlineEditTokenId(null);
+                setChipCursorIndex(null);
+              }}
+              onBlur={handleInputBlur}
+              aria-label={resolvedPlaceholder}
+              placeholder={tokens.length === 0 ? resolvedPlaceholder : ""}
+              className="h-7 w-full bg-transparent px-1 text-sm leading-7 outline-none placeholder:text-muted-foreground/40"
+              style={{
+                color: "transparent",
+                caretColor: "var(--color-primary)",
+                textShadow:
+                  draft.length > 0
+                    ? "0 0 0 var(--color-foreground)"
+                    : undefined,
+              }}
+            />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="min-w-40">
+          <ContextMenuItem onSelect={() => void handleDraftCut()}>
+            {t("promptInput.context.cut")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void handleDraftCopy()}>
+            {t("promptInput.context.copy")}
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void handleDraftPaste()}>
+            {t("promptInput.context.paste")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </>
   );
 
