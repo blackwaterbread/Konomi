@@ -7,6 +7,7 @@
   Trash2,
   Loader2,
   Eye,
+  EyeClosed,
   ExternalLink,
   Star,
   Tag,
@@ -763,16 +764,18 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 className={cn(
                   "h-5 w-5",
                   eyeHoverOnly && "opacity-0 group-hover:opacity-100",
-                  isPartial
-                    ? "text-primary/50 hover:text-primary"
-                    : isSelected
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-primary",
+                  isPartial || isSelected
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-primary",
                 )}
                 onClick={() => onToggle?.(folder.id)}
                 title={t("sidebar.folders.toggleAll")}
               >
-                <Eye className="h-3 w-3" />
+                {isPartial ? (
+                  <EyeClosed className="h-3 w-3" />
+                ) : (
+                  <Eye className="h-3 w-3" />
+                )}
               </Button>
               {hasChildren && (
                 <Button
