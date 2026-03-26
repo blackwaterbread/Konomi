@@ -1,6 +1,6 @@
 {
   "name": "konomi",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "packageManager": "bun@1.2.20",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
