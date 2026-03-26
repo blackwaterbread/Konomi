@@ -131,20 +131,32 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("folder:listSubdirectories", (_, id: number) =>
     bridge.request("folder:listSubdirectories", { id }),
   );
-  ipcMain.handle("folder:revealInExplorer", async (_, id: number) => {
-    const folders = (await bridge.request("folder:list")) as Array<{
-      id: number;
-      path: string;
-    }>;
-    const folder = folders.find((item) => item.id === id);
-    if (!folder) {
-      throw new Error("Folder not found");
-    }
-    const result = await shell.openPath(folder.path);
-    if (result) {
-      throw new Error(result);
-    }
-  });
+  // number: 상위 폴더 — DB에서 path 조회 후 열기
+  // string: 하위 폴더 — path 직접 전달 (DB에 없으므로)
+  // 이거 설계 꼭 이렇게 할 필요가 있었나? 클로드 이새키 진짜 패고싶다.
+  ipcMain.handle(
+    "folder:revealInExplorer",
+    async (_, idOrPath: number | string) => {
+      let targetPath: string;
+      if (typeof idOrPath === "number") {
+        const folders = (await bridge.request("folder:list")) as Array<{
+          id: number;
+          path: string;
+        }>;
+        const folder = folders.find((item) => item.id === idOrPath);
+        if (!folder) {
+          throw new Error("Folder not found");
+        }
+        targetPath = folder.path;
+      } else {
+        targetPath = idOrPath;
+      }
+      const result = await shell.openPath(targetPath);
+      if (result) {
+        throw new Error(result);
+      }
+    },
+  );
 
   ipcMain.handle("image:list", () =>
     bridge.request("image:list", undefined, 0),

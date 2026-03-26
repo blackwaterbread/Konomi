@@ -864,36 +864,51 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   isVisible,
   onToggle,
 }: SidebarSubfolderRowProps) {
+  const { t } = useTranslation();
   return (
-    <div
-      className={cn(
-        "group flex items-center gap-2 pl-5 pr-2 py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
-        isVisible
-          ? "text-muted-foreground hover:text-foreground"
-          : "text-muted-foreground/40 hover:text-muted-foreground",
-      )}
-      onClick={() => onToggle?.(subfolder.path, subfolder.folderId)}
-    >
-      <span className="h-3.5 w-3.5 shrink-0" />
-      <Folder className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 min-w-0 text-sm truncate">{subfolder.name}</span>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn(
-          "h-5 w-5",
-          isVisible
-            ? "opacity-0 group-hover:opacity-100 text-primary"
-            : "text-muted-foreground/40 hover:text-primary",
-        )}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle?.(subfolder.path, subfolder.folderId);
-        }}
-      >
-        <Eye className="h-3 w-3" />
-      </Button>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={cn(
+            "group flex items-center gap-2 pl-5 pr-2 py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            isVisible
+              ? "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground/40 hover:text-muted-foreground",
+          )}
+          onClick={() => onToggle?.(subfolder.path, subfolder.folderId)}
+        >
+          <span className="h-3.5 w-3.5 shrink-0" />
+          <Folder className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 min-w-0 text-sm truncate">
+            {subfolder.name}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-5 w-5",
+              isVisible
+                ? "opacity-0 group-hover:opacity-100 text-primary"
+                : "text-muted-foreground/40 hover:text-primary",
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle?.(subfolder.path, subfolder.folderId);
+            }}
+          >
+            <Eye className="h-3 w-3" />
+          </Button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onSelect={() => window.folder.revealInExplorer(subfolder.path)}
+        >
+          <ExternalLink className="h-4 w-4 mr-2" />
+          {t("sidebar.folders.openInExplorer")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });
 
