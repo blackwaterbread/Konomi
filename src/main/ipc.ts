@@ -110,7 +110,7 @@ export function registerIpcHandlers(): void {
     bridge.request("folder:create", { name, path }),
   );
   ipcMain.handle("folder:findDuplicates", (_, path: string) =>
-    bridge.request("folder:findDuplicates", { path }, 0),
+    bridge.request("folder:findDuplicates", { path }),
   );
   ipcMain.handle(
     "folder:resolveDuplicates",
@@ -126,7 +126,7 @@ export function registerIpcHandlers(): void {
     ) => bridge.request("folder:resolveDuplicates", { resolutions }),
   );
   ipcMain.handle("folder:delete", (_, id: number) =>
-    bridge.request("folder:delete", { id }, 0),
+    bridge.request("folder:delete", { id }),
   );
   ipcMain.handle("folder:rename", (_, id: number, name: string) =>
     bridge.request("folder:rename", { id, name }),
@@ -161,11 +161,8 @@ export function registerIpcHandlers(): void {
     },
   );
 
-  ipcMain.handle("image:list", () =>
-    bridge.request("image:list", undefined, 0),
-  );
   ipcMain.handle("image:getSearchPresetStats", () =>
-    bridge.request("image:getSearchPresetStats", undefined, 0),
+    bridge.request("image:getSearchPresetStats", undefined),
   );
   ipcMain.handle(
     "image:suggestTags",
@@ -198,7 +195,7 @@ export function registerIpcHandlers(): void {
         seedFilters?: number[];
         excludeTags?: string[];
       },
-    ) => bridge.request("image:listPage", query, 0),
+    ) => bridge.request("image:listPage", query),
   );
   ipcMain.handle(
     "image:listMatching",
@@ -220,7 +217,7 @@ export function registerIpcHandlers(): void {
         seedFilters?: number[];
         excludeTags?: string[];
       },
-    ) => bridge.request("image:listMatching", query, 0),
+    ) => bridge.request("image:listMatching", query),
   );
   ipcMain.handle("image:listByIds", (_, ids: number[]) =>
     bridge.request("image:listByIds", { ids }),
@@ -234,7 +231,7 @@ export function registerIpcHandlers(): void {
         folderIds?: number[];
         orderedFolderIds?: number[];
       },
-    ) => bridge.request("image:scan", options ?? {}, 0),
+    ) => bridge.request("image:scan", options ?? {}),
   );
   ipcMain.handle("image:cancelScan", () => bridge.request("image:cancelScan"));
   ipcMain.handle("image:setFavorite", (_, id: number, isFavorite: boolean) =>
@@ -242,10 +239,10 @@ export function registerIpcHandlers(): void {
   );
   ipcMain.handle("image:watch", () => bridge.request("image:watch"));
   ipcMain.handle("image:listIgnoredDuplicates", () =>
-    bridge.request("image:listIgnoredDuplicates", undefined, 0),
+    bridge.request("image:listIgnoredDuplicates", undefined),
   );
   ipcMain.handle("image:clearIgnoredDuplicates", () =>
-    bridge.request("image:clearIgnoredDuplicates", undefined, 0),
+    bridge.request("image:clearIgnoredDuplicates", undefined),
   );
 
   ipcMain.handle("prompt:listCategories", () =>
@@ -299,12 +296,12 @@ export function registerIpcHandlers(): void {
   );
 
   ipcMain.handle("image:computeHashes", () =>
-    bridge.request("image:computeHashes", undefined, 0),
+    bridge.request("image:computeHashes", undefined),
   );
   ipcMain.handle(
     "image:similarGroups",
     (_, threshold: number, jaccardThreshold?: number) =>
-      bridge.request("image:similarGroups", { threshold, jaccardThreshold }, 0),
+      bridge.request("image:similarGroups", { threshold, jaccardThreshold }),
   );
   ipcMain.handle(
     "image:similarReasons",
@@ -323,10 +320,10 @@ export function registerIpcHandlers(): void {
       }),
   );
   ipcMain.handle("image:resetHashes", () =>
-    bridge.request("image:resetHashes", undefined, 0),
+    bridge.request("image:resetHashes", undefined),
   );
   ipcMain.handle("image:refreshPrompts", () =>
-    bridge.request("image:refreshPrompts", undefined, 0),
+    bridge.request("image:refreshPrompts", undefined),
   );
 
   ipcMain.handle("category:list", () => bridge.request("category:list"));

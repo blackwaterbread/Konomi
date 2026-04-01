@@ -3,11 +3,10 @@ import path from "path";
 
 export type CancelToken = { cancelled: boolean };
 
-async function walkPngFiles(
+export async function* walkPngFiles(
   rootDir: string,
-  onFile: (filePath: string) => void,
   signal?: CancelToken,
-): Promise<void> {
+): AsyncGenerator<string> {
   const stack = [rootDir];
   while (stack.length > 0 && !signal?.cancelled) {
     const currentDir = stack.pop()!;
@@ -24,7 +23,7 @@ async function walkPngFiles(
         if (!entry.isFile()) continue;
         if (![".png", ".webp"].includes(path.extname(entry.name).toLowerCase()))
           continue;
-        onFile(fullPath);
+        yield fullPath;
       }
     } catch {
       // folder not accessible
@@ -43,7 +42,9 @@ export async function scanPngFiles(
   signal?: CancelToken,
 ): Promise<string[]> {
   const results: string[] = [];
-  await walkPngFiles(dir, (filePath) => results.push(filePath), signal);
+  for await (const filePath of walkPngFiles(dir, signal)) {
+    results.push(filePath);
+  }
   return results;
 }
 
@@ -52,32 +53,56 @@ export async function countPngFiles(
   signal?: CancelToken,
 ): Promise<number> {
   let count = 0;
-  await walkPngFiles(
-    dir,
-    () => {
-      count++;
-    },
-    signal,
-  );
+  for await (const _ of walkPngFiles(dir, signal)) {
+    count++;
+  }
   return count;
 }
 
 export async function withConcurrency<T>(
-  items: T[],
+  items: T[] | AsyncIterable<T>,
   limit: number,
   fn: (item: T) => Promise<void>,
   signal?: CancelToken,
 ): Promise<void> {
-  if (items.length === 0) return;
   const safeLimit = Math.max(1, Math.floor(limit));
-  let index = 0;
+
+  if (Array.isArray(items)) {
+    if (items.length === 0) return;
+    let index = 0;
+    const worker = async (): Promise<void> => {
+      while (index < items.length && !signal?.cancelled) {
+        const item = items[index++];
+        await fn(item);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(safeLimit, items.length) }, worker),
+    );
+    return;
+  }
+
+  // Async iterable path — pull items from the iterator and dispatch to workers
+  const iterator = items[Symbol.asyncIterator]();
+  let done = false;
+
+  const next = async (): Promise<T | undefined> => {
+    if (done || signal?.cancelled) return undefined;
+    const result = await iterator.next();
+    if (result.done) {
+      done = true;
+      return undefined;
+    }
+    return result.value;
+  };
+
   const worker = async (): Promise<void> => {
-    while (index < items.length && !signal?.cancelled) {
-      const item = items[index++];
+    while (!done && !signal?.cancelled) {
+      const item = await next();
+      if (item === undefined) break;
       await fn(item);
     }
   };
-  await Promise.all(
-    Array.from({ length: Math.min(safeLimit, items.length) }, worker),
-  );
+
+  await Promise.all(Array.from({ length: safeLimit }, worker));
 }

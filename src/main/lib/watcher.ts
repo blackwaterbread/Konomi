@@ -121,23 +121,46 @@ class FolderWatcher {
         if (this.sender.isDestroyed()) return;
         this.sender.send("image:searchStatsProgress", { done, total });
       };
-      const rows = await db.image.findMany({
-        where: { folderId },
-        select: {
-          id: true,
-          path: true,
-          width: true,
-          height: true,
-          model: true,
-          promptTokens: true,
-          negativePromptTokens: true,
-          characterPromptTokens: true,
-        },
-      });
-      const missingRows = rows.filter((row) => !fs.existsSync(row.path));
-      if (missingRows.length === 0 || this.sender.isDestroyed()) return;
-      for (let i = 0; i < missingRows.length; i += 400) {
-        const chunk = missingRows.slice(i, i + 400);
+      const QUERY_CHUNK = 2000;
+      const allMissing: Array<{
+        id: number;
+        path: string;
+        width: number;
+        height: number;
+        model: string;
+        promptTokens: string;
+        negativePromptTokens: string;
+        characterPromptTokens: string;
+      }> = [];
+      let cursor = 0;
+      // 폴더 이미지를 chunk 단위로 조회하여 메모리 사용량 제한
+      while (!this.sender.isDestroyed()) {
+        const rows = await db.image.findMany({
+          where: { folderId },
+          select: {
+            id: true,
+            path: true,
+            width: true,
+            height: true,
+            model: true,
+            promptTokens: true,
+            negativePromptTokens: true,
+            characterPromptTokens: true,
+          },
+          orderBy: { id: "asc" },
+          skip: cursor,
+          take: QUERY_CHUNK,
+        });
+        if (rows.length === 0) break;
+        cursor += rows.length;
+        for (const row of rows) {
+          if (!fs.existsSync(row.path)) allMissing.push(row);
+        }
+      }
+      if (allMissing.length === 0 || this.sender.isDestroyed()) return;
+      for (let i = 0; i < allMissing.length; i += 400) {
+        if (this.sender.isDestroyed()) break;
+        const chunk = allMissing.slice(i, i + 400);
         await db.image.deleteMany({
           where: { id: { in: chunk.map((row) => row.id) } },
         });
@@ -147,7 +170,7 @@ class FolderWatcher {
       if (!this.sender.isDestroyed()) {
         this.sender.send(
           "image:removed",
-          missingRows.map((row) => row.id),
+          allMissing.map((row) => row.id),
         );
       }
     } catch {

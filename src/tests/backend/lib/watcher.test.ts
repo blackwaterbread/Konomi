@@ -358,7 +358,9 @@ describe("watcher", () => {
     mocks.getFolders.mockResolvedValue([
       { id: 12, name: "reconcile", path: folderPath },
     ]);
-    mocks.db.image.findMany.mockResolvedValue([missingRowA, missingRowB]);
+    mocks.db.image.findMany
+      .mockResolvedValueOnce([missingRowA, missingRowB])
+      .mockResolvedValue([]);
 
     const { startWatching } = await loadWatcher();
     await startWatching(sender);

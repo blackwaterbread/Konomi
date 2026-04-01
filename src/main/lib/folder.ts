@@ -71,25 +71,33 @@ export async function getSubfolderPaths(folderId: number): Promise<string[]> {
   const folder = await db.folder.findUnique({ where: { id: folderId } });
   if (!folder) return [];
 
-  const images = await db.image.findMany({
-    where: { folderId },
-    select: { path: true },
-  });
-
   const sep = process.platform === "win32" ? "\\" : "/";
   const folderNorm =
     process.platform === "win32" ? folder.path.toLowerCase() : folder.path;
+  const prefix = folderNorm.endsWith(sep) ? folderNorm : folderNorm + sep;
 
+  const CHUNK = 5000;
   const subfolderSet = new Set<string>();
-  for (const img of images) {
-    const imgNorm =
-      process.platform === "win32" ? img.path.toLowerCase() : img.path;
-    const prefix = folderNorm.endsWith(sep) ? folderNorm : folderNorm + sep;
-    if (!imgNorm.startsWith(prefix)) continue;
-    const rel = imgNorm.slice(prefix.length);
-    const firstSep = rel.indexOf(sep);
-    if (firstSep === -1) continue; // image is directly in folder root
-    subfolderSet.add(prefix + rel.slice(0, firstSep));
+  let cursor = 0;
+  while (true) {
+    const images = await db.image.findMany({
+      where: { folderId },
+      select: { path: true },
+      orderBy: { id: "asc" },
+      skip: cursor,
+      take: CHUNK,
+    });
+    if (images.length === 0) break;
+    cursor += images.length;
+    for (const img of images) {
+      const imgNorm =
+        process.platform === "win32" ? img.path.toLowerCase() : img.path;
+      if (!imgNorm.startsWith(prefix)) continue;
+      const rel = imgNorm.slice(prefix.length);
+      const firstSep = rel.indexOf(sep);
+      if (firstSep === -1) continue; // image is directly in folder root
+      subfolderSet.add(prefix + rel.slice(0, firstSep));
+    }
   }
 
   return [...subfolderSet].sort();

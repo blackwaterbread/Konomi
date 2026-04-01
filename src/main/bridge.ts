@@ -21,13 +21,16 @@ type PendingRequest = {
   timeout: ReturnType<typeof setTimeout> | null;
 };
 
-// 요청이 영원히 안 끝나는걸 방지하는 Timeout Default 값인데 작업이 120초보다 오래 걸리면 중간에 지맘대로 뒤져버리는 문제가 있음
-const DEFAULT_REQUEST_TIMEOUT_MS = 120000;
+// [DEPRECATED] 기존에는 요청이 영원히 안 끝나는걸 방지하기 위한 Timeout이었으나,
+// 모든 무거운 작업이 CancelToken/signal 기반 취소를 지원하도록 재설계되어
+// Timeout으로 인한 강제 종료가 불필요해짐. 코드는 유지하되 기본값을 0(무한)으로 설정.
+const DEFAULT_REQUEST_TIMEOUT_MS = 0;
 const RESTART_DELAY_MS = 1000;
 
 function resolveRequestTimeoutMs(): number {
   const raw = Number(process.env.KONOMI_BRIDGE_TIMEOUT_MS);
   if (!Number.isFinite(raw)) return DEFAULT_REQUEST_TIMEOUT_MS;
+  if (raw <= 0) return 0;
   return Math.max(5000, Math.floor(raw));
 }
 

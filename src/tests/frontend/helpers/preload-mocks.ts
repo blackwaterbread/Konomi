@@ -138,7 +138,6 @@ export const preloadMocks = {
     readNaiMeta: vi.fn().mockResolvedValue(null),
     readMetaFromBuffer: vi.fn().mockResolvedValue(null),
     readFile: vi.fn(),
-    list: vi.fn().mockResolvedValue([]),
     getSearchPresetStats: vi.fn().mockResolvedValue({
       availableResolutions: [],
       availableModels: [],
@@ -271,7 +270,6 @@ export function resetPreloadMocks(): void {
   preloadMocks.image.readNaiMeta.mockReset().mockResolvedValue(null);
   preloadMocks.image.readMetaFromBuffer.mockReset().mockResolvedValue(null);
   preloadMocks.image.readFile.mockReset();
-  preloadMocks.image.list.mockReset().mockResolvedValue([]);
   preloadMocks.image.getSearchPresetStats.mockReset().mockResolvedValue({
     availableResolutions: [],
     availableModels: [],

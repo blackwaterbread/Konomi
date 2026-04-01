@@ -15,15 +15,28 @@ const syncState = vi.hoisted(() => ({
 vi.mock("../../../main/lib/scanner", () => ({
   scanPngFiles: async (folderPath: string) =>
     syncState.scanResults.get(folderPath) ?? [],
+  walkPngFiles: async function* (folderPath: string) {
+    const results = syncState.scanResults.get(folderPath) ?? [];
+    for (const item of results) {
+      yield item;
+    }
+  },
   withConcurrency: async <T>(
-    items: T[],
+    items: T[] | AsyncIterable<T>,
     _concurrency: number,
     worker: (item: T) => Promise<void> | void,
     signal?: { cancelled?: boolean },
   ) => {
-    for (const item of items) {
-      if (signal?.cancelled) break;
-      await worker(item);
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (signal?.cancelled) break;
+        await worker(item);
+      }
+    } else {
+      for await (const item of items) {
+        if (signal?.cancelled) break;
+        await worker(item);
+      }
     }
   },
 }));

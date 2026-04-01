@@ -13,7 +13,6 @@ import {
   getSubfolderPaths,
 } from "./lib/folder";
 import {
-  listImages,
   listImagesPage,
   listMatchingImages,
   listImagesByIds,
@@ -166,8 +165,6 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return getSubfolderPaths(id);
     }
 
-    case "image:list":
-      return listImages();
     case "image:getSearchPresetStats":
       return getImageSearchPresetStats(emitSearchStatsProgress);
     case "image:suggestTags":

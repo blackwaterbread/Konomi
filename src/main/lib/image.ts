@@ -5,7 +5,7 @@ import os from "os";
 import { Worker } from "worker_threads";
 import { getDB } from "./db";
 import { getFolders } from "./folder";
-import { scanPngFiles, withConcurrency } from "./scanner";
+import { scanPngFiles, walkPngFiles, withConcurrency } from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
 import { deleteSimilarityCacheForImageIds } from "./phash";
@@ -1204,12 +1204,6 @@ export function scheduleImageSearchPresetStatsRebuild(
 
 // ── Public API ────────────────────────────────────────────────
 
-export async function listImages(): Promise<ImageRow[]> {
-  return getDB().image.findMany({
-    orderBy: { createdAt: "desc" },
-  }) as unknown as Promise<ImageRow[]>;
-}
-
 export async function listImageIdsForFolder(
   folderId: number,
 ): Promise<number[]> {
@@ -1571,49 +1565,38 @@ function hashStringToUint32(input: string): number {
   return hash >>> 0;
 }
 
-function randomRank(seed: number, row: { id: number; path: string }): number {
-  return hashStringToUint32(`${seed}:${row.id}:${row.path}`);
+function randomRank(seed: number, id: number): number {
+  return hashStringToUint32(`${seed}:${id}`);
 }
 
-function compareRandomCandidates(
+function pickRandomCandidateIds(
   seed: number,
-  a: { id: number; path: string },
-  b: { id: number; path: string },
-): number {
-  const rankA = randomRank(seed, a);
-  const rankB = randomRank(seed, b);
-  if (rankA !== rankB) return rankA - rankB;
-  return a.id - b.id;
-}
-
-function pickRandomCandidates(
-  seed: number,
-  candidates: Array<{ id: number; path: string }>,
+  candidateIds: number[],
   limit: number,
 ): number[] {
-  if (limit <= 0 || candidates.length === 0) return [];
+  if (limit <= 0 || candidateIds.length === 0) return [];
 
-  const picked: Array<{ id: number; path: string }> = [];
-  for (const candidate of candidates) {
+  const picked: number[] = [];
+  for (const id of candidateIds) {
     if (picked.length < limit) {
-      picked.push(candidate);
+      picked.push(id);
       continue;
     }
 
     let worstIndex = 0;
     for (let i = 1; i < picked.length; i++) {
-      if (compareRandomCandidates(seed, picked[worstIndex], picked[i]) < 0) {
+      if (randomRank(seed, picked[worstIndex]) < randomRank(seed, picked[i])) {
         worstIndex = i;
       }
     }
 
-    if (compareRandomCandidates(seed, candidate, picked[worstIndex]) < 0) {
-      picked[worstIndex] = candidate;
+    if (randomRank(seed, id) < randomRank(seed, picked[worstIndex])) {
+      picked[worstIndex] = id;
     }
   }
 
-  picked.sort((a, b) => compareRandomCandidates(seed, a, b));
-  return picked.map((row) => row.id);
+  picked.sort((a, b) => randomRank(seed, a) - randomRank(seed, b));
+  return picked;
 }
 
 export async function listImagesPage(
@@ -1637,11 +1620,11 @@ export async function listImagesPage(
   if (normalized.builtinCategory === "random") {
     const candidates = await db.image.findMany({
       where,
-      select: { id: true, path: true },
+      select: { id: true },
     });
-    const ids = pickRandomCandidates(
+    const ids = pickRandomCandidateIds(
       normalized.randomSeed,
-      candidates,
+      candidates.map((c) => c.id),
       normalized.pageSize,
     );
     if (ids.length === 0) {
@@ -1696,9 +1679,12 @@ export async function listMatchingImages(
     return pageResult.rows;
   }
 
+  const offset = (normalized.page - 1) * normalized.pageSize;
   return (await getDB().image.findMany({
     where: buildImageWhereInput(normalized),
     orderBy: buildImageOrderBy(normalized.sortBy),
+    skip: offset,
+    take: normalized.pageSize,
   })) as unknown as ImageRow[];
 }
 
@@ -1988,13 +1974,11 @@ export async function syncAllFolders(
       for (const folder of folders) {
         if (signal?.cancelled) break;
 
-        const folderPaths = await scanPngFiles(folder.path, signal);
-        total += folderPaths.length;
-
         await withConcurrency(
-          folderPaths,
+          walkPngFiles(folder.path, signal),
           SIZE_SCAN_CONCURRENCY,
           async (incomingPath) => {
+            total++;
             if (existingPathSet.has(incomingPath)) return;
             if (await isIgnoredDuplicatePath(incomingPath)) return;
             incomingCandidates.push(incomingPath);

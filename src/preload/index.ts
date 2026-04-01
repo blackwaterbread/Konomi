@@ -37,7 +37,6 @@ contextBridge.exposeInMainWorld("image", {
   readMetaFromBuffer: (data: Uint8Array) =>
     ipcRenderer.invoke("image:readMetaFromBuffer", data),
   readFile: (path: string) => ipcRenderer.invoke("image:readFile", path),
-  list: () => ipcRenderer.invoke("image:list"),
   getSearchPresetStats: () => ipcRenderer.invoke("image:getSearchPresetStats"),
   suggestTags: (query: {
     prefix: string;
