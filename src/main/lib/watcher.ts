@@ -122,21 +122,13 @@ class FolderWatcher {
         this.sender.send("image:searchStatsProgress", { done, total });
       };
       const QUERY_CHUNK = 2000;
-      const allMissing: Array<{
-        id: number;
-        path: string;
-        width: number;
-        height: number;
-        model: string;
-        promptTokens: string;
-        negativePromptTokens: string;
-        characterPromptTokens: string;
-      }> = [];
-      let cursor = 0;
-      // 폴더 이미지를 chunk 단위로 조회하여 메모리 사용량 제한
+      const DELETE_BATCH = 400;
+      const allRemovedIds: number[] = [];
+      let lastId = 0;
+      // 폴더 이미지를 cursor 기반 chunk 단위로 조회하고, missing은 즉시 삭제
       while (!this.sender.isDestroyed()) {
         const rows = await db.image.findMany({
-          where: { folderId },
+          where: { folderId, id: { gt: lastId } },
           select: {
             id: true,
             path: true,
@@ -148,30 +140,28 @@ class FolderWatcher {
             characterPromptTokens: true,
           },
           orderBy: { id: "asc" },
-          skip: cursor,
           take: QUERY_CHUNK,
         });
         if (rows.length === 0) break;
-        cursor += rows.length;
-        for (const row of rows) {
-          if (!fs.existsSync(row.path)) allMissing.push(row);
+        lastId = rows[rows.length - 1].id;
+        const missing = rows.filter((row) => !fs.existsSync(row.path));
+        for (let i = 0; i < missing.length; i += DELETE_BATCH) {
+          if (this.sender.isDestroyed()) break;
+          const batch = missing.slice(i, i + DELETE_BATCH);
+          await db.image.deleteMany({
+            where: { id: { in: batch.map((row) => row.id) } },
+          });
+          await deleteSimilarityCacheForImageIds(batch.map((row) => row.id));
+          await decrementImageSearchStatsForRows(
+            batch,
+            emitSearchStatsProgress,
+          );
+          for (const row of batch) allRemovedIds.push(row.id);
         }
       }
-      if (allMissing.length === 0 || this.sender.isDestroyed()) return;
-      for (let i = 0; i < allMissing.length; i += 400) {
-        if (this.sender.isDestroyed()) break;
-        const chunk = allMissing.slice(i, i + 400);
-        await db.image.deleteMany({
-          where: { id: { in: chunk.map((row) => row.id) } },
-        });
-        await deleteSimilarityCacheForImageIds(chunk.map((row) => row.id));
-        await decrementImageSearchStatsForRows(chunk, emitSearchStatsProgress);
-      }
+      if (allRemovedIds.length === 0 || this.sender.isDestroyed()) return;
       if (!this.sender.isDestroyed()) {
-        this.sender.send(
-          "image:removed",
-          allMissing.map((row) => row.id),
-        );
+        this.sender.send("image:removed", allRemovedIds);
       }
     } catch {
       // ignore reconciliation failures

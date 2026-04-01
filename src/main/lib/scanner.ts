@@ -82,18 +82,28 @@ export async function withConcurrency<T>(
     return;
   }
 
-  // Async iterable path — pull items from the iterator and dispatch to workers
+  // Async iterable path — pull items from the iterator and dispatch to workers.
+  // AsyncGenerators are NOT reentrant: calling next() while a previous next()
+  // is still pending throws. We serialise pulls through a promise chain so that
+  // only one next() call is in flight at a time, while workers still run fn()
+  // concurrently.
   const iterator = items[Symbol.asyncIterator]();
   let done = false;
+  let pullChain: Promise<void> = Promise.resolve();
 
-  const next = async (): Promise<T | undefined> => {
-    if (done || signal?.cancelled) return undefined;
-    const result = await iterator.next();
-    if (result.done) {
-      done = true;
-      return undefined;
-    }
-    return result.value;
+  const next = (): Promise<T | undefined> => {
+    const ticket = pullChain.then(async () => {
+      if (done || signal?.cancelled) return undefined;
+      const result = await iterator.next();
+      if (result.done) {
+        done = true;
+        return undefined;
+      }
+      return result.value;
+    });
+    // Subsequent callers wait for *this* pull to finish before starting theirs.
+    pullChain = ticket.then(() => {}, () => {});
+    return ticket;
   };
 
   const worker = async (): Promise<void> => {

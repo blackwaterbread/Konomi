@@ -78,17 +78,16 @@ export async function getSubfolderPaths(folderId: number): Promise<string[]> {
 
   const CHUNK = 5000;
   const subfolderSet = new Set<string>();
-  let cursor = 0;
+  let lastId = 0;
   while (true) {
     const images = await db.image.findMany({
-      where: { folderId },
-      select: { path: true },
+      where: { folderId, id: { gt: lastId } },
+      select: { id: true, path: true },
       orderBy: { id: "asc" },
-      skip: cursor,
       take: CHUNK,
     });
     if (images.length === 0) break;
-    cursor += images.length;
+    lastId = images[images.length - 1].id;
     for (const img of images) {
       const imgNorm =
         process.platform === "win32" ? img.path.toLowerCase() : img.path;
