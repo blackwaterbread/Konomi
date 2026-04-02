@@ -498,21 +498,76 @@ function GroupChipCore({
           {t("groupChip.note")}
         </p>
 
-        <div className="flex items-center justify-end gap-1.5">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
-          >
-            {t("groupChip.apply")}
-          </button>
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded border transition-colors",
+                actionsCopied
+                  ? "border-primary/50 text-primary"
+                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+              onClick={() => {
+                void navigator.clipboard.writeText(draftTagsValue);
+                setActionsCopied(true);
+                setTimeout(() => setActionsCopied(false), 1200);
+              }}
+              title={t("promptInput.context.copy")}
+              aria-label={t("promptInput.context.copy")}
+            >
+              {actionsCopied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </button>
+            {onDelete ? (
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                onClick={() => {
+                  void navigator.clipboard.writeText(draftTagsValue);
+                  setActivePopup(null);
+                  onDelete();
+                }}
+                title={t("promptInput.context.cut")}
+                aria-label={t("promptInput.context.cut")}
+              >
+                <Scissors className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                onClick={() => {
+                  setActivePopup(null);
+                  onDelete();
+                }}
+                title={t("common.delete")}
+                aria-label={t("common.delete")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
+            >
+              {t("groupChip.apply")}
+            </button>
+          </div>
         </div>
       </div>
     ) : null;
