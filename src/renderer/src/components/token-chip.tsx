@@ -917,6 +917,7 @@ function TokenChipCore({
     showInlineSuggestions && typeof document !== "undefined"
       ? createPortal(
           <div
+            data-token-chip-popover
             style={
               inlineSuggestionStyle ?? {
                 position: "fixed",
@@ -958,6 +959,7 @@ function TokenChipCore({
       ? createPortal(
           <div
             ref={popoverRef}
+            data-token-chip-popover
             style={
               popoverStyle ?? {
                 position: "fixed",
@@ -1062,7 +1064,7 @@ function TokenChipCore({
                 {t("tokenChip.editor.expression")}
               </p>
               <div className="flex items-center gap-3">
-                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80 cursor-pointer">
                   <input
                     type="radio"
                     name={radioName}
@@ -1071,7 +1073,7 @@ function TokenChipCore({
                   />
                   {t("tokenChip.editor.numerical")}
                 </label>
-                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+                <label className="inline-flex items-center gap-1.5 text-xs text-foreground/80 cursor-pointer">
                   <input
                     type="radio"
                     name={radioName}
