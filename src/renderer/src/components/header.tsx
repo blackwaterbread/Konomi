@@ -7,6 +7,7 @@ import {
   Loader2,
   ImagePlus,
   Images,
+  Tags,
   SlidersHorizontal,
 } from "lucide-react";
 import infoImageUrl from "@/assets/images/info.webp";
@@ -101,7 +102,7 @@ function getActiveSearchToken(
   };
 }
 
-type ActivePanel = "gallery" | "generator" | "settings";
+type ActivePanel = "gallery" | "generator" | "settings" | "tagSearch";
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -571,6 +572,24 @@ const HeaderPanelButtons = memo(function HeaderPanelButtons({
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t("header.tooltip.gallery")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "hover:text-foreground",
+                  activePanel === "tagSearch"
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+                onClick={() => handlePanelClick("tagSearch")}
+              >
+                <Tags className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("header.tooltip.tagSearch")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>

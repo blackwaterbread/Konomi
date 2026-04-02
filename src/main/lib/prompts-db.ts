@@ -8,6 +8,27 @@ const MAX_SUGGEST_LIMIT = 20;
 const NORMALIZED_TAG_SQL = "LOWER(REPLACE(tag, '_', ' '))";
 const TAG_COUNT_BUCKET_PERCENTILES = [0.8, 0.95, 0.99, 0.999];
 
+export type PromptTagSearchQuery = {
+  name?: string;
+  sortBy?: "name" | "count";
+  order?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type PromptTagSearchRow = {
+  tag: string;
+  postCount: number;
+};
+
+export type PromptTagSearchResult = {
+  rows: PromptTagSearchRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type PromptTagSuggestQuery = {
   prefix: string;
   limit?: number;
@@ -289,4 +310,95 @@ export function suggestPromptTags(
     })),
     stats,
   };
+}
+
+const DEFAULT_SEARCH_PAGE_SIZE = 50;
+const MAX_SEARCH_PAGE_SIZE = 200;
+
+function escapeSearchLike(value: string): string {
+  return value.replace(/[%_\\]/g, "\\$&");
+}
+
+function wildcardToLike(pattern: string): string {
+  const escaped = escapeSearchLike(pattern);
+  return escaped.replace(/\*/g, "%");
+}
+
+export function searchPromptTags(
+  query: PromptTagSearchQuery,
+): PromptTagSearchResult {
+  const empty: PromptTagSearchResult = {
+    rows: [],
+    totalCount: 0,
+    page: 1,
+    pageSize: DEFAULT_SEARCH_PAGE_SIZE,
+    totalPages: 0,
+  };
+
+  if (!hasPromptsDB()) return empty;
+
+  const name = (query.name ?? "").trim();
+  const sortBy = query.sortBy === "name" ? "name" : "count";
+  const order = query.order === "asc" ? "ASC" : "DESC";
+  const page = Math.max(1, Math.floor(Number(query.page) || 1));
+  const pageSize = Math.max(
+    1,
+    Math.min(
+      MAX_SEARCH_PAGE_SIZE,
+      Math.floor(Number(query.pageSize) || DEFAULT_SEARCH_PAGE_SIZE),
+    ),
+  );
+
+  const hasWildcard = name.includes("*");
+  const hasName = name.length > 0;
+
+  let whereClause = "";
+  const whereParams: string[] = [];
+
+  if (hasName) {
+    if (hasWildcard) {
+      const likePattern = wildcardToLike(name.toLowerCase().replace(/_/g, " "));
+      whereClause = `WHERE ${NORMALIZED_TAG_SQL} LIKE ? ESCAPE '\\'`;
+      whereParams.push(likePattern);
+    } else {
+      const normalized = name.toLowerCase().replace(/_/g, " ");
+      whereClause = `WHERE ${NORMALIZED_TAG_SQL} LIKE ? ESCAPE '\\'`;
+      whereParams.push(`%${escapeSearchLike(normalized)}%`);
+    }
+  }
+
+  const orderColumn = sortBy === "name" ? "tag" : "post_count";
+  const orderClause = `ORDER BY ${orderColumn} ${order}${sortBy === "count" ? ", tag ASC" : ""}`;
+
+  try {
+    const db = getPromptsDB();
+
+    const countRow = db
+      .prepare(`SELECT COUNT(*) AS cnt FROM prompt_tag ${whereClause}`)
+      .get(...whereParams) as { cnt: number };
+    const totalCount = countRow?.cnt ?? 0;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const clampedPage = Math.min(page, totalPages);
+    const offset = (clampedPage - 1) * pageSize;
+
+    const rows = db
+      .prepare(
+        `SELECT tag, post_count AS postCount
+         FROM prompt_tag
+         ${whereClause}
+         ${orderClause}
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...whereParams, pageSize, offset) as PromptTagSearchRow[];
+
+    return {
+      rows,
+      totalCount,
+      page: clampedPage,
+      pageSize,
+      totalPages,
+    };
+  } catch {
+    return empty;
+  }
 }

@@ -286,6 +286,13 @@ contextBridge.exposeInMainWorld("promptBuilder", {
     ipcRenderer.invoke("prompt:reorderGroups", categoryId, ids),
   reorderTokens: (groupId: number, ids: number[]) =>
     ipcRenderer.invoke("prompt:reorderTokens", groupId, ids),
+  searchTags: (query: {
+    name?: string;
+    sortBy?: "name" | "count";
+    order?: "asc" | "desc";
+    page?: number;
+    pageSize?: number;
+  }) => ipcRenderer.invoke("prompt:searchTags", query),
 });
 contextBridge.exposeInMainWorld("category", {
   list: () => ipcRenderer.invoke("category:list"),

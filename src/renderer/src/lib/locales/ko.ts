@@ -55,6 +55,7 @@ const ko = {
       generator: "이미지 생성",
       gallery: "갤러리",
       settings: "설정",
+      tagSearch: "태그 검색",
       appInfo: "프로그램 정보",
     },
     progress: {
@@ -821,6 +822,17 @@ const ko = {
     installNow: "지금 설치",
     later: "나중에",
     downloadNow: "다운로드",
+  },
+  promptSearch: {
+    namePlaceholder: "태그 이름 검색 (* 와일드카드)",
+    sortName: "이름",
+    sortCount: "사용 수",
+    totalCount: "총 {{total}}개",
+    noResults: "결과 없음",
+    column: {
+      tag: "태그",
+      count: "사용 수",
+    },
   },
 } as const;
 

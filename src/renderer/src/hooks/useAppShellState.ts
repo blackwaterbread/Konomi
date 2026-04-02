@@ -8,7 +8,7 @@ import type {
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type ActivePanel = "gallery" | "generator" | "settings";
+export type ActivePanel = "gallery" | "generator" | "settings" | "tagSearch";
 
 const TOUR_COMPLETED_KEY = "konomi-tour-completed";
 const INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY =

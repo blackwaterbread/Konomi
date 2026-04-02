@@ -54,6 +54,7 @@ const en = {
       generator: "Generator",
       gallery: "Gallery",
       settings: "Settings",
+      tagSearch: "Tag Search",
       appInfo: "App Info",
     },
     progress: {
@@ -827,6 +828,17 @@ const en = {
     installNow: "Install Now",
     later: "Later",
     downloadNow: "Download",
+  },
+  promptSearch: {
+    namePlaceholder: "Search tag name (* wildcard)",
+    sortName: "Name",
+    sortCount: "Count",
+    totalCount: "{{total}} total",
+    noResults: "No results",
+    column: {
+      tag: "Tag",
+      count: "Count",
+    },
   },
 } as const;
 

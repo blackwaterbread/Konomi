@@ -76,7 +76,7 @@ import {
 import type { NaiConfigPatch, GenerateParams } from "./lib/nai-gen";
 import type { CancelToken } from "./lib/scanner";
 import { createLogger } from "./lib/logger";
-import { suggestPromptTags } from "./lib/prompts-db";
+import { suggestPromptTags, searchPromptTags } from "./lib/prompts-db";
 import { getDB, runMigrations } from "./lib/db";
 
 let scanCancelToken: CancelToken | null = null;
@@ -330,6 +330,16 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           limit?: number;
           exclude?: string[];
         }) ?? { prefix: "" },
+      );
+    case "prompt:searchTags":
+      return searchPromptTags(
+        (payload as {
+          name?: string;
+          sortBy?: "name" | "count";
+          order?: "asc" | "desc";
+          page?: number;
+          pageSize?: number;
+        }) ?? {},
       );
 
     case "image:computeHashes":

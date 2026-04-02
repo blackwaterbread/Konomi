@@ -137,6 +137,27 @@ export type PromptToken = {
   order: number;
   groupId: number;
 };
+export type PromptTagSearchQuery = {
+  name?: string;
+  sortBy?: "name" | "count";
+  order?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type PromptTagSearchRow = {
+  tag: string;
+  postCount: number;
+};
+
+export type PromptTagSearchResult = {
+  rows: PromptTagSearchRow[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type PromptTagSuggestQuery = {
   prefix: string;
   limit?: number;
@@ -252,6 +273,9 @@ declare global {
       deleteToken: (id: number) => Promise<void>;
       reorderGroups: (categoryId: number, ids: number[]) => Promise<void>;
       reorderTokens: (groupId: number, ids: number[]) => Promise<void>;
+      searchTags: (
+        query: PromptTagSearchQuery,
+      ) => Promise<PromptTagSearchResult>;
     };
     image: {
       readNaiMeta: (path: string) => Promise<ImageMeta | null>;

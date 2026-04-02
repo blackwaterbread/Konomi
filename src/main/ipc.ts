@@ -321,6 +321,19 @@ export function registerIpcHandlers(): void {
       },
     ) => bridge.request("prompt:suggestTags", query),
   );
+  ipcMain.handle(
+    "prompt:searchTags",
+    (
+      _,
+      query: {
+        name?: string;
+        sortBy?: "name" | "count";
+        order?: "asc" | "desc";
+        page?: number;
+        pageSize?: number;
+      },
+    ) => bridge.request("prompt:searchTags", query),
+  );
 
   ipcMain.handle("image:computeHashes", () =>
     bridge.request("image:computeHashes", undefined),

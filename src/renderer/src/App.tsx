@@ -12,6 +12,7 @@ import type { SidebarHandle } from "@/components/sidebar";
 import { ImageGallery } from "@/components/image-gallery";
 import { ImageDetail } from "@/components/image-detail";
 import { SettingsView } from "@/components/settings-view";
+import { PromptSearchView } from "@/components/prompt-search-view";
 import { CategoryDialog } from "@/components/category-dialog";
 import {
   GenerationView,
@@ -503,10 +504,15 @@ export default function App({ initialFolderCount = null }: AppProps) {
               isAnalyzing={isAnalyzing}
             />
           )}
-          {/* ImageGallery - 항상 마운트하고 설정 화면에서만 숨김 */}
+          {activePanel === "tagSearch" && (
+            <PromptSearchView
+              onClose={() => void handlePanelChange("gallery")}
+            />
+          )}
+          {/* ImageGallery - 항상 마운트하고 설정/태그검색 화면에서만 숨김 */}
           <div
             className={
-              activePanel === "settings"
+              activePanel === "settings" || activePanel === "tagSearch"
                 ? "hidden"
                 : "flex flex-1 overflow-hidden"
             }
