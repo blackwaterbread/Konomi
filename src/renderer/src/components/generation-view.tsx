@@ -41,6 +41,7 @@ import {
   Download,
   ArrowRightLeft,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -1665,6 +1666,7 @@ interface PromptSectionProps {
   setPrompt: Dispatch<SetStateAction<string>>;
   setNegativePrompt: Dispatch<SetStateAction<string>>;
   promptGroups: PromptGroup[];
+  highlightFilter?: string;
 }
 
 const PromptSection = memo(function PromptSection({
@@ -1675,6 +1677,7 @@ const PromptSection = memo(function PromptSection({
   setPrompt,
   setNegativePrompt,
   promptGroups,
+  highlightFilter,
 }: PromptSectionProps) {
   const { t } = useTranslation();
   const [showBlockPromptInput, setShowBlockPromptInput] = useState(false);
@@ -1750,6 +1753,7 @@ const PromptSection = memo(function PromptSection({
         maxHeight={460}
         groups={promptGroups}
         allowExternalDrop
+        highlightFilter={highlightFilter}
       />
     </div>
   );
@@ -1761,6 +1765,7 @@ interface CharacterPromptCardProps {
   aiChoice: boolean;
   hasDuplicatePosition: boolean;
   promptGroups: PromptGroup[];
+  highlightFilter?: string;
   onSetInputMode: (index: number, inputMode: CharacterPromptMode) => void;
   onRemove: (index: number) => void;
   onPositionChange: (index: number, position: CharacterPosition) => void;
@@ -1773,6 +1778,7 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
   aiChoice,
   hasDuplicatePosition,
   promptGroups,
+  highlightFilter,
   onSetInputMode,
   onRemove,
   onPositionChange,
@@ -1869,6 +1875,7 @@ const CharacterPromptCard = memo(function CharacterPromptCard({
         className="min-w-0"
         groups={promptGroups}
         allowExternalDrop
+        highlightFilter={highlightFilter}
       />
     </div>
   );
@@ -1880,6 +1887,7 @@ interface CharacterPromptsSectionProps {
   aiChoice: boolean;
   setAiChoice: Dispatch<SetStateAction<boolean>>;
   promptGroups: PromptGroup[];
+  highlightFilter?: string;
 }
 
 const CharacterPromptsSection = memo(function CharacterPromptsSection({
@@ -1888,6 +1896,7 @@ const CharacterPromptsSection = memo(function CharacterPromptsSection({
   aiChoice,
   setAiChoice,
   promptGroups,
+  highlightFilter,
 }: CharacterPromptsSectionProps) {
   const { t } = useTranslation();
   const [characterAddOpen, setCharacterAddOpen] = useState(false);
@@ -2048,6 +2057,7 @@ const CharacterPromptsSection = memo(function CharacterPromptsSection({
               aiChoice={aiChoice}
               hasDuplicatePosition={duplicatePositions.has(character.position)}
               promptGroups={promptGroups}
+              highlightFilter={highlightFilter}
               onSetInputMode={handleSetInputMode}
               onRemove={handleRemoveCharacter}
               onPositionChange={handlePositionChange}
@@ -3065,6 +3075,17 @@ const LeftPanel = memo(function LeftPanel({
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const isNovelAIService = selectedService === "novelai";
+
+  const [promptSearchInput, setPromptSearchInput] = useState("");
+  const [promptSearchFilter, setPromptSearchFilter] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setPromptSearchFilter(promptSearchInput),
+      150,
+    );
+    return () => window.clearTimeout(timer);
+  }, [promptSearchInput]);
+
   const handleResetAdvancedParams = useCallback(() => {
     setSteps(NAI_GEN_DEFAULTS.steps);
     setScale(NAI_GEN_DEFAULTS.scale);
@@ -3128,6 +3149,23 @@ const LeftPanel = memo(function LeftPanel({
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-5 w-full">
                 <ModelSection model={model} setModel={setModel} />
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                  <input
+                    value={promptSearchInput}
+                    onChange={(e) => setPromptSearchInput(e.target.value)}
+                    placeholder={t("generation.promptSearch.placeholder")}
+                    className="h-7 w-full rounded border border-border/40 bg-muted/50 pl-7 pr-7 text-xs text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50"
+                  />
+                  {promptSearchInput && (
+                    <button
+                      onClick={() => setPromptSearchInput("")}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 <PromptSection
                   promptInputMode={promptInputMode}
                   setPromptInputMode={setPromptInputMode}
@@ -3136,6 +3174,7 @@ const LeftPanel = memo(function LeftPanel({
                   setPrompt={setPrompt}
                   setNegativePrompt={setNegativePrompt}
                   promptGroups={promptGroups}
+                  highlightFilter={promptSearchFilter}
                 />
                 <CharacterPromptsSection
                   characterPrompts={characterPrompts}
@@ -3143,6 +3182,7 @@ const LeftPanel = memo(function LeftPanel({
                   aiChoice={aiChoice}
                   setAiChoice={setAiChoice}
                   promptGroups={promptGroups}
+                  highlightFilter={promptSearchFilter}
                 />
                 <ReferenceSections
                   i2iRef={i2iRef}

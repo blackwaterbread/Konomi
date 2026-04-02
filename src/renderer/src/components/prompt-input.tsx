@@ -186,6 +186,7 @@ interface PromptInputProps {
   maxHeight?: number;
   groups?: PromptGroup[];
   allowExternalDrop?: boolean;
+  highlightFilter?: string;
 }
 
 function createTokenId(): string {
@@ -344,6 +345,7 @@ export const PromptInput = memo(function PromptInput({
   maxHeight = 420,
   groups: groupsProp,
   allowExternalDrop = false,
+  highlightFilter,
 }: PromptInputProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder = placeholder ?? t("promptInput.placeholder");
@@ -393,6 +395,10 @@ export const PromptInput = memo(function PromptInput({
   const [autocompleteStyle, setAutocompleteStyle] =
     useState<CSSProperties | null>(null);
   const isRawMode = displayMode === "raw";
+
+  const normalizedHighlightFilter = highlightFilter
+    ? highlightFilter.trim().toLowerCase().replace(/_/g, " ")
+    : "";
 
   // @ group autocomplete
   const [groups, setGroups] = useState<PromptGroup[]>(groupsProp ?? []);
@@ -2400,6 +2406,13 @@ export const PromptInput = memo(function PromptInput({
                     token={token as PromptToken & { id: string }}
                     raw={tokenToRawString(token)}
                     isEditable={true}
+                    highlighted={
+                      normalizedHighlightFilter.length > 0 &&
+                      token.text
+                        .toLowerCase()
+                        .replace(/_/g, " ")
+                        .includes(normalizedHighlightFilter)
+                    }
                     tagSuggestionExclude={tokens
                       .filter(
                         (t): t is EditableToken & PromptToken =>

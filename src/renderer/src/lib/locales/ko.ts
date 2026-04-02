@@ -334,6 +334,8 @@ const ko = {
     applied: "적용됨",
     addFailed: "카테고리 추가 실패: {{message}}",
     removeFailed: "카테고리 제거 실패: {{message}}",
+    searchPlaceholder: "카테고리 검색...",
+    noResults: "일치하는 카테고리가 없습니다.",
   },
   duplicateResolution: {
     title: {
@@ -419,6 +421,9 @@ const ko = {
     folderSummary: "{{first}} 외 {{count}}개 폴더",
   },
   generation: {
+    promptSearch: {
+      placeholder: "프롬프트 태그 검색...",
+    },
     sections: {
       model: "모델",
       prompt: "프롬프트",
@@ -759,6 +764,8 @@ const ko = {
       favorites: "즐겨찾기",
       randomPick: "랜덤 픽",
       empty: "카테고리가 없습니다",
+      noResults: "일치하는 카테고리가 없습니다",
+      searchPlaceholder: "카테고리 검색...",
       reroll: "다시 뽑기",
       addByPrompt: "프롬프트로 추가",
     },

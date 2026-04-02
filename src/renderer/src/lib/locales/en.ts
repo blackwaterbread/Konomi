@@ -334,6 +334,8 @@ const en = {
     applied: "Applied",
     addFailed: "Failed to add category: {{message}}",
     removeFailed: "Failed to remove category: {{message}}",
+    searchPlaceholder: "Search categories...",
+    noResults: "No matching categories.",
   },
   duplicateResolution: {
     title: {
@@ -419,6 +421,9 @@ const en = {
     folderSummary: "{{first}} and {{count}} more folders",
   },
   generation: {
+    promptSearch: {
+      placeholder: "Search prompt tags...",
+    },
     sections: {
       model: "Model",
       prompt: "Prompt",
@@ -764,6 +769,8 @@ const en = {
       favorites: "Favorites",
       randomPick: "Random Pick",
       empty: "No categories",
+      noResults: "No matching categories",
+      searchPlaceholder: "Search categories...",
       reroll: "Pick Again",
       addByPrompt: "Add by Prompt",
     },
