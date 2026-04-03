@@ -29,6 +29,7 @@ import {
   clearIgnoredDuplicatePaths,
   ensureIgnoredDuplicatePathsLoaded,
   refreshImagePrompts,
+  rescanAllMetadata,
 } from "./lib/image";
 import {
   listCategories as listPromptCategories,
@@ -389,6 +390,14 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         (done, total) =>
           utilitySender.send("image:refreshPromptsProgress", { done, total }),
         (images) => utilitySender.send("image:batch", images),
+      );
+
+    case "image:rescanMetadata":
+      return rescanAllMetadata(
+        (done, total) =>
+          utilitySender.send("image:rescanMetadataProgress", { done, total }),
+        (images) => utilitySender.send("image:batch", images),
+        emitSearchStatsProgress,
       );
 
     case "category:list":

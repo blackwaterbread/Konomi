@@ -747,6 +747,14 @@ const ko = {
       success: "{{count}}개 이미지의 프롬프트 정보가 업데이트되었습니다.",
       noTargets: "새로고침할 이미지가 없습니다.",
     },
+    metadataRescan: {
+      title: "메타데이터 재스캔",
+      description: "모든 이미지의 메타데이터를 파일에서 다시 읽습니다.",
+      action: "재스캔",
+      rescanning: "재스캔 중... ({{done}}/{{total}})",
+      success: "{{count}}개 이미지의 메타데이터가 업데이트되었습니다.",
+      noChanges: "변경된 메타데이터가 없습니다.",
+    },
     database: {
       title: "데이터베이스 정보",
       imageSize: "이미지 데이터베이스 용량",

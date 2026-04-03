@@ -309,6 +309,10 @@ declare global {
       computeHashes: () => Promise<number>;
       resetHashes: () => Promise<void>;
       refreshPrompts: () => Promise<number>;
+      rescanMetadata: () => Promise<number>;
+      onRescanMetadataProgress: (
+        cb: (data: { done: number; total: number }) => void,
+      ) => () => void;
       similarGroups: (
         threshold: number,
         jaccardThreshold?: number,

@@ -26,6 +26,7 @@ function renderSettingsView(
     onClose: vi.fn(),
     onResetHashes: vi.fn().mockResolvedValue(undefined),
     onRefreshPrompts: vi.fn().mockResolvedValue(0),
+    onRescanMetadata: vi.fn().mockResolvedValue(0),
     isAnalyzing: false,
     bindings: DEFAULT_KEYBINDINGS,
     onUpdateBinding: vi.fn(),

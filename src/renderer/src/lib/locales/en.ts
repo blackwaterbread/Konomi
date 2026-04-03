@@ -752,6 +752,14 @@ const en = {
       success: "Updated prompt info for {{count}} images.",
       noTargets: "No images to refresh.",
     },
+    metadataRescan: {
+      title: "Rescan Metadata",
+      description: "Re-read metadata from all image files.",
+      action: "Rescan",
+      rescanning: "Rescanning... ({{done}}/{{total}})",
+      success: "Updated metadata for {{count}} images.",
+      noChanges: "No metadata changes found.",
+    },
     database: {
       title: "Database Info",
       imageSize: "Image database size",

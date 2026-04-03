@@ -528,6 +528,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
               onClose={() => void handlePanelChange("gallery")}
               onResetHashes={handleResetHashes}
               onRefreshPrompts={() => window.image.refreshPrompts()}
+              onRescanMetadata={() => window.image.rescanMetadata()}
               isAnalyzing={isAnalyzing}
               bindings={bindings}
               onUpdateBinding={updateBinding}

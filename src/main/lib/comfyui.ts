@@ -28,23 +28,67 @@ function followLink(graph: ComfyPrompt, val: unknown): ComfyNode | null {
 }
 
 /**
+ * Resolve a numeric value from a node input.
+ * The value can be an inline number, or a link to a node whose output holds it.
+ */
+function resolveNumber(
+  graph: ComfyPrompt,
+  node: ComfyNode,
+  inputKey: string,
+): number {
+  const val = node.inputs[inputKey];
+  if (typeof val === "number") return val;
+
+  const target = followLink(graph, val);
+  if (!target) return NaN;
+
+  for (const key of ["seed", "noise_seed", "value", "INT"]) {
+    if (typeof target.inputs[key] === "number") return target.inputs[key];
+  }
+
+  return NaN;
+}
+
+/**
  * Resolve a text value from a node input.
- * The value can be an inline string, or a link to a text-producing node.
+ * Recursively follows links through concatenation and string-processing nodes.
  */
 function resolveText(
   graph: ComfyPrompt,
   node: ComfyNode,
   inputKey: string,
+  depth = 0,
 ): string {
+  if (depth > 16) return "";
+
   const val = node.inputs[inputKey];
   if (typeof val === "string") return val;
 
   const target = followLink(graph, val);
   if (!target) return "";
 
-  // Common text-holding fields across various node types
+  // Text Concatenate (JPS) — join text1..text5
+  if (/Text Concatenate/i.test(target.class_type)) {
+    const d = target.inputs["delimiter"];
+    const delim =
+      d === "space" ? " " : d === "newline" ? "\n" : d === "none" ? "" : ", ";
+    const parts: string[] = [];
+    for (const key of ["text1", "text2", "text3", "text4", "text5"]) {
+      const t = resolveText(graph, target, key, depth + 1);
+      if (t) parts.push(t);
+    }
+    return parts.join(delim);
+  }
+
+  // StringFunction — pass through text_a
+  if (/StringFunction/i.test(target.class_type)) {
+    return resolveText(graph, target, "text_a", depth + 1);
+  }
+
+  // Generic text node — try common keys recursively
   for (const key of ["text", "text_a", "text_1", "string", "STRING"]) {
-    if (typeof target.inputs[key] === "string") return target.inputs[key];
+    const t = resolveText(graph, target, key, depth + 1);
+    if (t) return t;
   }
 
   return "";
@@ -118,7 +162,7 @@ function extractFromStandardSampler(
   return {
     positive: posText,
     negative: negText,
-    seed: Number(node.inputs["seed"] ?? node.inputs["noise_seed"] ?? 0),
+    seed: resolveNumber(graph, node, "seed") || resolveNumber(graph, node, "noise_seed") || 0,
     steps: Number(node.inputs["steps"] ?? 0),
     cfg: Number(node.inputs["cfg"] ?? 0),
     samplerName: String(node.inputs["sampler_name"] ?? ""),
@@ -161,7 +205,7 @@ function extractFromContextSampler(
   return {
     positive,
     negative,
-    seed: Number(samplerNode.inputs["seed"] ?? src.inputs["seed"] ?? 0),
+    seed: resolveNumber(graph, samplerNode, "seed") || resolveNumber(graph, src, "seed") || 0,
     steps: Number(samplerNode.inputs["steps"] ?? 0),
     cfg: Number(src.inputs["cfg"] ?? 0),
     samplerName: String(src.inputs["sampler_name"] ?? ""),

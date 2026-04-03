@@ -365,6 +365,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:refreshPrompts", () =>
     bridge.request("image:refreshPrompts", undefined),
   );
+  ipcMain.handle("image:rescanMetadata", () =>
+    bridge.request("image:rescanMetadata", undefined),
+  );
 
   ipcMain.handle("category:list", () => bridge.request("category:list"));
   ipcMain.handle("category:create", (_, name: string) =>

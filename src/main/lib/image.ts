@@ -2183,7 +2183,7 @@ export async function syncAllFolders(
               ),
               source: meta?.source ?? "unknown",
               model: meta?.model ?? "",
-              seed: meta?.seed ?? 0,
+              seed: Number.isFinite(meta?.seed) ? meta!.seed : 0,
               width: meta?.width ?? 0,
               height: meta?.height ?? 0,
               sampler: meta?.sampler ?? "",
@@ -2384,6 +2384,127 @@ export async function refreshImagePrompts(
           source: meta.source,
           model: meta.model ?? "",
           seed: meta.seed ?? 0,
+          width: meta.width ?? 0,
+          height: meta.height ?? 0,
+          sampler: meta.sampler ?? "",
+          steps: meta.steps ?? 0,
+          cfgScale: meta.cfgScale ?? 0,
+          cfgRescale: meta.cfgRescale ?? 0,
+          noiseSchedule: meta.noiseSchedule ?? "",
+          varietyPlus: meta.varietyPlus ?? false,
+        });
+        if (pending.length >= BATCH_SIZE) await flushBatch();
+      } catch {
+        // skip unreadable files
+      } finally {
+        done++;
+        const progressNow = Date.now();
+        if (done === total || progressNow - lastProgressAt >= 100) {
+          lastProgressAt = progressNow;
+          onProgress?.(done, total);
+        }
+      }
+    },
+    signal,
+  );
+
+  await flushBatch();
+  return updated;
+}
+
+export async function rescanAllMetadata(
+  onProgress?: (done: number, total: number) => void,
+  onBatch?: (images: ImageRow[]) => void,
+  onSearchStatsProgress?: (done: number, total: number) => void,
+  signal?: CancelToken,
+): Promise<number> {
+  const db = getDB();
+  const rows = await db.image.findMany({
+    select: { id: true, path: true },
+  });
+
+  if (rows.length === 0) return 0;
+
+  const total = rows.length;
+  let done = 0;
+  let updated = 0;
+  let lastProgressAt = 0;
+
+  type DataEntry = {
+    path: string;
+    prompt: string;
+    negativePrompt: string;
+    characterPrompts: string;
+    promptTokens: string;
+    negativePromptTokens: string;
+    characterPromptTokens: string;
+    source: string;
+    model: string;
+    seed: number;
+    width: number;
+    height: number;
+    sampler: string;
+    steps: number;
+    cfgScale: number;
+    cfgRescale: number;
+    noiseSchedule: string;
+    varietyPlus: boolean;
+  };
+  const pending: DataEntry[] = [];
+
+  const flushBatch = async (): Promise<void> => {
+    if (pending.length === 0) return;
+    const batch = pending.splice(0);
+    const batchPaths = batch.map((row) => row.path);
+    const beforeRows = (await db.image.findMany({
+      where: { path: { in: batchPaths } },
+      select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
+    })) as Array<{ path: string } & ImageSearchStatSource>;
+    const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
+    const images = await db.$transaction(
+      batch.map((data) =>
+        db.image.update({
+          where: { path: data.path },
+          data,
+        }),
+      ),
+    );
+    await applyImageSearchStatsMutations(
+      batch.map((row) => ({
+        before: beforeMap.get(row.path) ?? null,
+        after: row,
+      })),
+      onSearchStatsProgress,
+    );
+    onBatch?.(images as unknown as ImageRow[]);
+    updated += images.length;
+  };
+
+  await withConcurrency(
+    rows.map((r) => r.path),
+    SYNC_SCAN_CONCURRENCY,
+    async (filePath) => {
+      try {
+        if (signal?.cancelled) return;
+
+        const meta = await naiPool.run(filePath);
+        if (!meta) return;
+
+        pending.push({
+          path: filePath,
+          prompt: meta.prompt ?? "",
+          negativePrompt: meta.negativePrompt ?? "",
+          characterPrompts: JSON.stringify(meta.characterPrompts ?? []),
+          promptTokens: JSON.stringify(parsePromptTokens(meta.prompt ?? "")),
+          negativePromptTokens: JSON.stringify(
+            parsePromptTokens(meta.negativePrompt ?? ""),
+          ),
+          characterPromptTokens: JSON.stringify(
+            (meta.characterPrompts ?? []).flatMap(parsePromptTokens),
+          ),
+          source: meta.source,
+          model: meta.model ?? "",
+          seed: Number.isFinite(meta.seed) ? meta.seed : 0,
           width: meta.width ?? 0,
           height: meta.height ?? 0,
           sampler: meta.sampler ?? "",

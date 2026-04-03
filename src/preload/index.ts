@@ -145,6 +145,8 @@ contextBridge.exposeInMainWorld("image", {
   resetHashes: () => ipcRenderer.invoke("image:resetHashes"),
   refreshPrompts: (): Promise<number> =>
     ipcRenderer.invoke("image:refreshPrompts"),
+  rescanMetadata: (): Promise<number> =>
+    ipcRenderer.invoke("image:rescanMetadata"),
   similarGroups: (threshold: number, jaccardThreshold?: number) =>
     ipcRenderer.invoke("image:similarGroups", threshold, jaccardThreshold),
   similarReasons: (
@@ -224,6 +226,17 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.on("image:refreshPromptsProgress", handler);
     return () =>
       ipcRenderer.removeListener("image:refreshPromptsProgress", handler);
+  },
+  onRescanMetadataProgress: (
+    cb: (data: { done: number; total: number }) => void,
+  ) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { done: number; total: number },
+    ) => cb(data);
+    ipcRenderer.on("image:rescanMetadataProgress", handler);
+    return () =>
+      ipcRenderer.removeListener("image:rescanMetadataProgress", handler);
   },
   cancelScan: () => ipcRenderer.invoke("image:cancelScan"),
   onScanFolder: (

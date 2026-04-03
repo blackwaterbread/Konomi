@@ -32,6 +32,7 @@ interface SettingsViewProps {
   onClose: () => void;
   onResetHashes: () => Promise<void>;
   onRefreshPrompts: () => Promise<number>;
+  onRescanMetadata: () => Promise<number>;
   isAnalyzing: boolean;
   bindings: Keybindings;
   onUpdateBinding: (id: KeyBindingId, binding: KeyBinding) => void;
@@ -153,6 +154,7 @@ export function SettingsView({
   onClose,
   onResetHashes,
   onRefreshPrompts,
+  onRescanMetadata,
   isAnalyzing,
   bindings,
   onUpdateBinding,
@@ -162,6 +164,11 @@ export function SettingsView({
   const { t } = useTranslation();
   const [resetting, setResetting] = useState(false);
   const [refreshingPrompts, setRefreshingPrompts] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanProgress, setRescanProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [ignoredDuplicates, setIgnoredDuplicates] = useState<string[]>([]);
   const [ignoredLoading, setIgnoredLoading] = useState(false);
   const [ignoredClearing, setIgnoredClearing] = useState(false);
@@ -254,6 +261,26 @@ export function SettingsView({
       }
     } finally {
       setRefreshingPrompts(false);
+    }
+  };
+
+  useEffect(() => {
+    return window.image.onRescanMetadataProgress(setRescanProgress);
+  }, []);
+
+  const handleRescanMetadata = async () => {
+    setRescanning(true);
+    setRescanProgress(null);
+    try {
+      const count = await onRescanMetadata();
+      if (count > 0) {
+        toast.success(t("settings.metadataRescan.success", { count }));
+      } else {
+        toast.info(t("settings.metadataRescan.noChanges"));
+      }
+    } finally {
+      setRescanning(false);
+      setRescanProgress(null);
     }
   };
 
@@ -769,6 +796,31 @@ export function SettingsView({
             {refreshingPrompts
               ? t("settings.promptRefresh.refreshing")
               : t("settings.promptRefresh.action")}
+          </Button>
+        </div>
+
+        <Separator className="bg-border" />
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-foreground select-none">
+            {t("settings.metadataRescan.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground select-none">
+            {t("settings.metadataRescan.description")}
+          </p>
+          <Button
+            variant="secondary"
+            onClick={handleRescanMetadata}
+            disabled={rescanning}
+          >
+            {rescanning && rescanProgress
+              ? t("settings.metadataRescan.rescanning", rescanProgress)
+              : rescanning
+                ? t("settings.metadataRescan.rescanning", {
+                    done: 0,
+                    total: "?",
+                  })
+                : t("settings.metadataRescan.action")}
           </Button>
         </div>
 
