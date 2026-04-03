@@ -2231,6 +2231,11 @@ export async function syncAllFolders(
                 deferredExisting.push(filePath);
               } else {
                 done++;
+                const progressNow = Date.now();
+                if (progressNow - lastProgressAt >= 100) {
+                  lastProgressAt = progressNow;
+                  onProgress?.(done, total);
+                }
               }
             }
           },
@@ -2276,6 +2281,8 @@ export async function syncAllFolders(
     if (deletedSimilarityIds.size > 0) {
       await deleteSimilarityCacheForImageIds([...deletedSimilarityIds]);
     }
+
+    onProgress?.(done, total);
     success = true;
   } finally {
     const elapsedMs = Date.now() - startedAt;

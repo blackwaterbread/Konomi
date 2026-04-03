@@ -300,6 +300,8 @@ export function BootstrapApp() {
 
       setFolderCount(count);
       setBootstrapReady(true);
+      setScanProgress(null);
+      setDupCheckProgress(null);
       setProgressPercent(100);
       const shownAt = splashShownAtRef.current ?? Date.now();
       const elapsedMs = Date.now() - shownAt;
