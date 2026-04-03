@@ -30,6 +30,7 @@ import {
   ensureIgnoredDuplicatePathsLoaded,
   refreshImagePrompts,
   rescanAllMetadata,
+  rescanImageMetadata,
 } from "./lib/image";
 import {
   listCategories as listPromptCategories,
@@ -399,6 +400,13 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         (images) => utilitySender.send("image:batch", images),
         emitSearchStatsProgress,
       );
+
+    case "image:rescanImageMetadata": {
+      const { paths } = payload as { paths: string[] };
+      return rescanImageMetadata(paths, (images) =>
+        utilitySender.send("image:batch", images),
+      );
+    }
 
     case "category:list":
       return listCategories();

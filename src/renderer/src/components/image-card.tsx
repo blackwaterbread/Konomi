@@ -7,6 +7,7 @@ import {
   Tag,
   ImagePlus,
   Loader2,
+  RotateCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -71,6 +72,8 @@ interface ImageCardProps {
   selectedCount?: number;
   onBulkDelete?: () => void;
   onBulkCategory?: () => void;
+  onRescanMetadata?: (path: string) => void;
+  onBulkRescanMetadata?: () => void;
 }
 
 export const ImageCard = memo(function ImageCard({
@@ -90,6 +93,8 @@ export const ImageCard = memo(function ImageCard({
   selectedCount = 0,
   onBulkDelete,
   onBulkCategory,
+  onRescanMetadata,
+  onBulkRescanMetadata,
 }: ImageCardProps) {
   const { t } = useTranslation();
   const { formatDate, formatDateTime } = useLocaleFormatters();
@@ -185,6 +190,29 @@ export const ImageCard = memo(function ImageCard({
           <Tag className="h-4 w-4" />
           {t("imageCard.menu.changeCategory")}
         </ContextMenuItem>
+      )}
+      {onRescanMetadata && (
+        <>
+          <ContextMenuSeparator />
+          {selectionMode &&
+          selected &&
+          selectedCount > 1 &&
+          onBulkRescanMetadata ? (
+            <ContextMenuItem onSelect={onBulkRescanMetadata}>
+              <RotateCw className="h-4 w-4" />
+              {t("imageCard.menu.rescanMetadataSelected", {
+                count: selectedCount,
+              })}
+            </ContextMenuItem>
+          ) : (
+            <ContextMenuItem
+              onSelect={() => onRescanMetadata(image.path)}
+            >
+              <RotateCw className="h-4 w-4" />
+              {t("imageCard.menu.rescanMetadata")}
+            </ContextMenuItem>
+          )}
+        </>
       )}
       <ContextMenuSeparator />
       {selectionMode && selected && selectedCount > 1 && onBulkDelete ? (

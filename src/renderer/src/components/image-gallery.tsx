@@ -20,6 +20,7 @@ import {
   Tags,
   Trash2,
   Loader2,
+  RotateCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -143,6 +144,8 @@ interface ImageGalleryActions {
   onChangeCategory: (image: ImageData) => void;
   onBulkChangeCategory: (ids: number[]) => void;
   onBulkDelete: (ids: number[]) => void;
+  onRescanMetadata?: (path: string) => void;
+  onBulkRescanMetadata?: (ids: number[]) => void;
   onSendToGenerator?: (image: ImageData) => void;
   onSendToSource?: (image: ImageData) => void;
   onAddTagToSearch?: (tag: string) => void;
@@ -185,6 +188,7 @@ interface GalleryToolbarProps {
   onSelectAllFiltered: () => void;
   onClearSelection: () => void;
   onBulkCategory: () => void;
+  onBulkRescanMetadata: () => void;
   onBulkDelete: () => void;
 }
 
@@ -207,6 +211,7 @@ const GalleryToolbar = memo(function GalleryToolbar({
   onSelectAllFiltered,
   onClearSelection,
   onBulkCategory,
+  onBulkRescanMetadata,
   onBulkDelete,
 }: GalleryToolbarProps) {
   const { t } = useTranslation();
@@ -345,6 +350,15 @@ const GalleryToolbar = memo(function GalleryToolbar({
               {t("gallery.changeCategoryForSelection")}
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={onBulkRescanMetadata}
+              disabled={selectedCount === 0}
+            >
+              <RotateCw className="h-4 w-4" />
+              {t("gallery.rescanSelection")}
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               onClick={onBulkDelete}
@@ -380,6 +394,8 @@ interface GalleryResultsProps {
   onSelectChange: (id: string, selected: boolean) => void;
   onBulkDelete: () => void;
   onBulkCategory: () => void;
+  onRescanMetadata?: (path: string) => void;
+  onBulkRescanMetadata: () => void;
   isInitializing: boolean;
   scanning: boolean;
   hasFolders: boolean;
@@ -406,6 +422,8 @@ const GalleryResults = memo(function GalleryResults({
   onSelectChange,
   onBulkDelete,
   onBulkCategory,
+  onRescanMetadata,
+  onBulkRescanMetadata,
   isInitializing,
   scanning,
   hasFolders,
@@ -587,6 +605,8 @@ const GalleryResults = memo(function GalleryResults({
                   selectedCount={selectedCount}
                   onBulkDelete={onBulkDelete}
                   onBulkCategory={onBulkCategory}
+                  onRescanMetadata={onRescanMetadata}
+                  onBulkRescanMetadata={onBulkRescanMetadata}
                 />
               );
 
@@ -864,6 +884,8 @@ export const ImageGallery = memo(function ImageGallery({
     onChangeCategory,
     onBulkChangeCategory,
     onBulkDelete,
+    onRescanMetadata,
+    onBulkRescanMetadata,
     onSendToGenerator,
     onSendToSource,
     onAddTagToSearch,
@@ -1010,6 +1032,12 @@ export const ImageGallery = memo(function ImageGallery({
     onBulkDelete(numericIds);
   }, [onBulkDelete, selectedIds]);
 
+  const handleBulkRescanMetadata = useCallback(() => {
+    if (selectedIds.size === 0 || !onBulkRescanMetadata) return;
+    const numericIds = Array.from(selectedIds).map((id) => parseInt(id, 10));
+    onBulkRescanMetadata(numericIds);
+  }, [onBulkRescanMetadata, selectedIds]);
+
   const handleToggleSelectionMode = useCallback(() => {
     setSelectionMode((prev) => !prev);
   }, []);
@@ -1045,6 +1073,7 @@ export const ImageGallery = memo(function ImageGallery({
         onSelectAllFiltered={handleSelectAllFiltered}
         onClearSelection={handleClearSelection}
         onBulkCategory={handleBulkCategory}
+        onBulkRescanMetadata={handleBulkRescanMetadata}
         onBulkDelete={handleBulkDelete}
       />
 
@@ -1068,6 +1097,8 @@ export const ImageGallery = memo(function ImageGallery({
         onSelectChange={handleSelectImage}
         onBulkDelete={handleBulkDelete}
         onBulkCategory={handleBulkCategory}
+        onRescanMetadata={onRescanMetadata}
+        onBulkRescanMetadata={handleBulkRescanMetadata}
         isInitializing={isInitializing}
         scanning={scanning}
         hasFolders={hasFolders}

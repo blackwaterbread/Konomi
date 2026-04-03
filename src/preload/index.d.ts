@@ -310,6 +310,7 @@ declare global {
       resetHashes: () => Promise<void>;
       refreshPrompts: () => Promise<number>;
       rescanMetadata: () => Promise<number>;
+      rescanImageMetadata: (paths: string[]) => Promise<number>;
       onRescanMetadataProgress: (
         cb: (data: { done: number; total: number }) => void,
       ) => () => void;

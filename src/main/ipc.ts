@@ -368,6 +368,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:rescanMetadata", () =>
     bridge.request("image:rescanMetadata", undefined),
   );
+  ipcMain.handle("image:rescanImageMetadata", (_, paths: string[]) =>
+    bridge.request("image:rescanImageMetadata", { paths }),
+  );
 
   ipcMain.handle("category:list", () => bridge.request("category:list"));
   ipcMain.handle("category:create", (_, name: string) =>

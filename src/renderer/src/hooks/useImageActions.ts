@@ -200,6 +200,52 @@ export function useImageActions({
     setBulkCategoryDialogIds(ids);
   }, []);
 
+  const handleRescanMetadata = useCallback(
+    (path: string) => {
+      window.image.rescanImageMetadata([path]).then(
+        (count) => {
+          if (count > 0) {
+            schedulePageRefresh(0);
+          }
+        },
+        (error: unknown) => {
+          log.error("rescanMetadata failed", error);
+        },
+      );
+    },
+    [schedulePageRefresh],
+  );
+
+  const handleBulkRescanMetadata = useCallback(
+    (ids: number[]) => {
+      if (ids.length === 0) return;
+      window.image.listByIds(ids).then(
+        (rows) => {
+          const paths = rows.map((r: { path: string }) => r.path);
+          window.image.rescanImageMetadata(paths).then(
+            (count) => {
+              if (count > 0) {
+                toast.success(
+                  t("settings.metadataRescan.success", { count }),
+                );
+                schedulePageRefresh(0);
+              } else {
+                toast.info(t("settings.metadataRescan.noChanges"));
+              }
+            },
+            (error: unknown) => {
+              log.error("bulkRescanMetadata failed", error);
+            },
+          );
+        },
+        (error: unknown) => {
+          log.error("bulkRescanMetadata listByIds failed", error);
+        },
+      );
+    },
+    [schedulePageRefresh, t],
+  );
+
   const handleBulkDelete = useCallback((ids: number[]) => {
     if (ids.length === 0) return;
     setBulkDeleteIds(ids);
@@ -280,6 +326,8 @@ export function useImageActions({
       onChangeCategory: handleChangeCategory,
       onBulkChangeCategory: handleBulkChangeCategory,
       onBulkDelete: handleBulkDelete,
+      onRescanMetadata: handleRescanMetadata,
+      onBulkRescanMetadata: handleBulkRescanMetadata,
       onSendToGenerator: handleSendToGenerator,
       onSendToSource: handleSendToSource,
       onAddTagToSearch: handleAddTagToSearch,
@@ -290,7 +338,9 @@ export function useImageActions({
       handleAddTagToSearch,
       handleBulkChangeCategory,
       handleBulkDelete,
+      handleBulkRescanMetadata,
       handleChangeCategory,
+      handleRescanMetadata,
       handleCopyPrompt,
       handleDeleteImage,
       handleReveal,

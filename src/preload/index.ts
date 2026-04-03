@@ -147,6 +147,8 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.invoke("image:refreshPrompts"),
   rescanMetadata: (): Promise<number> =>
     ipcRenderer.invoke("image:rescanMetadata"),
+  rescanImageMetadata: (paths: string[]): Promise<number> =>
+    ipcRenderer.invoke("image:rescanImageMetadata", paths),
   similarGroups: (threshold: number, jaccardThreshold?: number) =>
     ipcRenderer.invoke("image:similarGroups", threshold, jaccardThreshold),
   similarReasons: (

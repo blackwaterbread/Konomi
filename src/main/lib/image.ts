@@ -2532,3 +2532,96 @@ export async function rescanAllMetadata(
   await flushBatch();
   return updated;
 }
+
+export async function rescanImageMetadata(
+  paths: string[],
+  onBatch?: (images: ImageRow[]) => void,
+): Promise<number> {
+  if (paths.length === 0) return 0;
+
+  const db = getDB();
+  let updated = 0;
+
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    const chunk = paths.slice(i, i + BATCH_SIZE);
+    type MetaEntry = {
+      path: string;
+      prompt: string;
+      negativePrompt: string;
+      characterPrompts: string;
+      promptTokens: string;
+      negativePromptTokens: string;
+      characterPromptTokens: string;
+      source: string;
+      model: string;
+      seed: number;
+      width: number;
+      height: number;
+      sampler: string;
+      steps: number;
+      cfgScale: number;
+      cfgRescale: number;
+      noiseSchedule: string;
+      varietyPlus: boolean;
+    };
+    const entries: MetaEntry[] = [];
+
+    for (const filePath of chunk) {
+      try {
+        const meta = await naiPool.run(filePath);
+        if (!meta) continue;
+        entries.push({
+          path: filePath,
+          prompt: meta.prompt ?? "",
+          negativePrompt: meta.negativePrompt ?? "",
+          characterPrompts: JSON.stringify(meta.characterPrompts ?? []),
+          promptTokens: JSON.stringify(parsePromptTokens(meta.prompt ?? "")),
+          negativePromptTokens: JSON.stringify(
+            parsePromptTokens(meta.negativePrompt ?? ""),
+          ),
+          characterPromptTokens: JSON.stringify(
+            (meta.characterPrompts ?? []).flatMap(parsePromptTokens),
+          ),
+          source: meta.source,
+          model: meta.model ?? "",
+          seed: Number.isFinite(meta.seed) ? meta.seed : 0,
+          width: meta.width ?? 0,
+          height: meta.height ?? 0,
+          sampler: meta.sampler ?? "",
+          steps: meta.steps ?? 0,
+          cfgScale: meta.cfgScale ?? 0,
+          cfgRescale: meta.cfgRescale ?? 0,
+          noiseSchedule: meta.noiseSchedule ?? "",
+          varietyPlus: meta.varietyPlus ?? false,
+        });
+      } catch {
+        // skip unreadable files
+      }
+    }
+
+    if (entries.length === 0) continue;
+
+    const batchPaths = entries.map((e) => e.path);
+    const beforeRows = (await db.image.findMany({
+      where: { path: { in: batchPaths } },
+      select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
+    })) as Array<{ path: string } & ImageSearchStatSource>;
+    const beforeMap = new Map(beforeRows.map((r) => [r.path, r]));
+
+    const images = await db.$transaction(
+      entries.map((data) =>
+        db.image.update({ where: { path: data.path }, data }),
+      ),
+    );
+    await applyImageSearchStatsMutations(
+      entries.map((row) => ({
+        before: beforeMap.get(row.path) ?? null,
+        after: row,
+      })),
+    );
+    onBatch?.(images as unknown as ImageRow[]);
+    updated += images.length;
+  }
+
+  return updated;
+}
