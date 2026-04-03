@@ -546,14 +546,7 @@ const GalleryResults = memo(function GalleryResults({
     return () => {
       window.cancelAnimationFrame(raf);
     };
-  }, [
-    scrollRef,
-    shouldVirtualize,
-    viewMode,
-    viewportSize.width,
-    visibleEndRow,
-    visibleStartRow,
-  ]);
+  }, [scrollRef, shouldVirtualize, viewMode, viewportSize.width]);
 
   if (paged.length > 0) {
     return (

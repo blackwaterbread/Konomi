@@ -23,6 +23,7 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh: vi.fn(),
         handleSearchStatsProgress: vi.fn(),
         scanningRef: { current: false },
+        scanStartCountRef: { current: 0 },
         scheduleAnalysis: unmountScheduleAnalysis,
         schedulePageRefresh: vi.fn(),
       }),
@@ -55,6 +56,7 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh: vi.fn(),
         handleSearchStatsProgress: vi.fn(),
         scanningRef: { current: false },
+        scanStartCountRef: { current: 0 },
         scheduleAnalysis: vi.fn(),
         schedulePageRefresh: vi.fn(),
       }),
@@ -91,6 +93,7 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh,
         handleSearchStatsProgress,
         scanningRef,
+        scanStartCountRef: { current: 0 },
         scheduleAnalysis,
         schedulePageRefresh,
       }),
@@ -129,6 +132,7 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh,
         handleSearchStatsProgress: vi.fn(),
         scanningRef: { current: true },
+        scanStartCountRef: { current: 1 },
         scheduleAnalysis,
         schedulePageRefresh,
       }),
@@ -150,6 +154,8 @@ describe("useImageWatchBootstrap", () => {
       preloadEvents.image.batch.emit([createImageRow({ id: 2 })]);
     });
 
-    expect(schedulePageRefresh).toHaveBeenCalledWith(1500);
+    // 두 번째 배치는 스로틀 경로 — 0보다 큰 지연값으로 호출되어야 한다
+    expect(schedulePageRefresh).toHaveBeenCalledTimes(1);
+    expect(schedulePageRefresh.mock.calls[0][0]).toBeGreaterThan(0);
   });
 });

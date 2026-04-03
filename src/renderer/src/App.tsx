@@ -180,6 +180,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scanningFolderNames,
     folderRollbackRequest,
     scanningRef,
+    scanStartCountRef,
     runScan,
     handleCancelScan,
     confirmCancelScan,
@@ -287,6 +288,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scheduleSearchStatsRefresh,
     handleSearchStatsProgress,
     scanningRef,
+    scanStartCountRef,
     scheduleAnalysis,
     schedulePageRefresh,
   });

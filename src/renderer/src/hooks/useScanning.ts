@@ -35,6 +35,7 @@ export function useScanning({
 
   const scanPromiseRef = useRef<Promise<boolean> | null>(null);
   const scanningRef = useRef(false);
+  const scanStartCountRef = useRef(0);
   const rollbackRequestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -88,6 +89,7 @@ export function useScanning({
       } = options ?? {};
       const startedAt = Date.now();
       log.info("Scan started", { options });
+      scanStartCountRef.current += 1;
       scanningRef.current = true;
       setScanning(true);
       setScanProgress(null);
@@ -189,6 +191,7 @@ export function useScanning({
     folderRollbackRequest,
     setFolderRollbackRequest,
     scanningRef,
+    scanStartCountRef,
     runScan,
     waitForScanToStop,
     handleCancelScan,

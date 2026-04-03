@@ -10,6 +10,7 @@ interface UseImageWatchBootstrapOptions {
   scheduleSearchStatsRefresh: (delay?: number) => void;
   handleSearchStatsProgress: (data: { done: number; total: number }) => void;
   scanningRef: MutableRefObject<boolean>;
+  scanStartCountRef: MutableRefObject<number>;
   scheduleAnalysis: (delay?: number) => void;
   schedulePageRefresh: (delay?: number) => void;
 }
@@ -19,6 +20,7 @@ export function useImageWatchBootstrap({
   scheduleSearchStatsRefresh,
   handleSearchStatsProgress,
   scanningRef,
+  scanStartCountRef,
   scheduleAnalysis,
   schedulePageRefresh,
 }: UseImageWatchBootstrapOptions) {
@@ -28,11 +30,18 @@ export function useImageWatchBootstrap({
     scheduleAnalysis(0);
     let scanFirstBatchFired = false;
     let lastScanRefreshAt = 0;
+    let lastSeenScanStart = 0;
     const SCAN_REFRESH_INTERVAL_MS = 3000;
 
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
       if (scanningRef.current) {
+        // 새 스캔이 시작되었으면 첫 배치 플래그를 리셋하여 즉시 갱신을 보장한다
+        if (scanStartCountRef.current !== lastSeenScanStart) {
+          lastSeenScanStart = scanStartCountRef.current;
+          scanFirstBatchFired = false;
+          lastScanRefreshAt = 0;
+        }
         if (!scanFirstBatchFired) {
           // 첫 배치는 즉시 갤러리에 표시하여 빈 화면 시간을 줄인다
           scanFirstBatchFired = true;
@@ -102,6 +111,7 @@ export function useImageWatchBootstrap({
     handleSearchStatsProgress,
     loadSearchPresetStats,
     scanningRef,
+    scanStartCountRef,
     scheduleAnalysis,
     schedulePageRefresh,
     scheduleSearchStatsRefresh,
