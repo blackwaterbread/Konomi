@@ -26,6 +26,7 @@ describe("useImageWatchBootstrap", () => {
         scanStartCountRef: { current: 0 },
         scheduleAnalysis: unmountScheduleAnalysis,
         schedulePageRefresh: vi.fn(),
+        runScan: vi.fn().mockResolvedValue(true),
       }),
     );
 
@@ -59,6 +60,7 @@ describe("useImageWatchBootstrap", () => {
         scanStartCountRef: { current: 0 },
         scheduleAnalysis: vi.fn(),
         schedulePageRefresh: vi.fn(),
+        runScan: vi.fn().mockResolvedValue(true),
       }),
     );
 
@@ -96,6 +98,7 @@ describe("useImageWatchBootstrap", () => {
         scanStartCountRef: { current: 0 },
         scheduleAnalysis,
         schedulePageRefresh,
+        runScan: vi.fn().mockResolvedValue(true),
       }),
     );
 
@@ -135,6 +138,7 @@ describe("useImageWatchBootstrap", () => {
         scanStartCountRef: { current: 1 },
         scheduleAnalysis,
         schedulePageRefresh,
+        runScan: vi.fn().mockResolvedValue(true),
       }),
     );
 

@@ -295,6 +295,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     scanStartCountRef,
     scheduleAnalysis,
     schedulePageRefresh,
+    runScan,
   });
 
   useKeyboardShortcuts({
@@ -527,7 +528,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
               onReset={handleSettingsReset}
               onClose={() => void handlePanelChange("gallery")}
               onResetHashes={handleResetHashes}
-              onRefreshPrompts={() => window.image.refreshPrompts()}
               onRescanMetadata={() => window.image.rescanMetadata()}
               isAnalyzing={isAnalyzing}
               bindings={bindings}

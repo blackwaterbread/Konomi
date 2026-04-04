@@ -51,19 +51,6 @@ function ensureInitialFolderCount(): Promise<number | null> {
   return initialFolderCountPromise;
 }
 
-function readOrderedFolderIds(): number[] | undefined {
-  try {
-    const raw = localStorage.getItem("konomi-folder-order");
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return undefined;
-    const ids = parsed.filter((id): id is number => Number.isInteger(id));
-    return ids.length > 0 ? ids : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function ensureBootstrapComplete(): Promise<number | null> {
   if (bootstrapCompleted) {
     return Promise.resolve(bootstrappedFolderCount);
@@ -72,18 +59,6 @@ function ensureBootstrapComplete(): Promise<number | null> {
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
       const folderCount = await ensureInitialFolderCount();
-
-      try {
-        await window.image.scan({
-          detectDuplicates: true,
-          orderedFolderIds: readOrderedFolderIds(),
-        });
-      } catch (error: unknown) {
-        log.error("Initial bootstrap scan failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-
       bootstrapCompleted = true;
       return folderCount;
     })();
@@ -184,21 +159,8 @@ export function BootstrapApp() {
   const [folderCount, setFolderCount] = useState<number | null>(
     bootstrappedFolderCount,
   );
-  const [scanProgress, setScanProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
-  const [dupCheckProgress, setDupCheckProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
-  const [scanningFolderNames, setScanningFolderNames] = useState<
-    Map<number, string>
-  >(new Map());
-  const [scanPhase, setScanPhase] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [mountApp, setMountApp] = useState(bootstrapCompleted);
-  const [bootstrapReady, setBootstrapReady] = useState(bootstrapCompleted);
   const [renderSplash, setRenderSplash] = useState(!bootstrapCompleted);
   const [splashFadingOut, setSplashFadingOut] = useState(false);
   const [progressPercent, setProgressPercent] = useState<number | null>(null);
@@ -236,7 +198,7 @@ export function BootstrapApp() {
     if (bootstrapCompleted) {
       setFolderCount(bootstrappedFolderCount);
       setMountApp(true);
-      setBootstrapReady(true);
+
       setProgressPercent(100);
       setRenderSplash(false);
       setSplashFadingOut(false);
@@ -248,50 +210,19 @@ export function BootstrapApp() {
       if (data.total > 0 && data.done < data.total) {
         setMigrating(true);
         const migrationPercent = Math.min(
-          7,
-          Math.round((data.done / data.total) * 7),
+          50,
+          Math.round((data.done / data.total) * 50),
         );
         setProgressPercent(migrationPercent);
       } else {
         setMigrating(false);
       }
     });
-    const offScanProgress = window.image.onScanProgress((data) => {
-      const nextProgress =
-        data.total > 0
-          ? Math.min(99, Math.round((data.done / data.total) * 100))
-          : 0;
-      setProgressPercent((prev) => {
-        if (prev === null) return nextProgress;
-        return Math.max(prev, nextProgress);
-      });
-      setScanProgress(data.done >= data.total ? null : data);
-    });
-    const offScanFolder = window.image.onScanFolder(
-      ({ folderId, folderName, active }) => {
-        setScanningFolderNames((prev) => {
-          const next = new Map(prev);
-          if (active && folderName) next.set(folderId, folderName);
-          else next.delete(folderId);
-          return next;
-        });
-      },
-    );
-    const offDupCheckProgress = window.image.onDupCheckProgress((data) => {
-      setDupCheckProgress(data.done >= data.total ? null : data);
-    });
-    const offScanPhase = window.image.onScanPhase(({ phase }) => {
-      setScanPhase(phase);
-    });
 
     void ensureInitialFolderCount().then((count) => {
       if (!cancelled) {
         setFolderCount(count);
-        if (count === 0) {
-          setProgressPercent(100);
-        } else if (count !== null) {
-          setProgressPercent((prev) => prev ?? 8);
-        }
+        setProgressPercent((prev) => prev ?? 60);
       }
     });
 
@@ -299,9 +230,7 @@ export function BootstrapApp() {
       if (cancelled) return;
 
       setFolderCount(count);
-      setBootstrapReady(true);
-      setScanProgress(null);
-      setDupCheckProgress(null);
+
       setProgressPercent(100);
       const shownAt = splashShownAtRef.current ?? Date.now();
       const elapsedMs = Date.now() - shownAt;
@@ -323,10 +252,6 @@ export function BootstrapApp() {
       cancelled = true;
       clearSplashTimers();
       offMigrationProgress();
-      offScanProgress();
-      offScanPhase();
-      offScanFolder();
-      offDupCheckProgress();
     };
   }, [clearSplashTimers]);
 
@@ -340,41 +265,12 @@ export function BootstrapApp() {
     if (folderCount === 0) {
       return t("app.splash.status.preparingOnboarding");
     }
-    if (!bootstrapReady) {
-      return t("app.splash.status.syncingLibrary");
-    }
     return t("app.splash.status.finalizing");
-  }, [bootstrapReady, folderCount, migrating, t]);
+  }, [folderCount, migrating, t]);
 
   const detailText = useMemo(() => {
     if (migrating) {
       return t("app.splash.detail.updatingDatabase");
-    }
-    if (dupCheckProgress && dupCheckProgress.total > 0) {
-      return t("app.splash.detail.checkingDuplicates", {
-        done: dupCheckProgress.done,
-        total: dupCheckProgress.total,
-      });
-    }
-    if (scanProgress && scanProgress.total > 0) {
-      const folderNames = Array.from(scanningFolderNames.values());
-      const folderLabel =
-        folderNames.length <= 1
-          ? folderNames[0]
-          : t("appStatus.folderSummary", {
-              first: folderNames[0],
-              count: folderNames.length - 1,
-            });
-      return folderLabel
-        ? t("app.splash.detail.scanFolders", {
-            folderLabel,
-            done: scanProgress.done,
-            total: scanProgress.total,
-          })
-        : t("app.splash.detail.scanImages", {
-            done: scanProgress.done,
-            total: scanProgress.total,
-          });
     }
     if (folderCount === null) {
       return t("app.splash.detail.loadingFolders");
@@ -382,11 +278,8 @@ export function BootstrapApp() {
     if (folderCount === 0) {
       return t("app.splash.detail.preparingOnboarding");
     }
-    if (scanPhase) {
-      return t(`header.progress.phase.${scanPhase}`);
-    }
     return t("app.splash.detail.loadingLibraryState");
-  }, [dupCheckProgress, folderCount, scanPhase, scanProgress, scanningFolderNames, t]);
+  }, [folderCount, migrating, t]);
 
   return (
     <>

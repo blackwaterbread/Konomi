@@ -815,7 +815,14 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 }
                 disabled={scanning}
               >
-                <Trash2 className="h-3 w-3" />
+                <span className="relative inline-flex items-center justify-center">
+                  <Trash2 className="h-3 w-3" />
+                  {scanning && (
+                    <span className="absolute inset-0 flex items-center justify-center -translate-x-[0.75px] translate-y-[0.75px]">
+                      <span className="block h-[140%] w-px bg-current rotate-45" />
+                    </span>
+                  )}
+                </span>
               </Button>
             </>
           )}

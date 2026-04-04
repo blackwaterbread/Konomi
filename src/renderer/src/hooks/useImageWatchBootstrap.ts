@@ -13,6 +13,12 @@ interface UseImageWatchBootstrapOptions {
   scanStartCountRef: MutableRefObject<number>;
   scheduleAnalysis: (delay?: number) => void;
   schedulePageRefresh: (delay?: number) => void;
+  runScan: (options?: {
+    detectDuplicates?: boolean;
+    folderIds?: number[];
+    refreshPage?: boolean;
+    refreshSearchPresetStats?: boolean;
+  }) => Promise<boolean>;
 }
 
 export function useImageWatchBootstrap({
@@ -23,10 +29,12 @@ export function useImageWatchBootstrap({
   scanStartCountRef,
   scheduleAnalysis,
   schedulePageRefresh,
+  runScan,
 }: UseImageWatchBootstrapOptions) {
   useEffect(() => {
-    log.info("App mounted: loading initial data and starting watchers");
+    log.info("App mounted: loading initial data, starting watchers, and running initial scan");
     void loadSearchPresetStats();
+    void runScan({ detectDuplicates: true, refreshPage: true, refreshSearchPresetStats: true });
     scheduleAnalysis(0);
     let scanFirstBatchFired = false;
     let lastScanRefreshAt = 0;
@@ -110,6 +118,7 @@ export function useImageWatchBootstrap({
   }, [
     handleSearchStatsProgress,
     loadSearchPresetStats,
+    runScan,
     scanningRef,
     scanStartCountRef,
     scheduleAnalysis,

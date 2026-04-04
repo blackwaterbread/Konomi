@@ -1,7 +1,7 @@
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
+import { preloadMocks } from "../helpers/preload-mocks";
 
 const applyAppLanguagePreferenceMock = vi.fn();
 
@@ -46,18 +46,6 @@ vi.mock("@/components/app-splash", () => ({
   ),
 }));
 
-function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
-}
-
 async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -87,7 +75,6 @@ describe("BootstrapApp", () => {
     preloadMocks.folder.list.mockResolvedValueOnce([
       { id: 1, name: "Folder 1", path: "C:\\gallery", order: 0 },
     ]);
-    preloadMocks.image.scan.mockResolvedValueOnce(undefined);
 
     const view = await renderBootstrapApp();
 
@@ -100,10 +87,8 @@ describe("BootstrapApp", () => {
     expect(applyAppLanguagePreferenceMock).toHaveBeenCalledWith("ko");
     expect(document.documentElement.dataset.theme).toBe("white");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
-    expect(preloadMocks.image.scan).toHaveBeenCalledWith({
-      detectDuplicates: true,
-      orderedFolderIds: undefined,
-    });
+    // scan is no longer called during bootstrap — it runs after App mounts
+    expect(preloadMocks.image.scan).not.toHaveBeenCalled();
     expect(screen.queryByTestId("bootstrapped-app")).not.toBeInTheDocument();
 
     await act(async () => {
@@ -134,12 +119,8 @@ describe("BootstrapApp", () => {
     view.unmount();
   });
 
-  it("uses ordered folder ids and onboarding splash messaging for an empty library", async () => {
-    const scanDeferred = createDeferred<void>();
-
-    localStorage.setItem("konomi-folder-order", JSON.stringify([3, 1]));
+  it("shows onboarding splash messaging for an empty library", async () => {
     preloadMocks.folder.list.mockResolvedValueOnce([]);
-    preloadMocks.image.scan.mockReturnValueOnce(scanDeferred.promise);
 
     const view = await renderBootstrapApp();
 
@@ -147,57 +128,12 @@ describe("BootstrapApp", () => {
       await flushPromises();
     });
 
-    expect(preloadMocks.image.scan).toHaveBeenCalledWith({
-      detectDuplicates: true,
-      orderedFolderIds: [3, 1],
-    });
+    // scan is no longer called during bootstrap
+    expect(preloadMocks.image.scan).not.toHaveBeenCalled();
 
-    scanDeferred.resolve();
-    await act(async () => {
-      await flushPromises();
-    });
-
-    view.unmount();
-  });
-
-  it("reflects scan progress events in the splash detail text", async () => {
-    const scanDeferred = createDeferred<void>();
-
-    preloadMocks.folder.list.mockResolvedValueOnce([
-      { id: 1, name: "Folder 1", path: "C:\\gallery", order: 0 },
-    ]);
-    preloadMocks.image.scan.mockReturnValueOnce(scanDeferred.promise);
-
-    const view = await renderBootstrapApp();
-
-    await act(async () => {
-      await flushPromises();
-    });
-
-    act(() => {
-      preloadEvents.image.scanFolder.emit({
-        folderId: 1,
-        folderName: "Folder A",
-        active: true,
-      });
-      preloadEvents.image.scanProgress.emit({
-        done: 2,
-        total: 4,
-      });
-    });
-
-    expect(screen.getByTestId("bootstrap-splash-detail")).toHaveTextContent(
-      "Checking Folder A 2/4",
+    expect(screen.getByTestId("bootstrap-splash-status")).toHaveTextContent(
+      "Preparing the start screen...",
     );
-    expect(screen.getByTestId("bootstrap-splash")).toHaveAttribute(
-      "data-progress",
-      "50",
-    );
-
-    scanDeferred.resolve();
-    await act(async () => {
-      await flushPromises();
-    });
 
     view.unmount();
   });
