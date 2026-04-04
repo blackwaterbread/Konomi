@@ -68,6 +68,7 @@ const ko = {
       similarity: "유사도 계산 중...",
       searchStats: "검색 통계 {{done}}/{{total}}",
       working: "작업 중...",
+      eta: "(~{{time}} 남음)",
       phase: {
         loadingLibrary: "라이브러리 불러오는 중...",
         scanningFiles: "파일 목록 확인 중...",

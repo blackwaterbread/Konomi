@@ -67,6 +67,7 @@ const en = {
       similarity: "Computing similarity...",
       searchStats: "Search stats {{done}}/{{total}}",
       working: "Working...",
+      eta: "(~{{time}} left)",
       phase: {
         loadingLibrary: "Loading library...",
         scanningFiles: "Scanning file list...",

@@ -654,6 +654,43 @@ const HeaderPanelButtons = memo(function HeaderPanelButtons({
 
 type ProgressData = { done: number; total: number };
 
+const ETA_MIN_ELAPSED_MS = 2000;
+const ETA_MIN_RATIO = 0.03;
+
+type EtaEntry = { startTime: number; startDone: number };
+
+function computeEtaSeconds(
+  entry: EtaEntry,
+  progress: ProgressData,
+): number | null {
+  const elapsed = Date.now() - entry.startTime;
+  const processed = progress.done - entry.startDone;
+  const ratio = progress.done / progress.total;
+  if (
+    elapsed < ETA_MIN_ELAPSED_MS ||
+    ratio < ETA_MIN_RATIO ||
+    processed <= 0
+  ) {
+    return null;
+  }
+  const rate = processed / (elapsed / 1000);
+  const remaining = (progress.total - progress.done) / rate;
+  return remaining > 0 ? Math.round(remaining) : null;
+}
+
+function formatEta(
+  sec: number,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (sec < 5) return "";
+  if (sec < 60) return t("header.progress.eta", { time: `${sec}s` });
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return t("header.progress.eta", {
+    time: s === 0 ? `${m}m` : `${m}m ${s}s`,
+  });
+}
+
 function useHeaderProgress({
   scanning,
   isAnalyzing,
@@ -674,6 +711,8 @@ function useHeaderProgress({
   const [rescanProgress, setRescanProgress] = useState<ProgressData | null>(
     null,
   );
+  const [etaSeconds, setEtaSeconds] = useState<Map<string, number>>(new Map());
+  const etaEntriesRef = useRef<Map<string, EtaEntry>>(new Map());
   const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -687,10 +726,49 @@ function useHeaderProgress({
     analyzingRef.current = isAnalyzing;
   }, [isAnalyzing]);
 
+  const trackEta = (key: string, data: ProgressData | null) => {
+    const entries = etaEntriesRef.current;
+    if (!data || data.total <= 0 || data.done >= data.total) {
+      if (entries.delete(key)) {
+        setEtaSeconds((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+      return;
+    }
+    let entry = entries.get(key);
+    if (!entry) {
+      entry = { startTime: Date.now(), startDone: data.done };
+      entries.set(key, entry);
+    }
+    const eta = computeEtaSeconds(entry, data);
+    setEtaSeconds((prev) => {
+      if (eta === null) {
+        if (!prev.has(key)) return prev;
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      }
+      if (prev.get(key) === eta) return prev;
+      const next = new Map(prev);
+      next.set(key, eta);
+      return next;
+    });
+  };
+
+  const resetAllEta = () => {
+    etaEntriesRef.current.clear();
+    setEtaSeconds(new Map());
+  };
+
   useEffect(() => {
     const offScanProgress = window.image.onScanProgress((data) => {
-      if (scanningRef.current)
-        setScanProgress(data.done >= data.total ? null : data);
+      if (!scanningRef.current) return;
+      const finished = data.done >= data.total;
+      setScanProgress(finished ? null : data);
+      trackEta("scan", finished ? null : data);
     });
     const offScanPhase = window.image.onScanPhase(({ phase }) => {
       if (scanningRef.current) setScanPhase(phase);
@@ -706,15 +784,19 @@ function useHeaderProgress({
       },
     );
     const offHashProgress = window.image.onHashProgress((data) => {
-      if (analyzingRef.current)
-        setHashProgress(data.done >= data.total ? null : data);
+      if (!analyzingRef.current) return;
+      const finished = data.done >= data.total;
+      setHashProgress(finished ? null : data);
+      trackEta("hash", finished ? null : data);
     });
     const offSimilarityProgress = window.image.onSimilarityProgress((data) => {
       setSimilarityProgress(data);
+      trackEta("similarity", data);
     });
     const offSearchStatsProgress = window.image.onSearchStatsProgress(
       (data) => {
         setSearchStatsProgress(data);
+        trackEta("searchStats", data);
         if (searchStatsClearTimerRef.current) {
           clearTimeout(searchStatsClearTimerRef.current);
           searchStatsClearTimerRef.current = null;
@@ -729,6 +811,7 @@ function useHeaderProgress({
     );
     const offRescanProgress = window.image.onRescanMetadataProgress((data) => {
       setRescanProgress(data);
+      trackEta("rescan", data);
     });
     const offUtilityReset = window.appInfo.onUtilityReset(() => {
       setScanProgress(null);
@@ -736,6 +819,7 @@ function useHeaderProgress({
       setSimilarityProgress(null);
       setSearchStatsProgress(null);
       setRescanProgress(null);
+      resetAllEta();
     });
 
     return () => {
@@ -759,6 +843,7 @@ function useHeaderProgress({
       setScanProgress(null);
       setScanPhase(null);
       setScanningFolderNames(new Map());
+      trackEta("scan", null);
     }
   }, [scanning]);
 
@@ -766,6 +851,8 @@ function useHeaderProgress({
     if (!isAnalyzing) {
       setHashProgress(null);
       setSimilarityProgress(null);
+      trackEta("hash", null);
+      trackEta("similarity", null);
     }
   }, [isAnalyzing]);
 
@@ -777,6 +864,7 @@ function useHeaderProgress({
     similarityProgress,
     searchStatsProgress,
     rescanProgress,
+    etaSeconds,
   };
 }
 
@@ -805,7 +893,12 @@ export const Header = memo(function Header({
     similarityProgress,
     searchStatsProgress,
     rescanProgress,
+    etaSeconds: etaMap,
   } = useHeaderProgress({ scanning, isAnalyzing });
+  const etaSuffix = (key: string) => {
+    const sec = etaMap.get(key);
+    return sec != null ? ` ${formatEta(sec, t)}` : "";
+  };
   const hasSearchStatsProgress =
     !!searchStatsProgress &&
     searchStatsProgress.total > 0 &&
@@ -869,34 +962,36 @@ export const Header = memo(function Header({
                                 ", ",
                               )
                             : null;
+                        const eta = etaSuffix("scan");
                         return names
                           ? t("header.progress.scanFolders", {
                               names,
                               done: scanProgress.done,
                               total: scanProgress.total,
-                            })
+                            }) + eta
                           : t("header.progress.scanImages", {
                               done: scanProgress.done,
                               total: scanProgress.total,
-                            });
+                            }) + eta;
                       })()
                     : hasRescanProgress && rescanProgress
                       ? t("header.progress.rescan", {
                           done: rescanProgress.done,
                           total: rescanProgress.total,
-                        })
+                        }) + etaSuffix("rescan")
                       : hashProgress && hashProgress.total > 0
                         ? t("header.progress.hashes", {
                             done: hashProgress.done,
                             total: hashProgress.total,
-                          })
+                          }) + etaSuffix("hash")
                         : hasSimilarityProgress && similarityProgress
-                          ? t("header.progress.similarity")
+                          ? t("header.progress.similarity") +
+                            etaSuffix("similarity")
                           : hasSearchStatsProgress && searchStatsProgress
                             ? t("header.progress.searchStats", {
                                 done: searchStatsProgress.done,
                                 total: searchStatsProgress.total,
-                              })
+                              }) + etaSuffix("searchStats")
                             : scanPhase
                               ? t(`header.progress.phase.${scanPhase}`)
                               : t("header.progress.working")}
