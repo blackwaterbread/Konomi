@@ -92,12 +92,13 @@ export const PromptSearchView = memo(function PromptSearchView({
       debounceRef.current = setTimeout(() => {
         fetchTags();
       }, 300);
-      return () => {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-      };
+    } else {
+      fetchTags();
     }
 
-    fetchTags();
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [nameFilter, sortBy, order, page]);
 
   const toggleOrder = () => {

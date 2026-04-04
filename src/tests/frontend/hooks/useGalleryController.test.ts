@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { useGalleryController } from "@/hooks/useGalleryController";
 import { preloadMocks } from "../helpers/preload-mocks";
-import { createImageRow } from "../helpers/image-row";
+
 
 function installControlledAnimationFrames() {
   let nextId = 1;

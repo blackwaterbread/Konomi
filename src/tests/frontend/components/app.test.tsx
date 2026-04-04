@@ -228,7 +228,7 @@ vi.mock("@/components/image-gallery", () => ({
         </button>
         <button
           type="button"
-          onClick={() => actions.onBulkChangeCategory?.([image.id, secondImage.id])}
+          onClick={() => actions.onBulkChangeCategory?.([image, secondImage])}
         >
           Gallery Bulk Change Category
         </button>
