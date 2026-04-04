@@ -50,14 +50,15 @@ export function useGalleryImages(
     if (!enabled) return;
     const requestId = ++listRequestSeqRef.current;
     setIsLoading(true);
+    // Eagerly unmount old cards so Blink can release decoded bitmaps
+    // before new images arrive (batched with isLoading → single render).
+    setImages([]);
     try {
       const result = await window.image.listPage({
         ...listBaseQuery,
         page: galleryPage,
       });
       if (requestId !== listRequestSeqRef.current) return;
-      // Release Blink's decoded image cache from the previous page before rendering new images
-      window.appInfo.clearResourceCache();
       startTransition(() => {
         setImages(result.rows.map(rowToImageData));
         setTotalImageCount(result.totalCount);
@@ -92,6 +93,20 @@ export function useGalleryImages(
   useEffect(() => {
     loadImagesPageRef.current = loadImagesPage;
   }, [loadImagesPage]);
+
+  // Clear Blink's decoded-image cache AFTER React has committed the DOM update.
+  // Fires twice per page change: once when images→[] (old cards unmount, bitmap
+  // refs released via img.src=""), once when new images arrive.  Both passes
+  // are needed because Blink may defer reclamation.
+  const prevImagesRef = useRef(images);
+  useEffect(() => {
+    if (prevImagesRef.current !== images) {
+      requestAnimationFrame(() => {
+        window.appInfo.clearResourceCache();
+      });
+    }
+    prevImagesRef.current = images;
+  }, [images]);
 
   useEffect(() => {
     if (!enabled) return;
