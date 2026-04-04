@@ -10,6 +10,7 @@ import {
   Tags,
   SlidersHorizontal,
   Bug,
+  CircleAlert,
 } from "lucide-react";
 import infoImageUrl from "@/assets/images/info.webp";
 import { Button } from "@/components/ui/button";
@@ -119,6 +120,8 @@ interface HeaderProps {
   availableModels: string[];
   onStartTour?: () => void;
   devMode?: boolean;
+  announcementDeferred?: boolean;
+  onAnnouncementReopen?: () => void;
 }
 
 interface HeaderSearchSectionProps {
@@ -514,6 +517,8 @@ interface HeaderPanelButtonsProps {
   onPanelChange: (panel: ActivePanel) => void;
   onStartTour?: () => void;
   devMode?: boolean;
+  announcementDeferred?: boolean;
+  onAnnouncementReopen?: () => void;
 }
 
 const HeaderPanelButtons = memo(function HeaderPanelButtons({
@@ -521,6 +526,8 @@ const HeaderPanelButtons = memo(function HeaderPanelButtons({
   onPanelChange,
   onStartTour,
   devMode,
+  announcementDeferred,
+  onAnnouncementReopen,
 }: HeaderPanelButtonsProps) {
   const { t } = useTranslation();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -626,6 +633,23 @@ const HeaderPanelButtons = memo(function HeaderPanelButtons({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Debug</TooltipContent>
+            </Tooltip>
+          )}
+          {announcementDeferred && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-amber-500 hover:text-amber-400"
+                  onClick={onAnnouncementReopen}
+                >
+                  <CircleAlert className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("header.tooltip.announcement")}
+              </TooltipContent>
             </Tooltip>
           )}
           <Tooltip>
@@ -883,6 +907,8 @@ export const Header = memo(function Header({
   availableModels,
   onStartTour,
   devMode,
+  announcementDeferred,
+  onAnnouncementReopen,
 }: HeaderProps) {
   const { t } = useTranslation();
   const {
@@ -1021,6 +1047,8 @@ export const Header = memo(function Header({
           onPanelChange={onPanelChange}
           onStartTour={onStartTour}
           devMode={devMode}
+          announcementDeferred={announcementDeferred}
+          onAnnouncementReopen={onAnnouncementReopen}
         />
       </div>
     </header>

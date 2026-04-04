@@ -1,8 +1,9 @@
 import { memo, useCallback, useRef, useState } from "react";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { ANNOUNCEMENTS, resetAnnouncement } from "@/lib/announcements";
 
 type LogLine = {
   id: number;
@@ -196,6 +197,28 @@ export const ActionsPanel = memo(function ActionsPanel({
           disabled={busy}
           onClick={() => void handleRescanMetadata()}
         />
+      </div>
+
+      {/* Announcement triggers */}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">Announcements</label>
+        <div className="flex flex-wrap gap-1.5">
+          {ANNOUNCEMENTS.map((a) => (
+            <Button
+              key={a.id}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => {
+                resetAnnouncement(a.id);
+                pushLog(`Reset announcement "${a.id}" — reload to trigger`, "info");
+              }}
+            >
+              <Megaphone className="h-3 w-3" />
+              {a.id}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Log */}

@@ -58,6 +58,7 @@ const ko = {
       settings: "설정",
       tagSearch: "태그 검색",
       appInfo: "프로그램 정보",
+      announcement: "업데이트 안내 보기",
     },
     progress: {
       checkingDuplicates: "중복 파일 확인 중...",
@@ -856,9 +857,20 @@ const ko = {
   },
   announcement: {
     confirm: "확인했습니다",
+    dismiss: "다시 표시하지 않기",
+    defer: "나중에",
+    execute: "실행",
     v060SimilarityFix: {
       title: "중요 공지사항",
       body: "v0.3.0 버전부터 적용된 이미지 유사도 연산 Native 모듈이 유사도 정확성을 부정확하게 만드는 버그를 수정했습니다. 따라서 설정에 들어가셔서 **유사도 값 재계산을 진행하시기를 강력하게 권장합니다.**",
+    },
+    v090Upgrade: {
+      title: "업데이트 안내",
+      body: "0.12.0 업데이트로 메타데이터 파서 개선과 WebP 유사도 분석 지원이 포함되었습니다. 상황에 따라 메타데이터나 유사도 값 갱신이 필요할 수 있습니다. 지금 실행하지 않아도 설정에서 언제든 다시 할 수 있습니다.",
+      rescanAction: "메타데이터 재스캔",
+      rescanDescription: "메타데이터 케이스 추가, UTF-8 인코딩 개선",
+      hashResetAction: "유사도 값 재계산",
+      hashResetDescription: "WebP 이미지의 유사도 분석 지원",
     },
   },
   update: {

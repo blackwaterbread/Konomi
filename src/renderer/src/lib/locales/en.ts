@@ -57,6 +57,7 @@ const en = {
       settings: "Settings",
       tagSearch: "Tag Search",
       appInfo: "App Info",
+      announcement: "View update notice",
     },
     progress: {
       checkingDuplicates: "Checking for duplicates...",
@@ -862,9 +863,20 @@ const en = {
   },
   announcement: {
     confirm: "I understand",
+    dismiss: "Don't show again",
+    defer: "Later",
+    execute: "Run",
     v060SimilarityFix: {
       title: "Important Notice",
       body: "A bug has been fixed where the native image similarity module, applied since v0.3.0, was producing inaccurate similarity results. **We strongly recommend going to Settings and recalculating similarity values.**",
+    },
+    v090Upgrade: {
+      title: "Update Notice",
+      body: "The 0.12.0 update includes improved metadata parsing and WebP similarity analysis support. Depending on your library, metadata or similarity values may need to be refreshed. You can skip this now and run these anytime from Settings.",
+      rescanAction: "Rescan Metadata",
+      rescanDescription: "Additional metadata cases, improved UTF-8 encoding",
+      hashResetAction: "Recalculate Similarity",
+      hashResetDescription: "WebP image similarity analysis support",
     },
   },
   update: {

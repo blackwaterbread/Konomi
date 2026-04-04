@@ -94,6 +94,8 @@ export default function App({ initialFolderCount = null, initialFolders = null }
   } = useFolderController(initialFolderCount, initialFolders);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [announcementDeferred, setAnnouncementDeferred] = useState(false);
+  const [announcementKey, setAnnouncementKey] = useState(0);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
   const sidebarRef = useRef<SidebarHandle | null>(null);
   const { isDarkTheme } = useAppAppearance({
@@ -491,6 +493,11 @@ export default function App({ initialFolderCount = null, initialFolders = null }
         availableModels={availableModels}
         onStartTour={handleStartTour}
         devMode={devMode}
+        announcementDeferred={announcementDeferred}
+        onAnnouncementReopen={() => {
+          setAnnouncementDeferred(false);
+          setAnnouncementKey((k) => k + 1);
+        }}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -705,7 +712,18 @@ export default function App({ initialFolderCount = null, initialFolders = null }
       />
 
       <AnnouncementModal
+        key={announcementKey}
         disabled={initialLanguageScreenOpen || showFeatureTour}
+        onAction={async (actionId) => {
+          if (actionId === "rescanMetadata") {
+            await window.image.rescanMetadata();
+            schedulePageRefresh(0);
+            void loadSearchPresetStats();
+          } else if (actionId === "resetHashes") {
+            await handleResetHashes();
+          }
+        }}
+        onDefer={() => setAnnouncementDeferred(true)}
       />
     </div>
   );
