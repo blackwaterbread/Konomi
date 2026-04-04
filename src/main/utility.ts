@@ -22,6 +22,7 @@ import {
   suggestImageSearchTags,
   listImageSearchStatSourcesForFolder,
   decrementImageSearchStatsForRows,
+  quickVerifyFolders,
   syncAllFolders,
   setImageFavorite,
   findFolderDuplicateImages,
@@ -220,44 +221,49 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       const { ids } = payload as { ids: number[] };
       return listImagesByIds(ids);
     }
+    case "image:quickVerify":
+      return quickVerifyFolders();
     case "image:scan": {
       const {
         detectDuplicates = false,
         folderIds,
         orderedFolderIds,
+        skipFolderIds,
       } = (payload as
         | {
             detectDuplicates?: boolean;
             folderIds?: number[];
             orderedFolderIds?: number[];
+            skipFolderIds?: number[];
           }
         | undefined) ?? {};
       scanCancelToken = { cancelled: false };
       setWatcherScanActive(true);
       try {
-        return await syncAllFolders(
-          (batch) => utilitySender.send("image:batch", batch),
-          (done, total) =>
+        return await syncAllFolders({
+          onBatch: (batch) => utilitySender.send("image:batch", batch),
+          onProgress: (done, total) =>
             utilitySender.send("image:scanProgress", { done, total }),
-          (folderId, folderName) =>
+          onFolderStart: (folderId, folderName) =>
             utilitySender.send("image:scanFolder", {
               folderId,
               folderName,
               active: true,
             }),
-          (folderId) =>
+          onFolderEnd: (folderId) =>
             utilitySender.send("image:scanFolder", { folderId, active: false }),
-          scanCancelToken,
-          detectDuplicates
+          signal: scanCancelToken,
+          onDuplicateGroup: detectDuplicates
             ? (group) => utilitySender.send("image:watchDuplicate", group)
             : undefined,
           folderIds,
           orderedFolderIds,
-          emitSearchStatsProgress,
-          (done, total) =>
+          onSearchStatsProgress: emitSearchStatsProgress,
+          onDupCheckProgress: (done, total) =>
             utilitySender.send("image:dupCheckProgress", { done, total }),
-          (phase) => utilitySender.send("image:scanPhase", { phase }),
-        );
+          onPhase: (phase) => utilitySender.send("image:scanPhase", { phase }),
+          skipFolderIds,
+        });
       } finally {
         scanCancelToken = null;
         setWatcherScanActive(false);

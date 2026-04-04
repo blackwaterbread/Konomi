@@ -292,10 +292,15 @@ declare global {
       listMatchingIds: (query: ImageListQuery) => Promise<number[]>;
       bulkDelete: (ids: number[]) => Promise<{ deleted: number; failed: number }>;
       listByIds: (ids: number[]) => Promise<ImageRow[]>;
+      quickVerify: () => Promise<{
+        changedFolderIds: number[];
+        unchangedFolderIds: number[];
+      }>;
       scan: (options?: {
         detectDuplicates?: boolean;
         folderIds?: number[];
         orderedFolderIds?: number[];
+        skipFolderIds?: number[];
       }) => Promise<void>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
       watch: () => Promise<void>;

@@ -178,12 +178,13 @@ describe("image sync integration", () => {
       varietyPlus: false,
     });
 
-    await syncAllFolders(
-      (images) => batches.push(images.map((image) => image.path)),
-      (done, total) => progressCalls.push([done, total]),
-      (folderId, folderName) => folderStarts.push([folderId, folderName]),
-      (folderId) => folderEnds.push(folderId),
-    );
+    await syncAllFolders({
+      onBatch: (images) => batches.push(images.map((image) => image.path)),
+      onProgress: (done, total) => progressCalls.push([done, total]),
+      onFolderStart: (folderId, folderName) =>
+        folderStarts.push([folderId, folderName]),
+      onFolderEnd: (folderId) => folderEnds.push(folderId),
+    });
 
     await expect(
       db.image.findUnique({ where: { path: stalePath } }),
@@ -267,16 +268,13 @@ describe("image sync integration", () => {
 
     const { syncAllFolders } = await import("../../../main/lib/image");
 
-    await syncAllFolders(
-      (images) => importedPaths.push(...images.map((image) => image.path)),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      (group) => {
+    await syncAllFolders({
+      onBatch: (images) =>
+        importedPaths.push(...images.map((image) => image.path)),
+      onDuplicateGroup: (group) => {
         duplicateGroups.push(group.incomingEntries.map((entry) => entry.path));
       },
-    );
+    });
 
     expect(duplicateGroups).toEqual([[incomingPath]]);
     expect(importedPaths).toEqual([]);

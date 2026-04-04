@@ -258,6 +258,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:listByIds", (_, ids: number[]) =>
     bridge.request("image:listByIds", { ids }),
   );
+  ipcMain.handle("image:quickVerify", () =>
+    bridge.request("image:quickVerify", undefined),
+  );
   ipcMain.handle(
     "image:scan",
     (
@@ -266,6 +269,7 @@ export function registerIpcHandlers(): void {
         detectDuplicates?: boolean;
         folderIds?: number[];
         orderedFolderIds?: number[];
+        skipFolderIds?: number[];
       },
     ) => bridge.request("image:scan", options ?? {}),
   );

@@ -5,6 +5,8 @@ import { createLogger } from "@/lib/logger";
 
 const log = createLogger("renderer/useImageWatchBootstrap");
 
+const DEFERRED_INTEGRITY_CHECK_MS = 30_000;
+
 interface UseImageWatchBootstrapOptions {
   loadSearchPresetStats: () => Promise<void>;
   scheduleSearchStatsRefresh: (delay?: number) => void;
@@ -16,6 +18,7 @@ interface UseImageWatchBootstrapOptions {
   runScan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
+    skipFolderIds?: number[];
     refreshPage?: boolean;
     refreshSearchPresetStats?: boolean;
   }) => Promise<boolean>;
@@ -32,17 +35,69 @@ export function useImageWatchBootstrap({
   runScan,
 }: UseImageWatchBootstrapOptions) {
   useEffect(() => {
-    log.info(
-      "App mounted: loading initial data, starting watchers, and running initial scan",
-    );
-    void loadSearchPresetStats();
-    void runScan({
-      detectDuplicates: true,
-      refreshPage: true,
-      refreshSearchPresetStats: true,
-    }).then(() => {
-      scheduleAnalysis(0);
-    });
+    let cancelled = false;
+    let deferredTimer: ReturnType<typeof setTimeout> | null = null;
+
+    log.info("App mounted: quick-verifying folders before scan");
+
+    void (async () => {
+      // Phase 1: Quick verify — count-based fingerprint check
+      let changedFolderIds: number[] = [];
+      let unchangedFolderIds: number[] = [];
+      try {
+        const result = await window.image.quickVerify();
+        changedFolderIds = result.changedFolderIds;
+        unchangedFolderIds = result.unchangedFolderIds;
+        log.info("Quick verify result", {
+          changed: changedFolderIds.length,
+          unchanged: unchangedFolderIds.length,
+        });
+      } catch (error: unknown) {
+        log.warn("Quick verify failed, falling back to full scan", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Fallback: treat all as changed → full scan
+      }
+
+      if (cancelled) return;
+
+      // Phase 2: Conditional scan
+      if (changedFolderIds.length === 0 && unchangedFolderIds.length > 0) {
+        // Nothing changed — skip scan, just load cached data
+        log.info("All folders unchanged, skipping initial scan");
+        void loadSearchPresetStats();
+        schedulePageRefresh(0);
+        scheduleAnalysis(0);
+      } else {
+        // Some folders changed — scan only those, skip unchanged
+        void loadSearchPresetStats();
+        void runScan({
+          detectDuplicates: true,
+          skipFolderIds:
+            unchangedFolderIds.length > 0 ? unchangedFolderIds : undefined,
+          refreshPage: true,
+          refreshSearchPresetStats: true,
+        }).then(() => {
+          scheduleAnalysis(0);
+        });
+      }
+
+      // Phase 3: Deferred integrity check for unchanged folders
+      if (unchangedFolderIds.length > 0 && !cancelled) {
+        deferredTimer = setTimeout(() => {
+          deferredTimer = null;
+          if (cancelled || scanningRef.current) return;
+          log.info("Running deferred integrity check for unchanged folders");
+          void runScan({
+            detectDuplicates: false,
+            folderIds: unchangedFolderIds,
+            refreshPage: true,
+            refreshSearchPresetStats: false,
+          });
+        }, DEFERRED_INTEGRITY_CHECK_MS);
+      }
+    })();
+
     let scanFirstBatchFired = false;
     let lastScanRefreshAt = 0;
     let lastSeenScanStart = 0;
@@ -111,7 +166,12 @@ export function useImageWatchBootstrap({
 
     return () => {
       log.info("App unmount cleanup");
+      cancelled = true;
       watchCancelled = true;
+      if (deferredTimer) {
+        clearTimeout(deferredTimer);
+        deferredTimer = null;
+      }
       if (watchRetryTimer) {
         clearTimeout(watchRetryTimer);
         watchRetryTimer = null;

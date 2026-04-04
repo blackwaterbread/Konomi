@@ -83,10 +83,16 @@ contextBridge.exposeInMainWorld("image", {
   }) => ipcRenderer.invoke("image:listMatchingIds", query),
   bulkDelete: (ids: number[]) => ipcRenderer.invoke("image:bulkDelete", ids),
   listByIds: (ids: number[]) => ipcRenderer.invoke("image:listByIds", ids),
+  quickVerify: () =>
+    ipcRenderer.invoke("image:quickVerify") as Promise<{
+      changedFolderIds: number[];
+      unchangedFolderIds: number[];
+    }>,
   scan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
     orderedFolderIds?: number[];
+    skipFolderIds?: number[];
   }) => ipcRenderer.invoke("image:scan", options),
   setFavorite: (id: number, isFavorite: boolean) =>
     ipcRenderer.invoke("image:setFavorite", id, isFavorite),

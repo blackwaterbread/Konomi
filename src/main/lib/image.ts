@@ -1923,23 +1923,85 @@ export type ScanPhase =
   | "checkingDuplicates"
   | "syncing";
 
-export async function syncAllFolders(
-  onBatch: (images: ImageRow[]) => void,
-  onProgress?: (done: number, total: number) => void,
-  onFolderStart?: (folderId: number, folderName: string) => void,
-  onFolderEnd?: (folderId: number) => void,
+export type QuickVerifyResult = {
+  changedFolderIds: number[];
+  unchangedFolderIds: number[];
+};
+
+export async function quickVerifyFolders(
   signal?: CancelToken,
-  onDuplicateGroup?: (group: FolderDuplicateGroup) => void,
-  folderIds?: number[],
-  orderedFolderIds?: number[],
-  onSearchStatsProgress?: SearchStatsProgressCallback,
-  onDupCheckProgress?: (done: number, total: number) => void,
-  onPhase?: (phase: ScanPhase) => void,
+): Promise<QuickVerifyResult> {
+  const db = getDB();
+  const folders = await db.folder.findMany({
+    select: { id: true, path: true, lastScanFileCount: true },
+  });
+
+  const results = await Promise.all(
+    folders.map(async (folder) => {
+      try {
+        const diskCount = await countPngFiles(folder.path, signal);
+        const changed =
+          folder.lastScanFileCount === null ||
+          folder.lastScanFileCount !== diskCount;
+        return { id: folder.id, changed };
+      } catch {
+        // folder inaccessible (deleted, permissions, etc.) → treat as changed
+        return { id: folder.id, changed: true };
+      }
+    }),
+  );
+
+  const changedFolderIds: number[] = [];
+  const unchangedFolderIds: number[] = [];
+  for (const r of results) {
+    if (r.changed) changedFolderIds.push(r.id);
+    else unchangedFolderIds.push(r.id);
+  }
+
+  console.info(
+    `[image.quickVerifyFolders] total=${folders.length} changed=${changedFolderIds.length} unchanged=${unchangedFolderIds.length}`,
+  );
+
+  return { changedFolderIds, unchangedFolderIds };
+}
+
+export type SyncAllFoldersOptions = {
+  onBatch: (images: ImageRow[]) => void;
+  onProgress?: (done: number, total: number) => void;
+  onFolderStart?: (folderId: number, folderName: string) => void;
+  onFolderEnd?: (folderId: number) => void;
+  signal?: CancelToken;
+  onDuplicateGroup?: (group: FolderDuplicateGroup) => void;
+  folderIds?: number[];
+  orderedFolderIds?: number[];
+  onSearchStatsProgress?: SearchStatsProgressCallback;
+  onDupCheckProgress?: (done: number, total: number) => void;
+  onPhase?: (phase: ScanPhase) => void;
+  skipFolderIds?: number[];
+};
+
+export async function syncAllFolders(
+  options: SyncAllFoldersOptions,
 ): Promise<void> {
+  const {
+    onBatch,
+    onProgress,
+    onFolderStart,
+    onFolderEnd,
+    signal,
+    onDuplicateGroup,
+    folderIds,
+    orderedFolderIds,
+    onSearchStatsProgress,
+    onDupCheckProgress,
+    onPhase,
+    skipFolderIds,
+  } = options;
   const startedAt = Date.now();
   let done = 0;
   let total = 0;
   let folderCount = 0;
+  let skippedCount = 0;
   let success = false;
   let lastProgressAt = 0;
   const detectDuplicates = Boolean(onDuplicateGroup);
@@ -1972,7 +2034,18 @@ export async function syncAllFolders(
             return [...ordered, ...remaining];
           })()
         : candidateFolders;
-    folderCount = folders.length;
+    const skipSet =
+      skipFolderIds && skipFolderIds.length > 0 ? new Set(skipFolderIds) : null;
+    const foldersToScan = skipSet
+      ? folders.filter((f) => !skipSet.has(f.id))
+      : folders;
+    folderCount = foldersToScan.length;
+    skippedCount = folders.length - foldersToScan.length;
+    if (skippedCount > 0) {
+      console.info(
+        `[image.syncAllFolders] skipping ${skippedCount} unchanged folders`,
+      );
+    }
     const db = getDB();
 
     const preScannedTotals = detectDuplicates;
@@ -1980,13 +2053,14 @@ export async function syncAllFolders(
 
     if (onDuplicateGroup && !signal?.cancelled) {
       onPhase?.("scanningFiles");
+      // Cross-folder dup 비교를 위해 기존 이미지는 전체 로드
       const existingRows = await db.image.findMany({
         select: { id: true, path: true, fileSize: true },
       });
       const existingPathSet = new Set(existingRows.map((row) => row.path));
       const incomingCandidates: string[] = [];
 
-      for (const folder of folders) {
+      for (const folder of foldersToScan) {
         if (signal?.cancelled) break;
 
         await withConcurrency(
@@ -2075,14 +2149,14 @@ export async function syncAllFolders(
 
     // total이 미확정일 때(수동 재스캔 등) 빠른 카운트 패스로 확정
     if (!preScannedTotals && !signal?.cancelled) {
-      for (const folder of folders) {
+      for (const folder of foldersToScan) {
         if (signal?.cancelled) break;
         total += await countPngFiles(folder.path, signal);
       }
       onProgress?.(done, total);
     }
 
-    for (const folder of folders) {
+    for (const folder of foldersToScan) {
       if (signal?.cancelled) break;
 
       onFolderStart?.(folder.id, folder.name);
@@ -2279,6 +2353,14 @@ export async function syncAllFolders(
             );
           }
         }
+        // Update folder fingerprint after successful sync
+        await db.folder.update({
+          where: { id: folder.id },
+          data: {
+            lastScanFileCount: discoveredPathSet.size,
+            lastScanFinishedAt: new Date(),
+          },
+        });
       } finally {
         onFolderEnd?.(folder.id);
       }
@@ -2295,7 +2377,7 @@ export async function syncAllFolders(
   } finally {
     const elapsedMs = Date.now() - startedAt;
     console.info(
-      `[image.syncAllFolders] end elapsedMs=${elapsedMs} folders=${folderCount} processed=${done}/${total} detectDuplicates=${detectDuplicates} cancelled=${signal?.cancelled === true} success=${success}`,
+      `[image.syncAllFolders] end elapsedMs=${elapsedMs} folders=${folderCount} skipped=${skippedCount} processed=${done}/${total} detectDuplicates=${detectDuplicates} cancelled=${signal?.cancelled === true} success=${success}`,
     );
   }
 }

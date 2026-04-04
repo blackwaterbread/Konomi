@@ -11,11 +11,13 @@ datasource db {
 }
 
 model Folder {
-  id        Int      @id @default(autoincrement())
-  name      String
-  path      String   @unique
-  createdAt DateTime @default(now())
-  images    Image[]
+  id                 Int       @id @default(autoincrement())
+  name               String
+  path               String    @unique
+  createdAt          DateTime  @default(now())
+  lastScanFileCount  Int?
+  lastScanFinishedAt DateTime?
+  images             Image[]
 }
 
 model PromptCategory {
