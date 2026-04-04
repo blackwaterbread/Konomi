@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import type { ImageData } from "@/components/image-card";
 import type { ImageListQuery } from "@preload/index.d";
 import i18n from "@/lib/i18n";
-import { rowToImageData } from "@/lib/image-utils";
+import { parseTokens, rowToImageData } from "@/lib/image-utils";
 
 export function useGalleryImages(
   listBaseQuery: Omit<ImageListQuery, "page">,
@@ -107,6 +107,30 @@ export function useGalleryImages(
     };
   }, []);
 
+  const tokenLoadingRef = useRef(new Set<string>());
+
+  const loadTokens = useCallback(async (imageId: string) => {
+    if (tokenLoadingRef.current.has(imageId)) return;
+    tokenLoadingRef.current.add(imageId);
+    try {
+      const rows = await window.image.listByIds([Number(imageId)]);
+      if (rows.length === 0) return;
+      const row = rows[0];
+      const tokens = parseTokens(row.promptTokens);
+      const negativeTokens = parseTokens(row.negativePromptTokens);
+      const characterTokens = parseTokens(row.characterPromptTokens);
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === imageId
+            ? { ...img, tokens, negativeTokens, characterTokens }
+            : img,
+        ),
+      );
+    } finally {
+      tokenLoadingRef.current.delete(imageId);
+    }
+  }, []);
+
   return {
     images,
     setImages,
@@ -117,5 +141,6 @@ export function useGalleryImages(
     hasLoadedOnce,
     isLoading,
     schedulePageRefresh,
+    loadTokens,
   };
 }

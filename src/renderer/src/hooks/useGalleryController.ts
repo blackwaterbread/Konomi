@@ -92,6 +92,7 @@ export function useGalleryController({
     hasLoadedOnce,
     isLoading: isGalleryLoading,
     schedulePageRefresh,
+    loadTokens,
   } = useGalleryImages(listBaseQuery);
 
   const gallerySelectionScopeKey = useMemo(
@@ -253,8 +254,9 @@ export function useGalleryController({
       onSortChange: setSortBy,
       onClearSearch: handleClearSearch,
       onLoadAllSelectableIds: handleLoadAllSelectableIds,
+      onLoadTokens: loadTokens,
     }),
-    [handleClearSearch, handleLoadAllSelectableIds],
+    [handleClearSearch, handleLoadAllSelectableIds, loadTokens],
   );
 
   return {

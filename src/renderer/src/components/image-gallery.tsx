@@ -153,6 +153,7 @@ interface ImageGalleryActions {
   onClearSearch?: () => void;
   onAddFolder?: () => void;
   onLoadAllSelectableIds?: () => Promise<number[]>;
+  onLoadTokens?: (imageId: string) => void;
 }
 
 interface ImageGalleryPagination {
@@ -396,6 +397,7 @@ interface GalleryResultsProps {
   onBulkCategory: () => void;
   onRescanMetadata?: (path: string) => void;
   onBulkRescanMetadata: () => void;
+  onLoadTokens?: (imageId: string) => void;
   isInitializing: boolean;
   scanning: boolean;
   hasFolders: boolean;
@@ -424,6 +426,7 @@ const GalleryResults = memo(function GalleryResults({
   onBulkCategory,
   onRescanMetadata,
   onBulkRescanMetadata,
+  onLoadTokens,
   isInitializing,
   scanning,
   hasFolders,
@@ -607,6 +610,7 @@ const GalleryResults = memo(function GalleryResults({
                   onBulkCategory={onBulkCategory}
                   onRescanMetadata={onRescanMetadata}
                   onBulkRescanMetadata={onBulkRescanMetadata}
+                  onLoadTokens={onLoadTokens}
                 />
               );
 
@@ -893,6 +897,7 @@ export const ImageGallery = memo(function ImageGallery({
     onClearSearch,
     onAddFolder,
     onLoadAllSelectableIds,
+    onLoadTokens,
   } = actions;
   const { pageSize = 50, page, totalPages, onPageChange } = pagination ?? {};
   const [internalPage, setInternalPage] = useState(1);
@@ -1099,6 +1104,7 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkCategory={handleBulkCategory}
         onRescanMetadata={onRescanMetadata}
         onBulkRescanMetadata={handleBulkRescanMetadata}
+        onLoadTokens={onLoadTokens}
         isInitializing={isInitializing}
         scanning={scanning}
         hasFolders={hasFolders}
