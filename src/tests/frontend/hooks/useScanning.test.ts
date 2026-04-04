@@ -52,9 +52,7 @@ describe("useScanning", () => {
       });
     });
 
-    expect(result.current.scanProgress).toEqual({ done: 1, total: 4 });
     expect(result.current.activeScanFolderIds.has(3)).toBe(true);
-    expect(result.current.scanningFolderNames.get(3)).toBe("Images");
 
     deferred.resolve();
     await act(async () => {
@@ -64,9 +62,7 @@ describe("useScanning", () => {
     expect(schedulePageRefresh).toHaveBeenCalledWith(0);
     expect(loadSearchPresetStats).toHaveBeenCalledTimes(1);
     expect(result.current.scanning).toBe(false);
-    expect(result.current.scanProgress).toBeNull();
     expect(result.current.activeScanFolderIds.size).toBe(0);
-    expect(result.current.scanningFolderNames.size).toBe(0);
   });
 
   it("cancels an active scan and raises a folder rollback request", async () => {

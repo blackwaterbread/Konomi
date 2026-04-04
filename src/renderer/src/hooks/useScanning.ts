@@ -19,15 +19,7 @@ export function useScanning({
   const [rollbackFolderIds, setRollbackFolderIds] = useState<Set<number>>(
     new Set(),
   );
-  const [scanProgress, setScanProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
-  const [scanPhase, setScanPhase] = useState<string | null>(null);
   const [scanCancelConfirmOpen, setScanCancelConfirmOpen] = useState(false);
-  const [scanningFolderNames, setScanningFolderNames] = useState<
-    Map<number, string>
-  >(new Map());
   const [folderRollbackRequest, setFolderRollbackRequest] = useState<{
     id: number;
     folderIds: number[];
@@ -39,24 +31,11 @@ export function useScanning({
   const rollbackRequestSeqRef = useRef(0);
 
   useEffect(() => {
-    const offScanProgress = window.image.onScanProgress((data) => {
-      if (scanningRef.current)
-        setScanProgress(data.done >= data.total ? null : data);
-    });
-    const offScanPhase = window.image.onScanPhase(({ phase }) => {
-      if (scanningRef.current) setScanPhase(phase);
-    });
     const offScanFolder = window.image.onScanFolder(
-      ({ folderId, folderName, active }) => {
+      ({ folderId, active }) => {
         setActiveScanFolderIds((prev) => {
           const next = new Set(prev);
           if (active) next.add(folderId);
-          else next.delete(folderId);
-          return next;
-        });
-        setScanningFolderNames((prev) => {
-          const next = new Map(prev);
-          if (active && folderName) next.set(folderId, folderName);
           else next.delete(folderId);
           return next;
         });
@@ -64,8 +43,6 @@ export function useScanning({
     );
 
     return () => {
-      offScanProgress();
-      offScanPhase();
       offScanFolder();
     };
   }, []);
@@ -92,7 +69,6 @@ export function useScanning({
       scanStartCountRef.current += 1;
       scanningRef.current = true;
       setScanning(true);
-      setScanProgress(null);
       const orderedFolderIds = (() => {
         try {
           const raw = localStorage.getItem("konomi-folder-order");
@@ -132,10 +108,7 @@ export function useScanning({
         .finally(() => {
           scanningRef.current = false;
           setScanning(false);
-          setScanProgress(null);
-          setScanPhase(null);
           setActiveScanFolderIds(new Set());
-          setScanningFolderNames(new Map());
           scanPromiseRef.current = null;
         });
       scanPromiseRef.current = scanPromise;
@@ -183,11 +156,8 @@ export function useScanning({
     setActiveScanFolderIds,
     rollbackFolderIds,
     setRollbackFolderIds,
-    scanProgress,
-    scanPhase,
     scanCancelConfirmOpen,
     setScanCancelConfirmOpen,
-    scanningFolderNames,
     folderRollbackRequest,
     setFolderRollbackRequest,
     scanningRef,

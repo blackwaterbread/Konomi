@@ -95,10 +95,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
   const {
     availableResolutions,
     availableModels,
-    searchStatsProgress,
     loadSearchPresetStats,
     scheduleSearchStatsRefresh,
-    handleSearchStatsProgress,
   } = useSearchPresetStats();
   const {
     categories,
@@ -175,11 +173,8 @@ export default function App({ initialFolderCount = null }: AppProps) {
     activeScanFolderIds,
     setActiveScanFolderIds,
     setRollbackFolderIds,
-    scanProgress,
-    scanPhase,
     scanCancelConfirmOpen,
     setScanCancelConfirmOpen,
-    scanningFolderNames,
     folderRollbackRequest,
     scanningRef,
     scanStartCountRef,
@@ -190,8 +185,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
 
   const {
     isAnalyzing,
-    hashProgress,
-    similarityProgress,
     similarGroups,
     analyzeTimerRef,
     pendingSimilarityRecalcRef,
@@ -290,7 +283,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
   useImageWatchBootstrap({
     loadSearchPresetStats,
     scheduleSearchStatsRefresh,
-    handleSearchStatsProgress,
     scanningRef,
     scanStartCountRef,
     scheduleAnalysis,
@@ -462,12 +454,6 @@ export default function App({ initialFolderCount = null }: AppProps) {
         scanning={scanning}
         checkingDuplicates={checkingDuplicates}
         isAnalyzing={isAnalyzing}
-        hashProgress={hashProgress}
-        similarityProgress={similarityProgress}
-        scanProgress={scanProgress}
-        scanPhase={scanPhase}
-        searchStatsProgress={searchStatsProgress}
-        scanningFolderNames={scanningFolderNames}
         onCancelScan={handleCancelScan}
         advancedFilters={advancedFilters}
         onAdvancedFiltersChange={setAdvancedFilters}

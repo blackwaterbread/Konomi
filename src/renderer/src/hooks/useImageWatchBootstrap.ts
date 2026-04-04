@@ -8,7 +8,6 @@ const log = createLogger("renderer/useImageWatchBootstrap");
 interface UseImageWatchBootstrapOptions {
   loadSearchPresetStats: () => Promise<void>;
   scheduleSearchStatsRefresh: (delay?: number) => void;
-  handleSearchStatsProgress: (data: { done: number; total: number }) => void;
   scanningRef: MutableRefObject<boolean>;
   scanStartCountRef: MutableRefObject<number>;
   scheduleAnalysis: (delay?: number) => void;
@@ -24,7 +23,6 @@ interface UseImageWatchBootstrapOptions {
 export function useImageWatchBootstrap({
   loadSearchPresetStats,
   scheduleSearchStatsRefresh,
-  handleSearchStatsProgress,
   scanningRef,
   scanStartCountRef,
   scheduleAnalysis,
@@ -32,9 +30,15 @@ export function useImageWatchBootstrap({
   runScan,
 }: UseImageWatchBootstrapOptions) {
   useEffect(() => {
-    log.info("App mounted: loading initial data, starting watchers, and running initial scan");
+    log.info(
+      "App mounted: loading initial data, starting watchers, and running initial scan",
+    );
     void loadSearchPresetStats();
-    void runScan({ detectDuplicates: true, refreshPage: true, refreshSearchPresetStats: true }).then(() => {
+    void runScan({
+      detectDuplicates: true,
+      refreshPage: true,
+      refreshSearchPresetStats: true,
+    }).then(() => {
       scheduleAnalysis(0);
     });
     let scanFirstBatchFired = false;
@@ -82,10 +86,6 @@ export function useImageWatchBootstrap({
       scheduleSearchStatsRefresh(120);
     });
 
-    const offSearchStatsProgress = window.image.onSearchStatsProgress(
-      handleSearchStatsProgress,
-    );
-
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -114,10 +114,8 @@ export function useImageWatchBootstrap({
       }
       offBatch();
       offRemoved();
-      offSearchStatsProgress();
     };
   }, [
-    handleSearchStatsProgress,
     loadSearchPresetStats,
     runScan,
     scanningRef,

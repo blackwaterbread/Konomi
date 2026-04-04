@@ -14,17 +14,10 @@ export function useSearchPresetStats() {
     Array<{ width: number; height: number }>
   >([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [searchStatsProgress, setSearchStatsProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
 
   const searchStatsRefreshTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
 
   const loadSearchPresetStats = useCallback(async () => {
     try {
@@ -53,32 +46,11 @@ export function useSearchPresetStats() {
     [loadSearchPresetStats],
   );
 
-  const handleSearchStatsProgress = useCallback(
-    (data: { done: number; total: number }) => {
-      setSearchStatsProgress(data);
-      if (searchStatsClearTimerRef.current) {
-        clearTimeout(searchStatsClearTimerRef.current);
-        searchStatsClearTimerRef.current = null;
-      }
-      if (data.total > 0 && data.done >= data.total) {
-        searchStatsClearTimerRef.current = setTimeout(() => {
-          setSearchStatsProgress(null);
-          searchStatsClearTimerRef.current = null;
-        }, 250);
-      }
-    },
-    [],
-  );
-
   useEffect(() => {
     return () => {
       if (searchStatsRefreshTimerRef.current) {
         clearTimeout(searchStatsRefreshTimerRef.current);
         searchStatsRefreshTimerRef.current = null;
-      }
-      if (searchStatsClearTimerRef.current) {
-        clearTimeout(searchStatsClearTimerRef.current);
-        searchStatsClearTimerRef.current = null;
       }
     };
   }, []);
@@ -86,9 +58,7 @@ export function useSearchPresetStats() {
   return {
     availableResolutions,
     availableModels,
-    searchStatsProgress,
     loadSearchPresetStats,
     scheduleSearchStatsRefresh,
-    handleSearchStatsProgress,
   };
 }

@@ -111,12 +111,6 @@ interface HeaderProps {
   scanning?: boolean;
   checkingDuplicates?: boolean;
   isAnalyzing?: boolean;
-  hashProgress?: { done: number; total: number } | null;
-  similarityProgress?: { done: number; total: number } | null;
-  scanProgress?: { done: number; total: number } | null;
-  scanPhase?: string | null;
-  searchStatsProgress?: { done: number; total: number } | null;
-  scanningFolderNames?: Map<number, string>;
   onCancelScan?: () => void;
   advancedFilters: AdvancedFilter[];
   onAdvancedFiltersChange: (filters: AdvancedFilter[]) => void;
@@ -634,6 +628,118 @@ const HeaderPanelButtons = memo(function HeaderPanelButtons({
   );
 });
 
+type ProgressData = { done: number; total: number };
+
+function useHeaderProgress({
+  scanning,
+  isAnalyzing,
+}: {
+  scanning?: boolean;
+  isAnalyzing?: boolean;
+}) {
+  const [scanProgress, setScanProgress] = useState<ProgressData | null>(null);
+  const [scanPhase, setScanPhase] = useState<string | null>(null);
+  const [scanningFolderNames, setScanningFolderNames] = useState<
+    Map<number, string>
+  >(new Map());
+  const [hashProgress, setHashProgress] = useState<ProgressData | null>(null);
+  const [similarityProgress, setSimilarityProgress] =
+    useState<ProgressData | null>(null);
+  const [searchStatsProgress, setSearchStatsProgress] =
+    useState<ProgressData | null>(null);
+  const searchStatsClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const scanningRef = useRef(scanning);
+  const analyzingRef = useRef(isAnalyzing);
+
+  useEffect(() => {
+    scanningRef.current = scanning;
+  }, [scanning]);
+  useEffect(() => {
+    analyzingRef.current = isAnalyzing;
+  }, [isAnalyzing]);
+
+  useEffect(() => {
+    const offScanProgress = window.image.onScanProgress((data) => {
+      if (scanningRef.current)
+        setScanProgress(data.done >= data.total ? null : data);
+    });
+    const offScanPhase = window.image.onScanPhase(({ phase }) => {
+      if (scanningRef.current) setScanPhase(phase);
+    });
+    const offScanFolder = window.image.onScanFolder(
+      ({ folderId, folderName, active }) => {
+        setScanningFolderNames((prev) => {
+          const next = new Map(prev);
+          if (active && folderName) next.set(folderId, folderName);
+          else next.delete(folderId);
+          return next;
+        });
+      },
+    );
+    const offHashProgress = window.image.onHashProgress((data) => {
+      if (analyzingRef.current)
+        setHashProgress(data.done >= data.total ? null : data);
+    });
+    const offSimilarityProgress = window.image.onSimilarityProgress((data) => {
+      setSimilarityProgress(data);
+    });
+    const offSearchStatsProgress = window.image.onSearchStatsProgress(
+      (data) => {
+        setSearchStatsProgress(data);
+        if (searchStatsClearTimerRef.current) {
+          clearTimeout(searchStatsClearTimerRef.current);
+          searchStatsClearTimerRef.current = null;
+        }
+        if (data.total > 0 && data.done >= data.total) {
+          searchStatsClearTimerRef.current = setTimeout(() => {
+            setSearchStatsProgress(null);
+            searchStatsClearTimerRef.current = null;
+          }, 250);
+        }
+      },
+    );
+
+    return () => {
+      offScanProgress();
+      offScanPhase();
+      offScanFolder();
+      offHashProgress();
+      offSimilarityProgress();
+      offSearchStatsProgress();
+      if (searchStatsClearTimerRef.current) {
+        clearTimeout(searchStatsClearTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Clean up when scanning/analyzing ends
+  useEffect(() => {
+    if (!scanning) {
+      setScanProgress(null);
+      setScanPhase(null);
+      setScanningFolderNames(new Map());
+    }
+  }, [scanning]);
+
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setHashProgress(null);
+      setSimilarityProgress(null);
+    }
+  }, [isAnalyzing]);
+
+  return {
+    scanProgress,
+    scanPhase,
+    scanningFolderNames,
+    hashProgress,
+    similarityProgress,
+    searchStatsProgress,
+  };
+}
+
 export const Header = memo(function Header({
   searchQuery,
   onSearchChange,
@@ -642,12 +748,6 @@ export const Header = memo(function Header({
   scanning,
   checkingDuplicates,
   isAnalyzing,
-  hashProgress,
-  similarityProgress,
-  scanProgress,
-  scanPhase,
-  searchStatsProgress,
-  scanningFolderNames,
   onCancelScan,
   advancedFilters,
   onAdvancedFiltersChange,
@@ -656,6 +756,14 @@ export const Header = memo(function Header({
   onStartTour,
 }: HeaderProps) {
   const { t } = useTranslation();
+  const {
+    scanProgress,
+    scanPhase,
+    scanningFolderNames,
+    hashProgress,
+    similarityProgress,
+    searchStatsProgress,
+  } = useHeaderProgress({ scanning, isAnalyzing });
   const hasSearchStatsProgress =
     !!searchStatsProgress &&
     searchStatsProgress.total > 0 &&

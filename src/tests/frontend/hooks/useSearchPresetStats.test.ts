@@ -43,29 +43,4 @@ describe("useSearchPresetStats", () => {
     });
     expect(preloadMocks.image.getSearchPresetStats).toHaveBeenCalledTimes(1);
   });
-
-  it("tracks and clears search stats progress after completion", async () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useSearchPresetStats());
-
-    act(() => {
-      result.current.handleSearchStatsProgress({ done: 1, total: 4 });
-    });
-    expect(result.current.searchStatsProgress).toEqual({ done: 1, total: 4 });
-
-    act(() => {
-      result.current.handleSearchStatsProgress({ done: 4, total: 4 });
-    });
-    expect(result.current.searchStatsProgress).toEqual({ done: 4, total: 4 });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(249);
-    });
-    expect(result.current.searchStatsProgress).toEqual({ done: 4, total: 4 });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(result.current.searchStatsProgress).toBeNull();
-  });
 });

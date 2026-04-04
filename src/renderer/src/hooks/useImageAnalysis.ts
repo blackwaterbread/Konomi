@@ -15,14 +15,6 @@ export function useImageAnalysis({
   settings: Settings;
 }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [hashProgress, setHashProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
-  const [similarityProgress, setSimilarityProgress] = useState<{
-    done: number;
-    total: number;
-  } | null>(null);
   const [similarGroups, setSimilarGroups] = useState<SimilarGroup[]>([]);
 
   const analyzingRef = useRef(false);
@@ -48,21 +40,6 @@ export function useImageAnalysis({
   ]);
 
   useEffect(() => {
-    const offHashProgress = window.image.onHashProgress((data) => {
-      if (analyzingRef.current)
-        setHashProgress(data.done >= data.total ? null : data);
-    });
-    const offSimilarityProgress = window.image.onSimilarityProgress((data) => {
-      setSimilarityProgress(data);
-    });
-
-    return () => {
-      offHashProgress();
-      offSimilarityProgress();
-    };
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (analyzeTimerRef.current) {
         clearTimeout(analyzeTimerRef.current);
@@ -81,8 +58,6 @@ export function useImageAnalysis({
       log.info("Analysis started");
       analyzingRef.current = true;
       setIsAnalyzing(true);
-      setHashProgress(null);
-      setSimilarityProgress(null);
       try {
         await window.image.computeHashes();
         const groups = await window.image.similarGroups(
@@ -109,8 +84,6 @@ export function useImageAnalysis({
         return false;
       } finally {
         analyzingRef.current = false;
-        setHashProgress(null);
-        setSimilarityProgress(null);
         setIsAnalyzing(false);
         analysisPromiseRef.current = null;
       }
@@ -139,8 +112,6 @@ export function useImageAnalysis({
 
   return {
     isAnalyzing,
-    hashProgress,
-    similarityProgress,
     similarGroups,
     setSimilarGroups,
     analyzeTimerRef,
