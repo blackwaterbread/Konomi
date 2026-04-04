@@ -617,7 +617,11 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
   std::unordered_map<uint64_t, PairAcc> tpairs;
   tpairs.reserve(std::min((uint64_t)N * N / 4, (uint64_t)4000000));
 
-  const uint32_t max_df = std::max(N / 4u, 2u);
+  // Cap per-token df for O(df²) pair enumeration.  Tokens above this threshold
+  // are deferred to the cheaper skip-correction pass over existing pairs.
+  // With N=35K the old N/4 (=8750) allowed tokens with df=5000 to generate
+  // C(5000,2)=12.5M pairs each, causing multi-GB memory usage in tpairs.
+  const uint32_t max_df = std::max(std::min(N / 4u, 500u), 2u);
 
   struct SkipEntry { float weight; uint32_t tid; };
   std::vector<SkipEntry> skip_prompt, skip_char, skip_pos, skip_cross;
@@ -691,6 +695,9 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
     }
   }
 
+  // ── Release inverted index — no longer needed after accumulation ─────────
+  { decltype(fidx) tmp; std::swap(fidx, tmp); }
+
   // ── pHash pass: find visually-close pairs not in tpairs ──────────────────
   // Each comparison is a single XOR + POPCNT: fast even for large N.
   // When targets are specified, skip pairs where neither index is a target.
@@ -752,6 +759,10 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
     res_dists.push_back(dist);
     res_texts.push_back(0.0);
   }
+
+  // Release hash maps before allocating JS typed arrays
+  { decltype(tpairs)    t; std::swap(tpairs, t); }
+  { decltype(phash_only) t; std::swap(phash_only, t); }
 
   uint32_t count = (uint32_t)res_aids.size();
   size_t i32_bytes = (size_t)count * sizeof(int32_t);

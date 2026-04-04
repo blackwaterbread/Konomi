@@ -245,7 +245,9 @@ function toParsedRows(rows: SimilaritySourceRow[]): ParsedImageRow[] {
     const prompt = parseTokenSet(row.promptTokens);
     const character = parseTokenSet(row.characterPromptTokens);
     const negative = parseTokenSet(row.negativePromptTokens);
-    const positive = new Set<string>([...prompt, ...character]);
+    // Build positive as union of prompt+character without spreading into temp arrays
+    const positive = new Set<string>(prompt);
+    for (const t of character) positive.add(t);
     return {
       id: row.id,
       pHash: row.pHash,
@@ -259,12 +261,13 @@ function toParsedRows(rows: SimilaritySourceRow[]): ParsedImageRow[] {
 
 function buildIdfMap(rows: ParsedImageRow[]): Map<string, number> {
   const docFrequency = new Map<string, number>();
+  // Reuse a single Set per row instead of allocating 35K temporary union Sets
+  const seen = new Set<string>();
   for (const row of rows) {
-    const seen = new Set<string>([
-      ...row.prompt,
-      ...row.character,
-      ...row.negative,
-    ]);
+    seen.clear();
+    for (const t of row.prompt) seen.add(t);
+    for (const t of row.character) seen.add(t);
+    for (const t of row.negative) seen.add(t);
     for (const token of seen) {
       docFrequency.set(token, (docFrequency.get(token) ?? 0) + 1);
     }
@@ -424,13 +427,23 @@ function buildSimilarityImages(rows: SimilaritySourceRow[]): {
 } {
   const parsedRows = toParsedRows(rows);
   const idfMap = buildIdfMap(parsedRows);
-  const images = parsedRows.map((row) => ({
-    ...row,
-    promptWeightSum: sumTokenWeights(row.prompt, idfMap),
-    characterWeightSum: sumTokenWeights(row.character, idfMap),
-    negativeWeightSum: sumTokenWeights(row.negative, idfMap),
-    positiveWeightSum: sumTokenWeights(row.positive, idfMap),
-  }));
+  // Attach weight sums in-place to avoid a second 35K-element array via .map()
+  const images: SimilarityImage[] = new Array(parsedRows.length);
+  for (let i = 0; i < parsedRows.length; i++) {
+    const row = parsedRows[i];
+    images[i] = {
+      id: row.id,
+      pHash: row.pHash,
+      prompt: row.prompt,
+      character: row.character,
+      negative: row.negative,
+      positive: row.positive,
+      promptWeightSum: sumTokenWeights(row.prompt, idfMap),
+      characterWeightSum: sumTokenWeights(row.character, idfMap),
+      negativeWeightSum: sumTokenWeights(row.negative, idfMap),
+      positiveWeightSum: sumTokenWeights(row.positive, idfMap),
+    };
+  }
   return { images, idfMap };
 }
 
@@ -765,14 +778,18 @@ export async function refreshSimilarityCacheForImageIds(
   await ensureSimilarityCacheTables();
   await deleteSimilarityCacheForImageIds(targetIds);
 
-  const sourceRows = await readSimilaritySourceRows();
+  let sourceRows: SimilaritySourceRow[] | null =
+    await readSimilaritySourceRows();
   if (sourceRows.length < 2) return;
 
   const { images, idfMap } = buildSimilarityImages(sourceRows);
+  const sourceCount = sourceRows.length;
+  sourceRows = null; // Release raw DB rows — parsed data now lives in `images`
+
   const imageById = new Map(images.map((img) => [img.id, img]));
   const existingTargetIds = targetIds.filter((id) => imageById.has(id));
   if (existingTargetIds.length === 0) return;
-  const isFullCoverage = existingTargetIds.length === sourceRows.length;
+  const isFullCoverage = existingTargetIds.length === sourceCount;
 
   // ── Native fast path ─────────────────────────────────────────────────────
   // Uses C++ inverted token index + pHash pass, significantly faster than
