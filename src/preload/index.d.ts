@@ -258,6 +258,7 @@ declare global {
         cb: (info: { version: string }) => void,
       ) => () => void;
       onUpdateProgress: (cb: (data: { percent: number }) => void) => () => void;
+      onUtilityReset: (cb: () => void) => () => void;
     };
     promptBuilder: {
       listCategories: () => Promise<PromptCategory[]>;

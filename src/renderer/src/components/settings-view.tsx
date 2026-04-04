@@ -167,9 +167,16 @@ export function SettingsView({
     total: number;
   } | null>(null);
   useEffect(() => {
-    return window.image.onRescanMetadataProgress((data) => {
+    const offProgress = window.image.onRescanMetadataProgress((data) => {
       setRescanProgress(data);
     });
+    const offReset = window.appInfo.onUtilityReset(() => {
+      setRescanProgress(null);
+    });
+    return () => {
+      offProgress();
+      offReset();
+    };
   }, []);
   const [resetting, setResetting] = useState(false);
   const rescanning =
@@ -258,11 +265,15 @@ export function SettingsView({
   };
 
   const handleRescanMetadata = async () => {
-    const count = await onRescanMetadata();
-    if (count > 0) {
-      toast.success(t("settings.metadataRescan.success", { count }));
-    } else {
-      toast.info(t("settings.metadataRescan.noChanges"));
+    try {
+      const count = await onRescanMetadata();
+      if (count > 0) {
+        toast.success(t("settings.metadataRescan.success", { count }));
+      } else {
+        toast.info(t("settings.metadataRescan.noChanges"));
+      }
+    } catch {
+      setRescanProgress(null);
     }
   };
 

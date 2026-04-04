@@ -291,10 +291,16 @@ export default function App({ initialFolderCount = null, initialFolders = null }
   const rescanningRef = useRef(false);
 
   useEffect(() => {
-    return window.image.onRescanMetadataProgress((data) => {
-      rescanningRef.current =
-        data.total > 0 && data.done < data.total;
+    const offProgress = window.image.onRescanMetadataProgress((data) => {
+      rescanningRef.current = data.total > 0 && data.done < data.total;
     });
+    const offReset = window.appInfo.onUtilityReset(() => {
+      rescanningRef.current = false;
+    });
+    return () => {
+      offProgress();
+      offReset();
+    };
   }, []);
 
   useImageWatchBootstrap({

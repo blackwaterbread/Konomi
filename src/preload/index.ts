@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld("appInfo", {
     ipcRenderer.on("app:updateProgress", handler);
     return () => ipcRenderer.removeListener("app:updateProgress", handler);
   },
+  onUtilityReset: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("utility:reset", handler);
+    return () => ipcRenderer.removeListener("utility:reset", handler);
+  },
 });
 
 contextBridge.exposeInMainWorld("image", {

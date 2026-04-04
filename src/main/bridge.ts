@@ -142,6 +142,9 @@ class UtilityBridge {
           `Utility process exited unexpectedly (code: ${String(code)})`,
         ),
       );
+      if (this.webContents && !this.webContents.isDestroyed()) {
+        this.webContents.send("utility:reset");
+      }
       this.scheduleRestart();
     });
     child.on("error", (error) => {

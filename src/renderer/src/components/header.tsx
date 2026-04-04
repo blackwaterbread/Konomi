@@ -730,6 +730,13 @@ function useHeaderProgress({
     const offRescanProgress = window.image.onRescanMetadataProgress((data) => {
       setRescanProgress(data);
     });
+    const offUtilityReset = window.appInfo.onUtilityReset(() => {
+      setScanProgress(null);
+      setHashProgress(null);
+      setSimilarityProgress(null);
+      setSearchStatsProgress(null);
+      setRescanProgress(null);
+    });
 
     return () => {
       offScanProgress();
@@ -739,6 +746,7 @@ function useHeaderProgress({
       offSimilarityProgress();
       offSearchStatsProgress();
       offRescanProgress();
+      offUtilityReset();
       if (searchStatsClearTimerRef.current) {
         clearTimeout(searchStatsClearTimerRef.current);
       }

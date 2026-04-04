@@ -775,22 +775,19 @@ function buildStatDeltasFromMutations(
   return Array.from(deltaMap.values()).filter((delta) => delta.delta !== 0);
 }
 
-async function applyImageSearchStatDeltas(
+async function applySearchStatDeltasInTx(
+  tx: Pick<ReturnType<typeof getDB>, "$executeRawUnsafe">,
   deltas: ImageSearchStatDelta[],
   onProgress?: SearchStatsProgressCallback,
 ): Promise<void> {
-  if (deltas.length === 0) return;
-  await ensureImageSearchStatTable();
-  const db = getDB();
   const total = deltas.length;
   let done = 0;
   let lastProgressAt = 0;
   onProgress?.(done, total);
-  await db.$transaction(async (tx) => {
-    for (const delta of deltas) {
-      if (delta.delta > 0) {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+  for (const delta of deltas) {
+    if (delta.delta > 0) {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
            ON CONFLICT(kind, key) DO UPDATE SET
              count = ImageSearchStat.count + excluded.count,
@@ -802,35 +799,46 @@ async function applyImageSearchStatDeltas(
                ELSE excluded.model
              END,
              updatedAt = CURRENT_TIMESTAMP`,
-          delta.kind,
-          delta.key,
-          delta.width,
-          delta.height,
-          delta.model,
-          delta.delta,
-        );
-      } else {
-        await tx.$executeRawUnsafe(
-          `UPDATE ImageSearchStat
+        delta.kind,
+        delta.key,
+        delta.width,
+        delta.height,
+        delta.model,
+        delta.delta,
+      );
+    } else {
+      await tx.$executeRawUnsafe(
+        `UPDATE ImageSearchStat
            SET count = count + ?, updatedAt = CURRENT_TIMESTAMP
            WHERE kind = ? AND key = ?`,
-          delta.delta,
-          delta.kind,
-          delta.key,
-        );
-        await tx.$executeRawUnsafe(
-          "DELETE FROM ImageSearchStat WHERE kind = ? AND key = ? AND count <= 0",
-          delta.kind,
-          delta.key,
-        );
-      }
-      done++;
-      const now = Date.now();
-      if (done === total || now - lastProgressAt >= 100) {
-        lastProgressAt = now;
-        onProgress?.(done, total);
-      }
+        delta.delta,
+        delta.kind,
+        delta.key,
+      );
+      await tx.$executeRawUnsafe(
+        "DELETE FROM ImageSearchStat WHERE kind = ? AND key = ? AND count <= 0",
+        delta.kind,
+        delta.key,
+      );
     }
+    done++;
+    const now = Date.now();
+    if (done === total || now - lastProgressAt >= 100) {
+      lastProgressAt = now;
+      onProgress?.(done, total);
+    }
+  }
+}
+
+async function applyImageSearchStatDeltas(
+  deltas: ImageSearchStatDelta[],
+  onProgress?: SearchStatsProgressCallback,
+): Promise<void> {
+  if (deltas.length === 0) return;
+  await ensureImageSearchStatTable();
+  const db = getDB();
+  await db.$transaction(async (tx) => {
+    await applySearchStatDeltasInTx(tx, deltas, onProgress);
   });
 }
 
@@ -2461,21 +2469,25 @@ export async function rescanAllMetadata(
       select: { path: true, ...IMAGE_SEARCH_STAT_SOURCE_SELECT },
     })) as Array<{ path: string } & ImageSearchStatSource>;
     const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
-    const images = await db.$transaction(
-      batch.map((data) =>
-        db.image.update({
-          where: { path: data.path },
-          data,
-        }),
-      ),
-    );
-    await applyImageSearchStatsMutations(
+    await ensureImageSearchStatTable();
+    const deltas = buildStatDeltasFromMutations(
       batch.map((row) => ({
         before: beforeMap.get(row.path) ?? null,
         after: row,
       })),
-      onSearchStatsProgress,
     );
+    const images = await db.$transaction(async (tx) => {
+      const results = await Promise.all(
+        batch.map((data) =>
+          tx.image.update({
+            where: { path: data.path },
+            data,
+          }),
+        ),
+      );
+      await applySearchStatDeltasInTx(tx, deltas, onSearchStatsProgress);
+      return results;
+    });
     onBatch?.(images as unknown as ImageRow[]);
     updated += images.length;
   };
