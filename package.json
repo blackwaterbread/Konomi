@@ -1,8 +1,8 @@
 {
   "name": "konomi",
-  "version": "0.9.0",
+  "version": "0.12.0",
   "packageManager": "bun@1.2.20",
-  "description": "An Electron application with React and TypeScript",
+  "description": "AI image gallery with metadata parsing, search, and generation support",
   "main": "./out/main/index.js",
   "scripts": {
     "format": "prettier --write .",
