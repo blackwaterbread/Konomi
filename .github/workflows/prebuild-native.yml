@@ -78,6 +78,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add prebuilds/
           git diff --staged --quiet && echo "No changes" || (
-            git commit -m "chore: update prebuilt native addon binaries [skip ci]"
+            git commit -m "build: update prebuilt native addon binaries [skip ci]"
             git push
           )
