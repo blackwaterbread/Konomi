@@ -32,6 +32,11 @@ class FolderWatcher {
   private pendingDuplicatePaths = new Map<string, number>();
   private sender: EventSender;
 
+  // Scan-active guard: while true, file changes are queued instead of processed
+  private scanActive = false;
+  private deferredChanges = new Map<string, number>();
+  private deferredReconcileFolders = new Set<number>();
+
   constructor(sender: EventSender) {
     this.sender = sender;
   }
@@ -75,6 +80,29 @@ class FolderWatcher {
     this.folderReconcileTimers.forEach((t) => clearTimeout(t));
     this.folderReconcileTimers.clear();
     this.pendingDuplicatePaths.clear();
+    this.scanActive = false;
+    this.deferredChanges.clear();
+    this.deferredReconcileFolders.clear();
+  }
+
+  setScanActive(active: boolean): void {
+    this.scanActive = active;
+    if (!active) {
+      this.flushDeferred();
+    }
+  }
+
+  private flushDeferred(): void {
+    const changes = new Map(this.deferredChanges);
+    this.deferredChanges.clear();
+    const reconcileFolders = new Set(this.deferredReconcileFolders);
+    this.deferredReconcileFolders.clear();
+    for (const [filePath, folderId] of changes) {
+      this.scheduleProcess(folderId, filePath);
+    }
+    for (const folderId of reconcileFolders) {
+      this.scheduleFolderReconcile(folderId);
+    }
   }
 
   applyResolvedDuplicates(data: {
@@ -92,6 +120,10 @@ class FolderWatcher {
   }
 
   private scheduleProcess(folderId: number, filePath: string): void {
+    if (this.scanActive) {
+      this.deferredChanges.set(filePath, folderId);
+      return;
+    }
     clearTimeout(this.debounceTimers.get(filePath));
     this.debounceTimers.set(
       filePath,
@@ -103,6 +135,10 @@ class FolderWatcher {
   }
 
   private scheduleFolderReconcile(folderId: number): void {
+    if (this.scanActive) {
+      this.deferredReconcileFolders.add(folderId);
+      return;
+    }
     clearTimeout(this.folderReconcileTimers.get(folderId));
     this.folderReconcileTimers.set(
       folderId,
@@ -114,6 +150,10 @@ class FolderWatcher {
   }
 
   private async reconcileFolderMissingRows(folderId: number): Promise<void> {
+    if (this.scanActive) {
+      this.deferredReconcileFolders.add(folderId);
+      return;
+    }
     if (this.sender.isDestroyed()) return;
     try {
       const db = getDB();
@@ -170,6 +210,10 @@ class FolderWatcher {
     folderId: number,
     filePath: string,
   ): Promise<void> {
+    if (this.scanActive) {
+      this.deferredChanges.set(filePath, folderId);
+      return;
+    }
     if (this.sender.isDestroyed()) return;
     const db = getDB();
     const emitSearchStatsProgress = (done: number, total: number): void => {
@@ -288,6 +332,10 @@ export function watchNewFolder(folderId: number, folderPath: string): void {
 
 export function unwatchFolder(folderId: number): void {
   activeWatcher?.stopFolder(folderId);
+}
+
+export function setWatcherScanActive(active: boolean): void {
+  activeWatcher?.setScanActive(active);
 }
 
 export function notifyWatchDuplicateResolved(data: {

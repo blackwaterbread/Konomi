@@ -4,6 +4,7 @@ import {
   watchNewFolder,
   unwatchFolder,
   notifyWatchDuplicateResolved,
+  setWatcherScanActive,
 } from "./lib/watcher";
 import {
   getFolders,
@@ -232,6 +233,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           }
         | undefined) ?? {};
       scanCancelToken = { cancelled: false };
+      setWatcherScanActive(true);
       try {
         return await syncAllFolders(
           (batch) => utilitySender.send("image:batch", batch),
@@ -258,6 +260,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         );
       } finally {
         scanCancelToken = null;
+        setWatcherScanActive(false);
       }
     }
     case "image:cancelScan":
