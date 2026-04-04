@@ -7,6 +7,7 @@ import { applyAppLanguagePreference } from "@/lib/i18n";
 import { createLogger } from "@/lib/logger";
 import type { ThemeId } from "@/lib/themes";
 import { readStoredSettings } from "@/hooks/useSettings";
+import type { Folder } from "@preload/index.d";
 
 const log = createLogger("renderer/BootstrapApp");
 const APP_SPLASH_MIN_VISIBLE_MS = 1900; // 사용자가 최소 1.9초는 Splash를 보기를 원해
@@ -18,6 +19,7 @@ let migrationPromise: Promise<void> | null = null;
 let initialFolderCountPromise: Promise<number | null> | null = null;
 let bootstrapPromise: Promise<number | null> | null = null;
 let bootstrappedFolderCount: number | null = null;
+let bootstrappedFolders: Folder[] | null = null;
 let bootstrapCompleted = false;
 
 function ensureMigrationsRun(): Promise<void> {
@@ -36,6 +38,7 @@ function ensureInitialFolderCount(): Promise<number | null> {
     initialFolderCountPromise = ensureMigrationsRun()
       .then(() => window.folder.list())
       .then((folders) => {
+        bootstrappedFolders = folders;
         bootstrappedFolderCount = folders.length;
         return bootstrappedFolderCount;
       })
@@ -284,7 +287,7 @@ export function BootstrapApp() {
   return (
     <>
       <ClickableToaster />
-      {mountApp && <App initialFolderCount={folderCount} />}
+      {mountApp && <App initialFolderCount={folderCount} initialFolders={bootstrappedFolders} />}
       {renderSplash && (
         <AppSplash
           fadingOut={splashFadingOut}

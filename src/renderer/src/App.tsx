@@ -50,13 +50,15 @@ import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useKeybindings } from "@/hooks/useKeybindings";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
+import type { Folder } from "@preload/index.d";
 import { useTranslation } from "react-i18next";
 
 interface AppProps {
   initialFolderCount?: number | null;
+  initialFolders?: Folder[] | null;
 }
 
-export default function App({ initialFolderCount = null }: AppProps) {
+export default function App({ initialFolderCount = null, initialFolders = null }: AppProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { t } = useTranslation();
   const { outputFolder, setOutputFolder } = useNaiGenSettings();
@@ -84,7 +86,7 @@ export default function App({ initialFolderCount = null }: AppProps) {
     seedSubfolders,
     refreshSubfolders,
     subfolderFilters,
-  } = useFolderController(initialFolderCount);
+  } = useFolderController(initialFolderCount, initialFolders);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);

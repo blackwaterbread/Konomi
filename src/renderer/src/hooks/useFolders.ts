@@ -48,9 +48,11 @@ function applyFolderOrder(
   return normalized;
 }
 
-export function useFolders() {
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [hasLoaded, setHasLoaded] = useState(false);
+export function useFolders(initialFolders?: Folder[] | null) {
+  const [folders, setFolders] = useState<Folder[]>(() =>
+    initialFolders ? applyFolderOrder(initialFolders) : [],
+  );
+  const [hasLoaded, setHasLoaded] = useState(!!initialFolders);
 
   const load = useCallback(async () => {
     try {
@@ -73,8 +75,9 @@ export function useFolders() {
   }, []);
 
   useEffect(() => {
+    if (initialFolders) return;
     load();
-  }, [load]);
+  }, [initialFolders, load]);
 
   const addFolder = useCallback(
     async (name: string, path: string) => {

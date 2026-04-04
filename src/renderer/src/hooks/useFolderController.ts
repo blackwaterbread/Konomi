@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo } from "react";
+import type { Folder } from "@preload/index.d";
 import { useFolders } from "@/hooks/useFolders";
 import { useFolderSelection } from "@/hooks/useFolderSelection";
 import { useFolderCollapse } from "@/hooks/useFolderCollapse";
 import { useSubfolderState } from "@/hooks/useSubfolderState";
 
-export function useFolderController(initialFolderCount: number | null = null) {
+export function useFolderController(
+  initialFolderCount: number | null = null,
+  initialFolders: Folder[] | null = null,
+) {
   const {
     folders,
     hasLoaded,
@@ -13,7 +17,7 @@ export function useFolderController(initialFolderCount: number | null = null) {
     removeFolder,
     renameFolder,
     reorderFolders,
-  } = useFolders();
+  } = useFolders(initialFolders);
   const {
     selectedFolderIds,
     toggleFolder,

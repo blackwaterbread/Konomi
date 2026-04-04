@@ -74,11 +74,31 @@ export function useSubfolderState() {
 
   const refreshSubfolders = useCallback(
     async (folderIds: number[]) => {
-      for (const id of folderIds) {
-        await loadSubfolders(id);
-      }
+      const results = await Promise.all(
+        folderIds.map(async (id) => {
+          const paths = await window.folder.listSubdirectories(id);
+          return { id, paths };
+        }),
+      );
+      setSubfoldersByFolder((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+        for (const { id, paths } of results) {
+          if (paths.length === 0 && (prev.get(id)?.length ?? 0) > 0) continue;
+          changed = true;
+          next.set(
+            id,
+            paths.map((p) => ({
+              path: p,
+              name: p.replace(/\\/g, "/").split("/").pop() ?? p,
+              folderId: id,
+            })),
+          );
+        }
+        return changed ? next : prev;
+      });
     },
-    [loadSubfolders],
+    [],
   );
 
   const isSubfolderVisible = useCallback(
