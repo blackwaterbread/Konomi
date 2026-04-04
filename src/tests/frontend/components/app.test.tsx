@@ -157,7 +157,7 @@ vi.mock("@/components/image-gallery", () => ({
       onImageClick?: (image: ImageData) => void;
       onDelete?: (id: string) => void;
       onChangeCategory?: (image: ImageData) => void;
-      onBulkChangeCategory?: (images: ImageData[]) => void;
+      onBulkChangeCategory?: (ids: number[]) => void;
     };
   }) => {
     const image: ImageData = {
@@ -228,7 +228,7 @@ vi.mock("@/components/image-gallery", () => ({
         </button>
         <button
           type="button"
-          onClick={() => actions.onBulkChangeCategory?.([image, secondImage])}
+          onClick={() => actions.onBulkChangeCategory?.([Number(image.id), Number(secondImage.id)])}
         >
           Gallery Bulk Change Category
         </button>
@@ -426,6 +426,7 @@ describe("App", () => {
     localStorage.setItem("konomi-tour-completed", "true");
     localStorage.setItem("konomi-initial-language-selection-completed", "true");
     localStorage.setItem("konomi-announcement-v0.6.0-similarity-fix", "true");
+    localStorage.setItem("konomi-announcement-v0.9.0-metadata-webp", "true");
 
     useSettingsMock.mockReset();
     useSettingsMock.mockReturnValue({
