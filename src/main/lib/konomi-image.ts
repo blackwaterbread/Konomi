@@ -29,19 +29,20 @@ export interface AllPairsInput {
   hybridPHashWeight: number;
   hybridTextWeight: number;
   conflictPenaltyWeight: number;
+  targetIndices?: Uint32Array;
 }
 
-export interface AllPairsRow {
-  imageAId: number;
-  imageBId: number;
-  phashDistance: number | null;
-  textScore: number;
+export interface AllPairsResult {
+  imageAIds: Int32Array;
+  imageBIds: Int32Array;
+  phashDistances: Int32Array; // -1 = null
+  textScores: Float64Array;
 }
 
 interface KonomiImageNative {
   computePHash(buf: Buffer): string | null;
   extractNaiLsb(buf: Buffer): NaiLsbResult | null;
-  computeAllPairs(input: AllPairsInput): AllPairsRow[];
+  computeAllPairs(input: AllPairsInput): AllPairsResult;
 }
 
 let _native: KonomiImageNative | null | undefined = undefined;
@@ -71,11 +72,12 @@ export function computePHash(buf: Buffer): string | null {
 }
 
 /**
- * Compute all similarity pair scores using inverted token index + pHash pass.
- * Returns only pairs that pass the loose persistence threshold.
+ * Compute similarity pair scores using inverted token index + pHash pass.
+ * When targetIndices is set, only pairs involving at least one target are computed.
+ * Returns flat typed arrays (phashDistances uses -1 for null).
  * Returns null if the native addon is unavailable.
  */
-export function computeAllPairs(input: AllPairsInput): AllPairsRow[] | null {
+export function computeAllPairs(input: AllPairsInput): AllPairsResult | null {
   return getNative()?.computeAllPairs(input) ?? null;
 }
 

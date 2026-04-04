@@ -1,8 +1,9 @@
+import os from "os";
 import path from "path";
 import { Worker } from "worker_threads";
 import { getDB } from "./db";
 import { withConcurrency } from "./scanner";
-import { computeAllPairs, type AllPairsInput } from "./konomi-image";
+import { computeAllPairs, type AllPairsInput, type AllPairsResult } from "./konomi-image";
 
 const SIMILARITY_THRESHOLD = 10;
 const HASH_WRITE_BATCH_SIZE = 32;
@@ -30,7 +31,7 @@ const SIMILARITY_CACHE_TABLE = "ImageSimilarityCache";
 const SIMILARITY_CACHE_META_TABLE = "ImageSimilarityCacheMeta";
 
 // Run pHash computations in worker threads to avoid blocking the main process.
-const POOL_SIZE = 4;
+const POOL_SIZE = Math.max(4, Math.min(os.availableParallelism() - 1, 8));
 const WORKER_PATH = path.join(__dirname, "phash.worker.js");
 
 class PHashPool {
@@ -667,6 +668,45 @@ async function upsertSimilarityCacheRows(
   }
 }
 
+async function upsertSimilarityCacheFromArrays(
+  result: AllPairsResult,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  const count = result.imageAIds.length;
+  if (count === 0) return;
+  const db = getDB();
+
+  const ROWS_PER_STMT = 2000;
+  for (let i = 0; i < count; i += ROWS_PER_STMT) {
+    const end = Math.min(i + ROWS_PER_STMT, count);
+    const chunkSize = end - i;
+    const placeholders = Array.from(
+      { length: chunkSize },
+      () => `(?, ?, ?, ?, datetime('now'))`,
+    ).join(",");
+    const params: unknown[] = [];
+    for (let j = i; j < end; j++) {
+      params.push(
+        result.imageAIds[j],
+        result.imageBIds[j],
+        result.phashDistances[j] === -1 ? null : result.phashDistances[j],
+        result.textScores[j],
+      );
+    }
+    await db.$executeRawUnsafe(
+      `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+       VALUES ${placeholders}
+       ON CONFLICT(imageAId, imageBId) DO UPDATE SET
+         phashDistance = excluded.phashDistance,
+         textScore = excluded.textScore,
+         updatedAt = excluded.updatedAt`,
+      ...params,
+    );
+    onProgress?.(Math.min(i + ROWS_PER_STMT, count), count);
+    await yieldToEventLoop();
+  }
+}
+
 export async function deleteSimilarityCacheForImageIds(
   imageIds: number[],
 ): Promise<void> {
@@ -734,14 +774,23 @@ export async function refreshSimilarityCacheForImageIds(
   if (existingTargetIds.length === 0) return;
   const isFullCoverage = existingTargetIds.length === sourceRows.length;
 
-  // ── Native fast path (full coverage only) ────────────────────────────────
+  // ── Native fast path ─────────────────────────────────────────────────────
   // Uses C++ inverted token index + pHash pass, significantly faster than
-  // the O(N²) JS loop. Only used when rebuilding the full cache.
-  if (isFullCoverage) {
-    const nativeRows = computeAllPairs(encodeImagesForNative(images, idfMap));
-    if (nativeRows !== null) {
-      await upsertSimilarityCacheRows(nativeRows, onProgress);
-      await markSimilarityCachePrimed();
+  // the O(N²) JS loop. Supports both full and partial (target-filtered) mode.
+  {
+    const nativeInput = encodeImagesForNative(images, idfMap);
+    if (!isFullCoverage) {
+      const targetIdSet = new Set(existingTargetIds);
+      const indices: number[] = [];
+      for (let i = 0; i < images.length; i++) {
+        if (targetIdSet.has(images[i].id)) indices.push(i);
+      }
+      nativeInput.targetIndices = new Uint32Array(indices);
+    }
+    const nativeResult = computeAllPairs(nativeInput);
+    if (nativeResult !== null) {
+      await upsertSimilarityCacheFromArrays(nativeResult, onProgress);
+      if (isFullCoverage) await markSimilarityCachePrimed();
       return;
     }
   }

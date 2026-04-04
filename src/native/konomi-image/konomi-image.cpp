@@ -152,6 +152,13 @@ static DecodedPng decode_png(const uint8_t* data, size_t size, bool keep_alpha) 
 //   PNG decode → grayscale bilinear resize to 32×32 → 2D DCT-II (separable)
 //   → top-left 8×8 → median → 64-bit hash as 16-char lowercase hex string
 
+// ── Streaming pHash: row-by-row PNG decode → 32×32 bilinear sample ──────────
+//
+// Instead of decoding the full image (~4.5 MB for 1024×1536) and then
+// shrinking to 32×32, we keep only two row buffers and sample destination
+// pixels on the fly.  This eliminates the large allocation and dramatically
+// improves cache behaviour.
+
 Napi::Value ComputePHash(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
@@ -161,35 +168,114 @@ Napi::Value ComputePHash(const Napi::CallbackInfo& info) {
   }
 
   auto buf = info[0].As<Napi::Buffer<uint8_t>>();
-  auto png = decode_png(buf.Data(), buf.ByteLength(), /*keep_alpha=*/false);
-  if (!png.ok) return env.Null();
+  const uint8_t* data = buf.Data();
+  size_t size = buf.ByteLength();
 
-  int srcW = png.width, srcH = png.height, ch = png.channels;
-  const double xRatio = (double)srcW / DCT_N;
-  const double yRatio = (double)srcH / DCT_N;
+  if (size < 8 || png_sig_cmp(data, 0, 8) != 0) return env.Null();
 
-  // Bilinear resize + grayscale → DCT_N × DCT_N grid
-  double grid[DCT_N][DCT_N];
-  for (int dy = 0; dy < DCT_N; dy++) {
-    for (int dx = 0; dx < DCT_N; dx++) {
-      double sx = dx * xRatio, sy = dy * yRatio;
-      int x0 = (int)sx, y0 = (int)sy;
-      int x1 = (x0 + 1 < srcW) ? x0 + 1 : x0;
-      int y1 = (y0 + 1 < srcH) ? y0 + 1 : y0;
-      double xf = sx - x0, yf = sy - y0;
+  png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING,
+                                            nullptr, nullptr, nullptr);
+  if (!png) return env.Null();
+  png_infop pinfo = png_create_info_struct(png);
+  if (!pinfo) { png_destroy_read_struct(&png, nullptr, nullptr); return env.Null(); }
 
-      auto gray = [&](int x, int y) -> double {
-        const uint8_t* p = png.pixels.data() + ((size_t)y * srcW + x) * ch;
-        return 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
-      };
-
-      grid[dy][dx] =
-        gray(x0, y0) * (1 - xf) * (1 - yf) +
-        gray(x1, y0) *      xf  * (1 - yf) +
-        gray(x0, y1) * (1 - xf) *      yf  +
-        gray(x1, y1) *      xf  *      yf;
-    }
+  if (setjmp(png_jmpbuf(png))) {
+    png_destroy_read_struct(&png, &pinfo, nullptr);
+    return env.Null();
   }
+
+  PngReadState state{data, size, 0};
+  png_set_read_fn(png, &state, png_read_from_buffer);
+  png_read_info(png, pinfo);
+
+  int color_type = png_get_color_type(png, pinfo);
+  int bit_depth  = png_get_bit_depth(png, pinfo);
+
+  if (bit_depth == 16)      png_set_strip_16(png);
+  if (color_type == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png);
+  if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+    png_set_expand_gray_1_2_4_to_8(png);
+  if (png_get_valid(png, pinfo, PNG_INFO_tRNS)) png_set_tRNS_to_alpha(png);
+  if (color_type == PNG_COLOR_TYPE_GRAY ||
+      color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+    png_set_gray_to_rgb(png);
+  if (color_type == PNG_COLOR_TYPE_RGBA ||
+      color_type == PNG_COLOR_TYPE_GRAY_ALPHA ||
+      png_get_valid(png, pinfo, PNG_INFO_tRNS))
+    png_set_strip_alpha(png);
+
+  png_read_update_info(png, pinfo);
+
+  int w  = (int)png_get_image_width(png, pinfo);
+  int h  = (int)png_get_image_height(png, pinfo);
+  int ch = (int)png_get_channels(png, pinfo);
+  size_t rowbytes = png_get_rowbytes(png, pinfo);
+
+  const double xRatio = (double)w / DCT_N;
+  const double yRatio = (double)h / DCT_N;
+
+  // Precompute horizontal sample positions (same for every row)
+  struct XSample { int x0, x1; double xf; };
+  XSample xs[DCT_N];
+  for (int dx = 0; dx < DCT_N; dx++) {
+    double sx = dx * xRatio;
+    xs[dx].x0 = (int)sx;
+    xs[dx].x1 = (xs[dx].x0 + 1 < w) ? xs[dx].x0 + 1 : xs[dx].x0;
+    xs[dx].xf = sx - xs[dx].x0;
+  }
+
+  // Two-row buffer for bilinear Y interpolation
+  std::vector<uint8_t> row_a(rowbytes), row_b(rowbytes, 0);
+  uint8_t* row_cur  = row_a.data();
+  uint8_t* row_prev = row_b.data();
+
+  double grid[DCT_N][DCT_N];
+  int next_dy = 0;
+
+  for (int y = 0; y < h; y++) {
+    png_read_row(png, row_cur, nullptr);
+
+    // Process any destination rows whose y1 == y
+    while (next_dy < DCT_N) {
+      double sy = next_dy * yRatio;
+      int y0 = (int)sy;
+      int y1 = (y0 + 1 < h) ? y0 + 1 : y0;
+      if (y < y1) break; // need the next source row first
+
+      double yf = sy - y0;
+      const uint8_t* r0 = (y0 == y) ? row_cur : row_prev;
+      const uint8_t* r1 = row_cur;
+
+      for (int dx = 0; dx < DCT_N; dx++) {
+        const auto& s = xs[dx];
+        const uint8_t* p00 = r0 + s.x0 * ch;
+        const uint8_t* p10 = r0 + s.x1 * ch;
+        const uint8_t* p01 = r1 + s.x0 * ch;
+        const uint8_t* p11 = r1 + s.x1 * ch;
+
+        double g00 = 0.299 * p00[0] + 0.587 * p00[1] + 0.114 * p00[2];
+        double g10 = 0.299 * p10[0] + 0.587 * p10[1] + 0.114 * p10[2];
+        double g01 = 0.299 * p01[0] + 0.587 * p01[1] + 0.114 * p01[2];
+        double g11 = 0.299 * p11[0] + 0.587 * p11[1] + 0.114 * p11[2];
+
+        grid[next_dy][dx] =
+          g00 * (1 - s.xf) * (1 - yf) +
+          g10 *      s.xf  * (1 - yf) +
+          g01 * (1 - s.xf) *      yf  +
+          g11 *      s.xf  *      yf;
+      }
+      next_dy++;
+    }
+
+    // Swap row buffers
+    uint8_t* tmp = row_prev;
+    row_prev = row_cur;
+    row_cur  = tmp;
+
+    if (next_dy >= DCT_N) break; // all 32 destination rows done
+  }
+
+  png_destroy_read_struct(&png, &pinfo, nullptr);
 
   // Row-wise DCT
   double row_dct[DCT_N][DCT_N];
@@ -342,16 +428,21 @@ struct PairAcc {
 };
 
 // Accumulate same-field intersection for every pair in `list`.
+// When `is_target` is non-null, only pairs where at least one index is a target
+// are accumulated.
 static void acc_same(
   const std::vector<uint32_t>& list, float w,
   float PairAcc::* field,
-  std::unordered_map<uint64_t, PairAcc>& out
+  std::unordered_map<uint64_t, PairAcc>& out,
+  const char* is_target = nullptr
 ) {
   uint32_t n = (uint32_t)list.size();
   for (uint32_t i = 0; i < n; ++i) {
     uint32_t a = list[i];
-    for (uint32_t j = i + 1; j < n; ++j)
+    for (uint32_t j = i + 1; j < n; ++j) {
+      if (is_target && !is_target[a] && !is_target[list[j]]) continue;
       out[((uint64_t)a << 32) | list[j]].*field += w;
+    }
   }
 }
 
@@ -360,16 +451,21 @@ static void acc_cross(
   const std::vector<uint32_t>& pos_list,
   const std::vector<uint32_t>& neg_list,
   float w,
-  std::unordered_map<uint64_t, PairAcc>& out
+  std::unordered_map<uint64_t, PairAcc>& out,
+  const char* is_target = nullptr
 ) {
   for (uint32_t pi : pos_list) {
     for (uint32_t ni : neg_list) {
       if (pi == ni) continue;
-      // Pair key always has smaller index in high 32 bits.
-      if (pi < ni)
-        out[((uint64_t)pi << 32) | ni].conflictABInter += w;
-      else
-        out[((uint64_t)ni << 32) | pi].conflictBAInter += w;
+      uint32_t a, b;
+      float PairAcc::* field;
+      if (pi < ni) {
+        a = pi; b = ni; field = &PairAcc::conflictABInter;
+      } else {
+        a = ni; b = pi; field = &PairAcc::conflictBAInter;
+      }
+      if (is_target && !is_target[a] && !is_target[b]) continue;
+      out[((uint64_t)a << 32) | b].*field += w;
     }
   }
 }
@@ -420,7 +516,16 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
   auto ids_arr = p.Get("imageIds").As<Napi::Int32Array>();
   uint32_t N   = (uint32_t)ids_arr.ElementLength();
   const int32_t* image_ids = ids_arr.Data();
-  if (N < 2) return Napi::Array::New(env, 0);
+  if (N < 2) {
+    Napi::Object empty = Napi::Object::New(env);
+    auto zero_ab = Napi::ArrayBuffer::New(env, 0);
+    empty.Set("imageAIds", Napi::Int32Array::New(env, 0, zero_ab, 0));
+    empty.Set("imageBIds", Napi::Int32Array::New(env, 0, zero_ab, 0));
+    empty.Set("phashDistances", Napi::Int32Array::New(env, 0, zero_ab, 0));
+    auto zero_f64 = Napi::ArrayBuffer::New(env, 0);
+    empty.Set("textScores", Napi::Float64Array::New(env, 0, zero_f64, 0));
+    return empty;
+  }
 
   // pHash: JS Array of 16-char hex strings ("" = no hash)
   auto phash_js = p.Get("pHashHex").As<Napi::Array>();
@@ -434,6 +539,24 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
         phash_vals[i] = parse_hex64(s.data(), 16);
         has_phash[i]  = true;
       }
+    }
+  }
+
+  // Optional target indices — when provided, only pairs involving at least
+  // one target index are computed (partial update mode).
+  std::vector<char> is_target_vec;
+  const char* is_target_ptr = nullptr;
+  {
+    auto ti_val = p.Get("targetIndices");
+    if (ti_val.IsTypedArray()) {
+      is_target_vec.resize(N, 0);
+      auto tarr = ti_val.As<Napi::Uint32Array>();
+      uint32_t tlen = (uint32_t)tarr.ElementLength();
+      const uint32_t* tdata = tarr.Data();
+      for (uint32_t i = 0; i < tlen; ++i) {
+        if (tdata[i] < N) is_target_vec[tdata[i]] = 1;
+      }
+      is_target_ptr = is_target_vec.data();
     }
   }
 
@@ -508,16 +631,16 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
     bool xs = fidx[3][t].size() > max_df;
     bool ns = fidx[2][t].size() > max_df;
 
-    if (!ps) acc_same(fidx[0][t], w, &PairAcc::promptInter,   tpairs);
+    if (!ps) acc_same(fidx[0][t], w, &PairAcc::promptInter,   tpairs, is_target_ptr);
     else     skip_prompt.push_back({w, t});
 
-    if (!cs) acc_same(fidx[1][t], w, &PairAcc::charInter,     tpairs);
+    if (!cs) acc_same(fidx[1][t], w, &PairAcc::charInter,     tpairs, is_target_ptr);
     else     skip_char.push_back({w, t});
 
-    if (!xs) acc_same(fidx[3][t], w, &PairAcc::positiveInter, tpairs);
+    if (!xs) acc_same(fidx[3][t], w, &PairAcc::positiveInter, tpairs, is_target_ptr);
     else     skip_pos.push_back({w, t});
 
-    if (!xs && !ns) acc_cross(fidx[3][t], fidx[2][t], w, tpairs);
+    if (!xs && !ns) acc_cross(fidx[3][t], fidx[2][t], w, tpairs, is_target_ptr);
     else            skip_cross.push_back({w, t});
   }
 
@@ -570,12 +693,14 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
 
   // ── pHash pass: find visually-close pairs not in tpairs ──────────────────
   // Each comparison is a single XOR + POPCNT: fast even for large N.
+  // When targets are specified, skip pairs where neither index is a target.
 
   std::unordered_map<uint64_t, int> phash_only;
   for (uint32_t i = 0; i < N - 1; ++i) {
     if (!has_phash[i]) continue;
     for (uint32_t j = i + 1; j < N; ++j) {
       if (!has_phash[j]) continue;
+      if (is_target_ptr && !is_target_ptr[i] && !is_target_ptr[j]) continue;
       int d = popcount64(phash_vals[i] ^ phash_vals[j]);
       if (d > ui_max) continue;
       uint64_t key = ((uint64_t)i << 32) | j;
@@ -584,7 +709,7 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
     }
   }
 
-  // ── Build result ──────────────────────────────────────────────────────────
+  // ── Build result as flat typed arrays ─────────────────────────────────────
 
   auto should_persist = [&](int dist, bool hp, float ts) {
     if (hp && dist <= ui_max) return true;
@@ -594,18 +719,13 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
     return h_phash * ps + h_text * ts >= hybrid_loose;
   };
 
-  Napi::Array out = Napi::Array::New(env);
-  uint32_t ri = 0;
-
-  auto push_row = [&](int32_t aid, int32_t bid, int dist, bool hp, float ts) {
-    Napi::Object obj = Napi::Object::New(env);
-    obj.Set("imageAId", aid);
-    obj.Set("imageBId", bid);
-    if (hp) obj.Set("phashDistance", dist);
-    else    obj.Set("phashDistance", env.Null());
-    obj.Set("textScore", (double)ts);
-    out[ri++] = obj;
-  };
+  size_t est = tpairs.size() + phash_only.size();
+  std::vector<int32_t>  res_aids, res_bids, res_dists;
+  std::vector<double>   res_texts;
+  res_aids.reserve(est);
+  res_bids.reserve(est);
+  res_dists.reserve(est);
+  res_texts.reserve(est);
 
   for (auto& [key, acc] : tpairs) {
     uint32_t ai = (uint32_t)(key >> 32), bi = (uint32_t)(key & 0xFFFFFFFF);
@@ -617,16 +737,43 @@ Napi::Value ComputeAllPairs(const Napi::CallbackInfo& info) {
       (bool)has_prom[ai], (bool)has_char[ai],
       (bool)has_prom[bi], (bool)has_char[bi],
       conflict_w);
-    if (should_persist(dist, hp, ts))
-      push_row(image_ids[ai], image_ids[bi], dist, hp, ts);
+    if (should_persist(dist, hp, ts)) {
+      res_aids.push_back(image_ids[ai]);
+      res_bids.push_back(image_ids[bi]);
+      res_dists.push_back(hp ? dist : -1);
+      res_texts.push_back((double)ts);
+    }
   }
 
   for (auto& [key, dist] : phash_only) {
     uint32_t ai = (uint32_t)(key >> 32), bi = (uint32_t)(key & 0xFFFFFFFF);
-    push_row(image_ids[ai], image_ids[bi], dist, true, 0.f);
+    res_aids.push_back(image_ids[ai]);
+    res_bids.push_back(image_ids[bi]);
+    res_dists.push_back(dist);
+    res_texts.push_back(0.0);
   }
 
-  return out;
+  uint32_t count = (uint32_t)res_aids.size();
+  size_t i32_bytes = (size_t)count * sizeof(int32_t);
+  size_t f64_bytes = (size_t)count * sizeof(double);
+
+  auto a_ab = Napi::ArrayBuffer::New(env, i32_bytes);
+  auto b_ab = Napi::ArrayBuffer::New(env, i32_bytes);
+  auto d_ab = Napi::ArrayBuffer::New(env, i32_bytes);
+  auto t_ab = Napi::ArrayBuffer::New(env, f64_bytes);
+  if (count > 0) {
+    memcpy(a_ab.Data(), res_aids.data(),  i32_bytes);
+    memcpy(b_ab.Data(), res_bids.data(),  i32_bytes);
+    memcpy(d_ab.Data(), res_dists.data(), i32_bytes);
+    memcpy(t_ab.Data(), res_texts.data(), f64_bytes);
+  }
+
+  Napi::Object result = Napi::Object::New(env);
+  result.Set("imageAIds",      Napi::Int32Array::New(env, count, a_ab, 0));
+  result.Set("imageBIds",      Napi::Int32Array::New(env, count, b_ab, 0));
+  result.Set("phashDistances", Napi::Int32Array::New(env, count, d_ab, 0));
+  result.Set("textScores",     Napi::Float64Array::New(env, count, t_ab, 0));
+  return result;
 }
 
 // ── Module init ───────────────────────────────────────────────────────────────

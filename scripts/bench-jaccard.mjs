@@ -348,6 +348,8 @@ function runForN(n) {
   const encoded = encodeForNative(simImg, idf);
   const nativeRes = bench("native", () => native.computeAllPairs(encoded));
 
+  // Native returns typed arrays: { imageAIds, imageBIds, phashDistances, textScores }
+  const natCount = nativeRes.result.imageAIds.length;
   const totalPairs = (n * (n - 1)) / 2;
 
   console.log(
@@ -357,7 +359,7 @@ function runForN(n) {
     `  pure-JS   ${jsRes.ms.toFixed(1).padStart(8)} ms   →  ${jsRes.result.length.toLocaleString().padStart(6)} pairs persisted`,
   );
   console.log(
-    `  native    ${nativeRes.ms.toFixed(1).padStart(8)} ms   →  ${nativeRes.result.length.toLocaleString().padStart(6)} pairs persisted`,
+    `  native    ${nativeRes.ms.toFixed(1).padStart(8)} ms   →  ${natCount.toLocaleString().padStart(6)} pairs persisted`,
   );
   console.log(`  speedup   ${(jsRes.ms / nativeRes.ms).toFixed(2)}x`);
 
@@ -366,9 +368,11 @@ function runForN(n) {
   const jsPhashOnly = jsRes.result.filter(
     (r) => r.phashDistance !== null && r.textScore < TEXT_LOOSE,
   ).length;
-  const natPhashOnly = nativeRes.result.filter(
-    (r) => r.phashDistance !== null && r.textScore < TEXT_LOOSE,
-  ).length;
+  let natPhashOnly = 0;
+  const { phashDistances, textScores } = nativeRes.result;
+  for (let i = 0; i < natCount; i++) {
+    if (phashDistances[i] !== -1 && textScores[i] < TEXT_LOOSE) natPhashOnly++;
+  }
   console.log(
     `  pHash-only pairs: JS=${jsPhashOnly}  native=${natPhashOnly}  ${jsPhashOnly === natPhashOnly ? "✓" : "✗ mismatch"}`,
   );
