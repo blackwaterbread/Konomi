@@ -4,7 +4,6 @@ import type { ImageListQuery } from "@preload/index.d";
 import { useGalleryImages } from "@/hooks/useGalleryImages";
 import i18n from "@/lib/i18n";
 
-type ViewMode = "grid" | "compact" | "list";
 type SortBy = "recent" | "oldest" | "favorites" | "name";
 
 interface GalleryQueryFragment {
@@ -43,7 +42,6 @@ export function useGalleryController({
 }: UseGalleryControllerOptions) {
   const [searchQuery, setSearchQuery] = useState("");
   const [galleryOverlayVisible, setGalleryOverlayVisible] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
@@ -230,7 +228,6 @@ export function useGalleryController({
   const imageGalleryState = useMemo(
     () => ({
       images,
-      viewMode,
       sortBy,
       totalCount: totalImageCount,
       searchQuery: searchQuery || undefined,
@@ -249,7 +246,6 @@ export function useGalleryController({
       searchQuery,
       sortBy,
       totalImageCount,
-      viewMode,
     ],
   );
 
@@ -265,7 +261,6 @@ export function useGalleryController({
 
   const galleryCommands = useMemo(
     () => ({
-      onViewModeChange: setViewMode,
       onSortChange: setSortBy,
       onClearSearch: handleClearSearch,
       onLoadAllSelectableIds: handleLoadAllSelectableIds,

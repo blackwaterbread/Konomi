@@ -106,6 +106,12 @@ const ko = {
       copied: "복사됨",
       actualSize: "원본 크기",
       fitToScreen: "화면 맞춤",
+      theaterMode: "감상 모드",
+    },
+    theater: {
+      slideshow: "슬라이드쇼",
+      interval: "간격",
+      seconds: "{{n}}초",
     },
     similarImages: "유사 이미지",
     similarityScore: {
@@ -171,6 +177,13 @@ const ko = {
     syncingBanner: "라이브러리 동기화 중...",
     emptyTitle: "이미지가 없습니다",
     emptyDescription: "검색 조건을 변경하거나 필터를 조정해 보세요.",
+    columnSize: {
+      smaller: "카드 크기 줄이기",
+      larger: "카드 크기 키우기",
+      reset: "자동 크기로 복원",
+      auto: "자동",
+      list: "목록",
+    },
   },
   promptInput: {
     placeholder: "tag, tag, tag...",

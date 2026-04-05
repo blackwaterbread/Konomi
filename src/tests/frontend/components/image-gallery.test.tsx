@@ -24,12 +24,10 @@ function renderImageGallery(overrides: ImageGalleryOverrides = {}) {
   const baseProps: ComponentProps<typeof ImageGallery> = {
     gallery: {
       images: [],
-      viewMode: "grid",
       sortBy: "recent",
       totalCount: 0,
     },
     actions: {
-      onViewModeChange: vi.fn(),
       onSortChange: vi.fn(),
       onToggleFavorite: vi.fn(),
       onCopyPrompt: vi.fn(),

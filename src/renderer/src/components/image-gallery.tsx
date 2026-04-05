@@ -11,8 +11,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Grid3X3,
-  LayoutGrid,
-  List,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
@@ -21,6 +19,8 @@ import {
   Trash2,
   Loader2,
   RotateCw,
+  Minus,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +37,7 @@ import { OnboardingView } from "./onboarding-view";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
-type ViewMode = "grid" | "compact" | "list";
+type ViewMode = "grid" | "list";
 type SortBy = "recent" | "oldest" | "favorites" | "name";
 const GALLERY_GAP_PX = 16;
 const GALLERY_PADDING_PX = 16;
@@ -55,34 +55,27 @@ function getScrollAreaViewport(
 }
 
 function getGalleryColumnCount(
-  viewMode: ViewMode,
   viewportWidth: number,
+  galleryColumns?: "auto" | number,
 ): number {
-  if (viewMode === "list") return 1;
-  if (viewportWidth >= 1024) {
-    return viewMode === "compact" ? 6 : 4;
-  }
-  if (viewportWidth >= 768) {
-    return viewMode === "compact" ? 4 : 3;
-  }
-  return viewMode === "compact" ? 3 : 2;
+  if (typeof galleryColumns === "number") return galleryColumns;
+  if (viewportWidth >= 1024) return 4;
+  if (viewportWidth >= 768) return 3;
+  return 2;
 }
 
 function estimateGalleryRowHeight(
-  viewMode: ViewMode,
   viewportWidth: number,
   columnCount: number,
 ): number {
-  if (viewMode === "list") {
-    return 80;
-  }
+  if (columnCount <= 1) return 80;
   const contentWidth = Math.max(
     0,
     viewportWidth - GALLERY_PADDING_PX * 2 - GALLERY_GAP_PX * (columnCount - 1),
   );
   const cardWidth = columnCount > 0 ? contentWidth / columnCount : contentWidth;
   const imageHeight = cardWidth * (4 / 3);
-  const footerHeight = viewMode === "compact" ? 72 : 84;
+  const footerHeight = 84;
   return Math.max(1, imageHeight + footerHeight + GALLERY_GAP_PX);
 }
 
@@ -123,7 +116,6 @@ function getVisibleGalleryRowRange({
 
 interface ImageGalleryState {
   images: ImageData[];
-  viewMode: ViewMode;
   sortBy: SortBy;
   totalCount: number;
   searchQuery?: string;
@@ -134,7 +126,6 @@ interface ImageGalleryState {
 }
 
 interface ImageGalleryActions {
-  onViewModeChange: (mode: ViewMode) => void;
   onSortChange: (sort: SortBy) => void;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
@@ -172,6 +163,8 @@ interface ImageGalleryProps {
   enableVirtualization?: boolean;
   focusIndex?: number | null;
   onColumnCountChange?: (count: number) => void;
+  galleryColumns?: "auto" | number;
+  onGalleryColumnsChange?: (value: "auto" | number) => void;
 }
 
 interface GalleryToolbarProps {
@@ -180,14 +173,12 @@ interface GalleryToolbarProps {
   selectionMode: boolean;
   selectedCount: number;
   sortBy: SortBy;
-  viewMode: ViewMode;
   allPageSelected: boolean;
   allFilteredSelected: boolean;
   selectingAllResults: boolean;
   canSelectAllResults: boolean;
   onClearSearch?: () => void;
   onSortChange: (sort: SortBy) => void;
-  onViewModeChange: (mode: ViewMode) => void;
   onToggleSelectionMode: () => void;
   onSelectCurrentPage: () => void;
   onSelectAllFiltered: () => void;
@@ -195,6 +186,8 @@ interface GalleryToolbarProps {
   onBulkCategory: () => void;
   onBulkRescanMetadata: () => void;
   onBulkDelete: () => void;
+  galleryColumns?: "auto" | number;
+  onGalleryColumnsChange?: (value: "auto" | number) => void;
 }
 
 const GalleryToolbar = memo(function GalleryToolbar({
@@ -203,14 +196,12 @@ const GalleryToolbar = memo(function GalleryToolbar({
   selectionMode,
   selectedCount,
   sortBy,
-  viewMode,
   allPageSelected,
   allFilteredSelected,
   selectingAllResults,
   canSelectAllResults,
   onClearSearch,
   onSortChange,
-  onViewModeChange,
   onToggleSelectionMode,
   onSelectCurrentPage,
   onSelectAllFiltered,
@@ -218,8 +209,11 @@ const GalleryToolbar = memo(function GalleryToolbar({
   onBulkCategory,
   onBulkRescanMetadata,
   onBulkDelete,
+  galleryColumns,
+  onGalleryColumnsChange,
 }: GalleryToolbarProps) {
   const { t } = useTranslation();
+  const isCustomColumns = typeof galleryColumns === "number";
 
   return (
     <div
@@ -262,47 +256,49 @@ const GalleryToolbar = memo(function GalleryToolbar({
             </SelectContent>
           </Select>
 
-          <div className="flex items-center bg-secondary rounded-lg p-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8",
-                viewMode === "grid"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => onViewModeChange("grid")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8",
-                viewMode === "compact"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => onViewModeChange("compact")}
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8",
-                viewMode === "list"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => onViewModeChange("list")}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+          {onGalleryColumnsChange && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                disabled={isCustomColumns && galleryColumns <= 1}
+                onClick={() => {
+                  const current = isCustomColumns ? galleryColumns : 4;
+                  const next = Math.max(1, current - 1);
+                  onGalleryColumnsChange(next);
+                }}
+                title={t("gallery.columnSize.larger")}
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </Button>
+              <span
+                className="text-xs text-muted-foreground select-none tabular-nums w-8 text-center cursor-pointer hover:text-foreground transition-colors"
+                title={t("gallery.columnSize.reset")}
+                onClick={() => onGalleryColumnsChange("auto")}
+              >
+                {isCustomColumns
+                  ? galleryColumns === 1
+                    ? t("gallery.columnSize.list")
+                    : galleryColumns
+                  : t("gallery.columnSize.auto")}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                disabled={isCustomColumns && galleryColumns >= 8}
+                onClick={() => {
+                  const current = isCustomColumns ? galleryColumns : 4;
+                  const next = Math.min(8, current + 1);
+                  onGalleryColumnsChange(next);
+                }}
+                title={t("gallery.columnSize.smaller")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -412,7 +408,6 @@ const GalleryFocusWrapper = memo(function GalleryFocusWrapper({
 
 interface GalleryResultsProps {
   paged: ImageData[];
-  viewMode: ViewMode;
   scrollRef: RefObject<HTMLDivElement | null>;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
@@ -441,11 +436,11 @@ interface GalleryResultsProps {
   enableVirtualization: boolean;
   focusIndex?: number | null;
   onColumnCountChange?: (count: number) => void;
+  galleryColumns?: "auto" | number;
 }
 
 const GalleryResults = memo(function GalleryResults({
   paged,
-  viewMode,
   scrollRef,
   onToggleFavorite,
   onCopyPrompt,
@@ -473,6 +468,7 @@ const GalleryResults = memo(function GalleryResults({
   enableVirtualization,
   focusIndex,
   onColumnCountChange,
+  galleryColumns,
 }: GalleryResultsProps) {
   const { t } = useTranslation();
   const [viewportSize, setViewportSize] = useState({
@@ -488,17 +484,18 @@ const GalleryResults = memo(function GalleryResults({
   );
 
   const columnCount = useMemo(
-    () => getGalleryColumnCount(viewMode, viewportSize.width),
-    [viewMode, viewportSize.width],
+    () => getGalleryColumnCount(viewportSize.width, galleryColumns),
+    [viewportSize.width, galleryColumns],
   );
+  const viewMode: ViewMode = columnCount <= 1 ? "list" : "grid";
 
   useEffect(() => {
     if (columnCount > 0) onColumnCountChange?.(columnCount);
   }, [columnCount, onColumnCountChange]);
 
   const estimatedRowHeight = useMemo(
-    () => estimateGalleryRowHeight(viewMode, viewportSize.width, columnCount),
-    [columnCount, viewMode, viewportSize.width],
+    () => estimateGalleryRowHeight(viewportSize.width, columnCount),
+    [columnCount, viewportSize.width],
   );
   const rowHeight = measuredRowHeight ?? estimatedRowHeight;
   const rowCount = Math.ceil(paged.length / columnCount);
@@ -629,12 +626,15 @@ const GalleryResults = memo(function GalleryResults({
           <div
             className={cn(
               "grid gap-4",
-              viewMode === "grid" &&
-                "grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
-              viewMode === "compact" &&
-                "grid-cols-3 md:grid-cols-4 lg:grid-cols-6",
               viewMode === "list" && "grid-cols-1 w-full",
             )}
+            style={
+              viewMode === "grid"
+                ? {
+                    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                  }
+                : undefined
+            }
           >
             {visibleImages.map((image, index) => {
               const pagedIndex = visibleStartIndex + index;
@@ -930,10 +930,11 @@ export const ImageGallery = memo(function ImageGallery({
   enableVirtualization = false,
   focusIndex,
   onColumnCountChange,
+  galleryColumns,
+  onGalleryColumnsChange,
 }: ImageGalleryProps) {
   const {
     images,
-    viewMode,
     sortBy,
     totalCount,
     searchQuery,
@@ -944,7 +945,6 @@ export const ImageGallery = memo(function ImageGallery({
   } = gallery;
   const { t } = useTranslation();
   const {
-    onViewModeChange,
     onSortChange,
     onToggleFavorite,
     onCopyPrompt,
@@ -1130,14 +1130,12 @@ export const ImageGallery = memo(function ImageGallery({
         selectionMode={selectionMode}
         selectedCount={selectedCount}
         sortBy={sortBy}
-        viewMode={viewMode}
         allPageSelected={allPageSelected}
         allFilteredSelected={allFilteredSelected}
         selectingAllResults={selectingAllResults}
         canSelectAllResults={canSelectAllResults}
         onClearSearch={onClearSearch}
         onSortChange={onSortChange}
-        onViewModeChange={onViewModeChange}
         onToggleSelectionMode={handleToggleSelectionMode}
         onSelectCurrentPage={handleSelectCurrentPage}
         onSelectAllFiltered={handleSelectAllFiltered}
@@ -1145,6 +1143,8 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkCategory={handleBulkCategory}
         onBulkRescanMetadata={handleBulkRescanMetadata}
         onBulkDelete={handleBulkDelete}
+        galleryColumns={galleryColumns}
+        onGalleryColumnsChange={onGalleryColumnsChange}
       />
 
       {syncing && (
@@ -1156,7 +1156,6 @@ export const ImageGallery = memo(function ImageGallery({
 
       <GalleryResults
         paged={paged}
-        viewMode={viewMode}
         scrollRef={scrollRef}
         onToggleFavorite={onToggleFavorite}
         onCopyPrompt={onCopyPrompt}
@@ -1184,6 +1183,7 @@ export const ImageGallery = memo(function ImageGallery({
         enableVirtualization={enableVirtualization}
         focusIndex={focusIndex}
         onColumnCountChange={onColumnCountChange}
+        galleryColumns={galleryColumns}
       />
 
       <GalleryPagination

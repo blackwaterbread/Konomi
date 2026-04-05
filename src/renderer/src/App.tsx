@@ -662,6 +662,10 @@ export default function App({
               enableVirtualization={settings.enableVirtualization}
               focusIndex={galleryFocusState.focusIndex}
               onColumnCountChange={galleryFocusActions.setColumnCount}
+              galleryColumns={settings.galleryColumns}
+              onGalleryColumnsChange={(v) =>
+                updateSettings({ galleryColumns: v })
+              }
             />
           </div>
         </div>

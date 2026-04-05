@@ -105,6 +105,12 @@ const en = {
       copied: "Copied",
       actualSize: "Actual Size",
       fitToScreen: "Fit to Screen",
+      theaterMode: "Theater Mode",
+    },
+    theater: {
+      slideshow: "Slideshow",
+      interval: "Interval",
+      seconds: "{{n}}s",
     },
     similarImages: "Similar Images",
     similarityScore: {
@@ -169,6 +175,13 @@ const en = {
     syncingBanner: "Syncing library...",
     emptyTitle: "No images found",
     emptyDescription: "Try changing the search or adjusting filters.",
+    columnSize: {
+      smaller: "Smaller cards",
+      larger: "Larger cards",
+      reset: "Reset to auto",
+      auto: "Auto",
+      list: "List",
+    },
   },
   promptInput: {
     placeholder: "tag, tag, tag...",

@@ -58,7 +58,7 @@ export interface ImageData {
 
 interface ImageCardProps {
   image: ImageData;
-  viewMode?: "grid" | "compact" | "list";
+  viewMode?: "grid" | "list";
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
   onClick: (image: ImageData) => void;
