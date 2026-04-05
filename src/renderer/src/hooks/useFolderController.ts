@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Folder } from "@preload/index.d";
 import { useFolders } from "@/hooks/useFolders";
 import { useFolderSelection } from "@/hooks/useFolderSelection";
@@ -47,9 +47,25 @@ export function useFolderController(
   // Ready immediately when there are no folders (nothing to refresh).
   const galleryReady = subfolderReady || (hasLoaded && folders.length === 0);
 
-  // Load subfolders for all folders on mount and when folder list changes
+  // Explicit initialization — called once from App's mount orchestrator.
+  // Replaces the old useEffect(hasLoaded → refreshSubfolders) chain.
+  const initCalledRef = useRef(false);
+  const initialize = useCallback(async () => {
+    if (initCalledRef.current) return;
+    initCalledRef.current = true;
+    if (folders.length > 0) {
+      await refreshSubfolders(folders.map((f) => f.id));
+    }
+  }, [folders, refreshSubfolders]);
+
+  // Fallback: when useFolders loads asynchronously (no initialFolders),
+  // we still need to trigger subfolder loading once folders are available.
+  const asyncInitFiredRef = useRef(!!initialFolders);
   useEffect(() => {
+    if (asyncInitFiredRef.current) return;
     if (!hasLoaded || folders.length === 0) return;
+    asyncInitFiredRef.current = true;
+    initCalledRef.current = true;
     void refreshSubfolders(folders.map((f) => f.id));
   }, [hasLoaded, folders, refreshSubfolders]);
 
@@ -62,7 +78,7 @@ export function useFolderController(
 
       const isOn = selectedFolderIds.has(id);
       if (isOn) {
-        // Parent ON but some children deselected → partial
+        // Parent ON but some children deselected ��� partial
         const anyChildOff = subs.some((s) => !isSubfolderVisible(s.path, id));
         const rootOff = !isRootVisible(id);
         return anyChildOff || rootOff;
@@ -128,6 +144,7 @@ export function useFolderController(
 
   // Auto-promote: when all subfolder overrides are cleared (user turned
   // everything back on) while parent is OFF, auto-select the parent.
+  // This is a legitimate reactive effect — responds to user-driven state changes.
   useEffect(() => {
     for (const folder of folders) {
       if (selectedFolderIds.has(folder.id)) continue;
@@ -190,5 +207,6 @@ export function useFolderController(
     loadSubfolders,
     subfolderFilters,
     galleryReady,
+    initialize,
   };
 }

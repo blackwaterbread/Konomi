@@ -15,11 +15,25 @@ const APP_SPLASH_COMPLETION_HOLD_MS = 180;
 const APP_SPLASH_FADE_OUT_MS = 240;
 const TOASTER_POSITION = "bottom-right";
 
+export interface QuickVerifyResult {
+  changedFolderIds: number[];
+  unchangedFolderIds: number[];
+}
+
+interface BootstrapResult {
+  folderCount: number | null;
+  folders: Folder[] | null;
+  quickVerify: QuickVerifyResult | null;
+}
+
 let migrationPromise: Promise<void> | null = null;
 let initialFolderCountPromise: Promise<number | null> | null = null;
-let bootstrapPromise: Promise<number | null> | null = null;
-let bootstrappedFolderCount: number | null = null;
-let bootstrappedFolders: Folder[] | null = null;
+let bootstrapPromise: Promise<BootstrapResult> | null = null;
+const bootstrapResult: BootstrapResult = {
+  folderCount: null,
+  folders: null,
+  quickVerify: null,
+};
 let bootstrapCompleted = false;
 
 function ensureMigrationsRun(): Promise<void> {
@@ -38,15 +52,15 @@ function ensureInitialFolderCount(): Promise<number | null> {
     initialFolderCountPromise = ensureMigrationsRun()
       .then(() => window.folder.list())
       .then((folders) => {
-        bootstrappedFolders = folders;
-        bootstrappedFolderCount = folders.length;
-        return bootstrappedFolderCount;
+        bootstrapResult.folders = folders;
+        bootstrapResult.folderCount = folders.length;
+        return bootstrapResult.folderCount;
       })
       .catch((error: unknown) => {
         log.warn("Failed to load initial folder count during bootstrap", {
           error: error instanceof Error ? error.message : String(error),
         });
-        bootstrappedFolderCount = null;
+        bootstrapResult.folderCount = null;
         return null;
       });
   }
@@ -54,16 +68,33 @@ function ensureInitialFolderCount(): Promise<number | null> {
   return initialFolderCountPromise;
 }
 
-function ensureBootstrapComplete(): Promise<number | null> {
+function ensureBootstrapComplete(): Promise<BootstrapResult> {
   if (bootstrapCompleted) {
-    return Promise.resolve(bootstrappedFolderCount);
+    return Promise.resolve(bootstrapResult);
   }
 
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
-      const folderCount = await ensureInitialFolderCount();
+      await ensureInitialFolderCount();
+
+      // Run quickVerify during bootstrap so App doesn't need to
+      if (bootstrapResult.folders && bootstrapResult.folders.length > 0) {
+        try {
+          bootstrapResult.quickVerify = await window.image.quickVerify();
+          log.info("Bootstrap quickVerify completed", {
+            changed: bootstrapResult.quickVerify.changedFolderIds.length,
+            unchanged: bootstrapResult.quickVerify.unchangedFolderIds.length,
+          });
+        } catch (error: unknown) {
+          log.warn("Bootstrap quickVerify failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          bootstrapResult.quickVerify = null;
+        }
+      }
+
       bootstrapCompleted = true;
-      return folderCount;
+      return bootstrapResult;
     })();
   }
 
@@ -160,7 +191,7 @@ export function BootstrapApp() {
   const { t } = useTranslation();
   const storedSettings = useMemo(() => readStoredSettings(), []);
   const [folderCount, setFolderCount] = useState<number | null>(
-    bootstrappedFolderCount,
+    bootstrapResult.folderCount,
   );
   const [migrating, setMigrating] = useState(false);
   const [mountApp, setMountApp] = useState(bootstrapCompleted);
@@ -199,7 +230,7 @@ export function BootstrapApp() {
 
   useEffect(() => {
     if (bootstrapCompleted) {
-      setFolderCount(bootstrappedFolderCount);
+      setFolderCount(bootstrapResult.folderCount);
       setMountApp(true);
 
       setProgressPercent(100);
@@ -229,10 +260,10 @@ export function BootstrapApp() {
       }
     });
 
-    void ensureBootstrapComplete().then((count) => {
+    void ensureBootstrapComplete().then((result) => {
       if (cancelled) return;
 
-      setFolderCount(count);
+      setFolderCount(result.folderCount);
 
       setProgressPercent(100);
       const shownAt = splashShownAtRef.current ?? Date.now();
@@ -287,7 +318,13 @@ export function BootstrapApp() {
   return (
     <>
       <ClickableToaster />
-      {mountApp && <App initialFolderCount={folderCount} initialFolders={bootstrappedFolders} />}
+      {mountApp && (
+        <App
+          initialFolderCount={folderCount}
+          initialFolders={bootstrapResult.folders}
+          initialQuickVerify={bootstrapResult.quickVerify}
+        />
+      )}
       {renderSplash && (
         <AppSplash
           fadingOut={splashFadingOut}

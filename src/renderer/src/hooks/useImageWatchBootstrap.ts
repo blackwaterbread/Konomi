@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
+import type { QuickVerifyResult } from "@/bootstrap-app";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("renderer/useImageWatchBootstrap");
@@ -24,31 +25,44 @@ interface UseImageWatchBootstrapOptions {
   }) => Promise<boolean>;
 }
 
-export function useImageWatchBootstrap({
+/**
+ * Runs the app initialization sequence: quickVerify → conditional scan → deferred integrity check.
+ * Called explicitly from the App mount orchestrator instead of being triggered by a useEffect.
+ */
+export function runAppInitialization({
+  quickVerifyResult,
   loadSearchPresetStats,
-  scheduleSearchStatsRefresh,
   scanningRef,
-  scanStartCountRef,
-  rescanningRef,
   scheduleAnalysis,
-  schedulePageRefresh,
   runScan,
-}: UseImageWatchBootstrapOptions) {
-  useEffect(() => {
-    let cancelled = false;
-    let deferredTimer: ReturnType<typeof setTimeout> | null = null;
+}: {
+  quickVerifyResult: QuickVerifyResult | null;
+  loadSearchPresetStats: () => Promise<void>;
+  scanningRef: MutableRefObject<boolean>;
+  scheduleAnalysis: (delay?: number) => void;
+  runScan: UseImageWatchBootstrapOptions["runScan"];
+}): { cancel: () => void } {
+  let cancelled = false;
+  let deferredTimer: ReturnType<typeof setTimeout> | null = null;
 
-    log.info("App mounted: quick-verifying folders before scan");
+  // Use bootstrap-provided quickVerify result, or run it now as fallback
+  const initPromise = (async () => {
+    let changedFolderIds: number[] = [];
+    let unchangedFolderIds: number[] = [];
 
-    void (async () => {
-      // Phase 1: Quick verify — count-based fingerprint check
-      let changedFolderIds: number[] = [];
-      let unchangedFolderIds: number[] = [];
+    if (quickVerifyResult) {
+      changedFolderIds = quickVerifyResult.changedFolderIds;
+      unchangedFolderIds = quickVerifyResult.unchangedFolderIds;
+      log.info("Using bootstrap quickVerify result", {
+        changed: changedFolderIds.length,
+        unchanged: unchangedFolderIds.length,
+      });
+    } else {
       try {
         const result = await window.image.quickVerify();
         changedFolderIds = result.changedFolderIds;
         unchangedFolderIds = result.unchangedFolderIds;
-        log.info("Quick verify result", {
+        log.info("Quick verify result (fallback)", {
           changed: changedFolderIds.length,
           unchanged: unchangedFolderIds.length,
         });
@@ -56,71 +70,91 @@ export function useImageWatchBootstrap({
         log.warn("Quick verify failed, falling back to full scan", {
           error: error instanceof Error ? error.message : String(error),
         });
-        // Fallback: treat all as changed → full scan
       }
+    }
 
-      if (cancelled) return;
+    if (cancelled) return;
 
-      // Phase 2: Conditional scan
-      if (changedFolderIds.length === 0 && unchangedFolderIds.length > 0) {
-        // Nothing changed — skip scan, just load cached data
-        // (gallery loads automatically via galleryReady gate)
-        log.info("All folders unchanged, skipping initial scan");
-        void loadSearchPresetStats();
+    // Conditional scan
+    if (changedFolderIds.length === 0 && unchangedFolderIds.length > 0) {
+      log.info("All folders unchanged, skipping initial scan");
+      void loadSearchPresetStats();
+      scheduleAnalysis(0);
+    } else {
+      void loadSearchPresetStats();
+      void runScan({
+        detectDuplicates: true,
+        skipFolderIds:
+          unchangedFolderIds.length > 0 ? unchangedFolderIds : undefined,
+        refreshPage: true,
+        refreshSearchPresetStats: true,
+      }).then(() => {
         scheduleAnalysis(0);
-      } else {
-        // Some folders changed — scan only those, skip unchanged
-        void loadSearchPresetStats();
+      });
+    }
+
+    // Deferred integrity check for unchanged folders
+    if (unchangedFolderIds.length > 0 && !cancelled) {
+      deferredTimer = setTimeout(() => {
+        deferredTimer = null;
+        if (cancelled || scanningRef.current) return;
+        log.info("Running deferred integrity check for unchanged folders");
         void runScan({
-          detectDuplicates: true,
-          skipFolderIds:
-            unchangedFolderIds.length > 0 ? unchangedFolderIds : undefined,
+          detectDuplicates: false,
+          folderIds: unchangedFolderIds,
           refreshPage: true,
-          refreshSearchPresetStats: true,
-        }).then(() => {
-          scheduleAnalysis(0);
+          refreshSearchPresetStats: false,
         });
-      }
+      }, DEFERRED_INTEGRITY_CHECK_MS);
+    }
+  })();
 
-      // Phase 3: Deferred integrity check for unchanged folders
-      if (unchangedFolderIds.length > 0 && !cancelled) {
-        deferredTimer = setTimeout(() => {
-          deferredTimer = null;
-          if (cancelled || scanningRef.current) return;
-          log.info("Running deferred integrity check for unchanged folders");
-          void runScan({
-            detectDuplicates: false,
-            folderIds: unchangedFolderIds,
-            refreshPage: true,
-            refreshSearchPresetStats: false,
-          });
-        }, DEFERRED_INTEGRITY_CHECK_MS);
-      }
-    })();
+  void initPromise;
 
+  return {
+    cancel: () => {
+      cancelled = true;
+      if (deferredTimer) {
+        clearTimeout(deferredTimer);
+        deferredTimer = null;
+      }
+    },
+  };
+}
+
+/**
+ * Subscribes to IPC events (onBatch, onRemoved) and starts the file watcher.
+ * Pure event subscription — no initialization logic.
+ */
+export function useImageEventSubscriptions({
+  scheduleSearchStatsRefresh,
+  scanningRef,
+  scanStartCountRef,
+  rescanningRef,
+  scheduleAnalysis,
+  schedulePageRefresh,
+}: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan">) {
+  const SCAN_REFRESH_INTERVAL_MS = 3000;
+
+  useEffect(() => {
     let scanFirstBatchFired = false;
     let lastScanRefreshAt = 0;
     let lastSeenScanStart = 0;
-    const SCAN_REFRESH_INTERVAL_MS = 3000;
 
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
-      // 메타데이터 재스캔: 기존 이미지의 메타데이터만 변경되므로 갤러리 갱신 불필요
       if (rescanningRef.current) return;
       if (scanningRef.current) {
-        // 새 스캔이 시작되었으면 첫 배치 플래그를 리셋하여 즉시 갱신을 보장한다
         if (scanStartCountRef.current !== lastSeenScanStart) {
           lastSeenScanStart = scanStartCountRef.current;
           scanFirstBatchFired = false;
           lastScanRefreshAt = 0;
         }
         if (!scanFirstBatchFired) {
-          // 첫 배치는 즉시 갤러리에 표시하여 빈 화면 시간을 줄인다
           scanFirstBatchFired = true;
           lastScanRefreshAt = Date.now();
           schedulePageRefresh(0);
         } else {
-          // 이후 배치는 쓰로틀: 마지막 갱신으로부터 일정 간격이 지났으면 즉시, 아니면 남은 시간 후 갱신
           const elapsed = Date.now() - lastScanRefreshAt;
           if (elapsed >= SCAN_REFRESH_INTERVAL_MS) {
             lastScanRefreshAt = Date.now();
@@ -145,6 +179,7 @@ export function useImageWatchBootstrap({
       scheduleSearchStatsRefresh(120);
     });
 
+    // File watcher with retry
     let watchCancelled = false;
     let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const startWatch = (attempt = 0): void => {
@@ -165,13 +200,7 @@ export function useImageWatchBootstrap({
     startWatch();
 
     return () => {
-      log.info("App unmount cleanup");
-      cancelled = true;
       watchCancelled = true;
-      if (deferredTimer) {
-        clearTimeout(deferredTimer);
-        deferredTimer = null;
-      }
       if (watchRetryTimer) {
         clearTimeout(watchRetryTimer);
         watchRetryTimer = null;
@@ -180,8 +209,6 @@ export function useImageWatchBootstrap({
       offRemoved();
     };
   }, [
-    loadSearchPresetStats,
-    runScan,
     scanningRef,
     scanStartCountRef,
     rescanningRef,
@@ -189,4 +216,44 @@ export function useImageWatchBootstrap({
     schedulePageRefresh,
     scheduleSearchStatsRefresh,
   ]);
+}
+
+/**
+ * @deprecated Use useImageEventSubscriptions + runAppInitialization instead.
+ * Kept temporarily for reference during migration.
+ */
+export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
+  const {
+    loadSearchPresetStats,
+    scanningRef,
+    scheduleAnalysis,
+    runScan,
+    ...subscriptionOptions
+  } = options;
+
+  // Event subscriptions
+  useImageEventSubscriptions({
+    ...subscriptionOptions,
+    scanningRef,
+    scheduleAnalysis,
+  });
+
+  // Initialization — run once on mount with no quickVerify (fallback path)
+  const initRef = useRef(false);
+  const runInit = useCallback(() => {
+    if (initRef.current) return { cancel: () => {} };
+    initRef.current = true;
+    return runAppInitialization({
+      quickVerifyResult: null,
+      loadSearchPresetStats,
+      scanningRef,
+      scheduleAnalysis,
+      runScan,
+    });
+  }, [loadSearchPresetStats, scanningRef, scheduleAnalysis, runScan]);
+
+  useEffect(() => {
+    const handle = runInit();
+    return handle.cancel;
+  }, [runInit]);
 }

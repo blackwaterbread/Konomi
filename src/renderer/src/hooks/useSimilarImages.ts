@@ -7,15 +7,15 @@ export function useSimilarImages({
   anchorId,
   isDetailOpen,
   detailContentReady,
-  visualThresholdRef,
-  promptThresholdRef,
+  getVisualThreshold,
+  getPromptThreshold,
   pageSize = 10,
 }: {
   anchorId: string | null;
   isDetailOpen: boolean;
   detailContentReady: boolean;
-  visualThresholdRef: React.MutableRefObject<number>;
-  promptThresholdRef: React.MutableRefObject<number | undefined>;
+  getVisualThreshold: () => number;
+  getPromptThreshold: () => number | undefined;
   pageSize?: number;
 }) {
   // Sorted candidate IDs (excluding anchor) — lightweight, kept in full
@@ -93,8 +93,8 @@ export function useSimilarImages({
           .similarReasons(
             imageId,
             candidateIds,
-            visualThresholdRef.current,
-            promptThresholdRef.current,
+            getVisualThreshold(),
+            getPromptThreshold(),
           )
           .then((reasons) => {
             if (cancelled || requestId !== requestSeqRef.current) return;
@@ -132,7 +132,7 @@ export function useSimilarImages({
     return () => {
       cancelled = true;
     };
-  }, [anchorId, detailContentReady, isDetailOpen, promptThresholdRef, visualThresholdRef]);
+  }, [anchorId, detailContentReady, isDetailOpen, getPromptThreshold, getVisualThreshold]);
 
   // Phase 2: Fetch ImageData for the current page only
   useEffect(() => {

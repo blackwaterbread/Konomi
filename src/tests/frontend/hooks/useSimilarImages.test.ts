@@ -17,8 +17,8 @@ function deferred<T>() {
 
 describe("useSimilarImages", () => {
   it("loads similar images, sorts by score, and maps reasons by image id", async () => {
-    const visualThresholdRef = { current: 12 };
-    const promptThresholdRef = { current: 0.6 };
+    const getVisualThreshold = () => 12;
+    const getPromptThreshold = () => 0.6 as number | undefined;
 
     preloadMocks.image.similarGroupForImage.mockResolvedValue({
       id: "group-1",
@@ -43,8 +43,8 @@ describe("useSimilarImages", () => {
       }) =>
         useSimilarImages({
           ...props,
-          visualThresholdRef,
-          promptThresholdRef,
+          getVisualThreshold,
+          getPromptThreshold,
         }),
       {
         initialProps: {
@@ -86,8 +86,8 @@ describe("useSimilarImages", () => {
   });
 
   it("ignores stale results after the panel closes and reopens for a different image", async () => {
-    const visualThresholdRef = { current: 12 };
-    const promptThresholdRef = { current: 0.6 };
+    const getVisualThreshold = () => 12;
+    const getPromptThreshold = () => 0.6 as number | undefined;
     const firstRows = deferred<ReturnType<typeof createImageRow>[]>();
     const firstReasons = deferred<
       Array<{
@@ -134,8 +134,8 @@ describe("useSimilarImages", () => {
       }) =>
         useSimilarImages({
           ...props,
-          visualThresholdRef,
-          promptThresholdRef,
+          getVisualThreshold,
+          getPromptThreshold,
         }),
       {
         initialProps: {
@@ -201,8 +201,8 @@ describe("useSimilarImages", () => {
   });
 
   it("clears state when loading similar images fails", async () => {
-    const visualThresholdRef = { current: 12 };
-    const promptThresholdRef = { current: 0.6 };
+    const getVisualThreshold = () => 12;
+    const getPromptThreshold = () => 0.6 as number | undefined;
 
     preloadMocks.image.similarGroupForImage.mockRejectedValueOnce(
       new Error("db offline"),
@@ -213,8 +213,8 @@ describe("useSimilarImages", () => {
         anchorId: "10",
         isDetailOpen: true,
         detailContentReady: true,
-        visualThresholdRef,
-        promptThresholdRef,
+        getVisualThreshold,
+        getPromptThreshold,
       }),
     );
 
