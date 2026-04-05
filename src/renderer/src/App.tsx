@@ -91,6 +91,7 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     seedSubfolders,
     refreshSubfolders,
     subfolderFilters,
+    galleryReady,
   } = useFolderController(initialFolderCount, initialFolders);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -176,6 +177,7 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     excludeTags,
     folderCount,
     subfolderFilters,
+    enabled: galleryReady,
   });
 
   const {

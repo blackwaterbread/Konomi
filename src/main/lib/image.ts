@@ -40,8 +40,6 @@ export type ImageRow = {
   createdAt: Date;
 };
 
-// Select that excludes heavy JSON token columns for gallery list queries.
-// Token data is only needed in detail view (fetched via listByIds).
 const IMAGE_LIST_PAGE_SELECT = {
   id: true,
   path: true,
@@ -49,6 +47,9 @@ const IMAGE_LIST_PAGE_SELECT = {
   prompt: true,
   negativePrompt: true,
   characterPrompts: true,
+  promptTokens: true,
+  negativePromptTokens: true,
+  characterPromptTokens: true,
   source: true,
   model: true,
   seed: true,
@@ -1597,47 +1598,162 @@ function buildImageOrderBy(
   }
 }
 
-function hashStringToUint32(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
+// ---------------------------------------------------------------------------
+// Raw SQL WHERE builder (mirrors buildImageWhereInput for $queryRawUnsafe)
+// ---------------------------------------------------------------------------
+
+interface SqlFragment {
+  sql: string;
+  params: unknown[];
 }
 
-function randomRank(seed: number, id: number): number {
-  return hashStringToUint32(`${seed}:${id}`);
+function placeholders(count: number): string {
+  return new Array(count).fill("?").join(", ");
 }
 
-function pickRandomCandidateIds(
-  seed: number,
-  candidateIds: number[],
-  limit: number,
-): number[] {
-  if (limit <= 0 || candidateIds.length === 0) return [];
+function buildImageWhereSql(query: NormalizedImageListQuery): SqlFragment {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
 
-  const picked: number[] = [];
-  for (const id of candidateIds) {
-    if (picked.length < limit) {
-      picked.push(id);
-      continue;
+  // folder / subfolder filter
+  if (query.subfolderFilters.length === 0) {
+    conditions.push(`"folderId" IN (${placeholders(query.folderIds.length)})`);
+    params.push(...query.folderIds);
+  } else {
+    const sep = process.platform === "win32" ? "\\" : "/";
+    const filteredFolderIds = new Set(
+      query.subfolderFilters.map((f) => f.folderId),
+    );
+    const unfilteredIds = query.folderIds.filter(
+      (id) => !filteredFolderIds.has(id),
+    );
+    const orParts: string[] = [];
+    if (unfilteredIds.length > 0) {
+      orParts.push(`"folderId" IN (${placeholders(unfilteredIds.length)})`);
+      params.push(...unfilteredIds);
     }
-
-    let worstIndex = 0;
-    for (let i = 1; i < picked.length; i++) {
-      if (randomRank(seed, picked[worstIndex]) < randomRank(seed, picked[i])) {
-        worstIndex = i;
+    for (const sf of query.subfolderFilters) {
+      const sfParams: unknown[] = [sf.folderId];
+      const pathParts: string[] = [];
+      for (const p of sf.selectedPaths) {
+        const prefix = p.endsWith(sep) ? p : p + sep;
+        pathParts.push(`"path" LIKE ? ESCAPE '\\'`);
+        sfParams.push(sqlLikeEscape(prefix) + "%");
+      }
+      if (sf.includeRoot && sf.allPaths.length > 0) {
+        const notParts = sf.allPaths.map((p) => {
+          const prefix = p.endsWith(sep) ? p : p + sep;
+          sfParams.push(sqlLikeEscape(prefix) + "%");
+          return `"path" NOT LIKE ? ESCAPE '\\'`;
+        });
+        pathParts.push(`(${notParts.join(" AND ")})`);
+      }
+      if (pathParts.length > 0) {
+        orParts.push(`("folderId" = ? AND (${pathParts.join(" OR ")}))`);
+        params.push(...sfParams);
       }
     }
-
-    if (randomRank(seed, id) < randomRank(seed, picked[worstIndex])) {
-      picked[worstIndex] = id;
+    if (orParts.length > 0) {
+      conditions.push(`(${orParts.join(" OR ")})`);
     }
   }
 
-  picked.sort((a, b) => randomRank(seed, a) - randomRank(seed, b));
-  return picked;
+  // search groups
+  const searchColumns = [
+    '"promptTokens"',
+    '"negativePromptTokens"',
+    '"characterPromptTokens"',
+    '"prompt"',
+    '"negativePrompt"',
+    '"characterPrompts"',
+  ];
+  for (const terms of query.searchGroups) {
+    const orParts: string[] = [];
+    for (const term of terms) {
+      for (const col of searchColumns) {
+        orParts.push(`${col} LIKE ? ESCAPE '\\'`);
+        params.push("%" + sqlLikeEscape(term) + "%");
+      }
+    }
+    conditions.push(`(${orParts.join(" OR ")})`);
+  }
+
+  // resolution
+  if (query.resolutionFilters.length > 0) {
+    const orParts = query.resolutionFilters.map((f) => {
+      params.push(f.width, f.height);
+      return `("width" = ? AND "height" = ?)`;
+    });
+    conditions.push(`(${orParts.join(" OR ")})`);
+  }
+
+  // model
+  if (query.modelFilters.length > 0) {
+    conditions.push(`"model" IN (${placeholders(query.modelFilters.length)})`);
+    params.push(...query.modelFilters);
+  }
+
+  // seed
+  if (query.seedFilters.length > 0) {
+    conditions.push(`"seed" IN (${placeholders(query.seedFilters.length)})`);
+    params.push(...query.seedFilters);
+  }
+
+  // exclude tags
+  for (const tag of query.excludeTags) {
+    const escaped = "%" + sqlLikeEscape(tag) + "%";
+    for (const col of searchColumns) {
+      conditions.push(`${col} NOT LIKE ? ESCAPE '\\'`);
+      params.push(escaped);
+    }
+  }
+
+  // recent
+  if (query.onlyRecent) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - query.recentDays);
+    conditions.push(`"fileModifiedAt" >= ?`);
+    params.push(cutoff.toISOString());
+  }
+
+  // custom category
+  if (query.customCategoryId !== null) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM "ImageCategory" WHERE "ImageCategory"."imageId" = "Image"."id" AND "ImageCategory"."categoryId" = ?)`,
+    );
+    params.push(query.customCategoryId);
+  }
+
+  // favorites
+  if (query.builtinCategory === "favorites") {
+    conditions.push(`"isFavorite" = 1`);
+  }
+
+  return {
+    sql: conditions.length > 0 ? conditions.join(" AND ") : "1=1",
+    params,
+  };
+}
+
+function sqlLikeEscape(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => "\\" + ch);
+}
+
+const IMAGE_LIST_PAGE_COLUMNS = Object.keys(IMAGE_LIST_PAGE_SELECT)
+  .map((c) => `"${c}"`)
+  .join(", ");
+
+type RawImageRow = Omit<ImageRow, "isFavorite" | "varietyPlus"> & {
+  isFavorite: number;
+  varietyPlus: number;
+};
+
+function normalizeRawImageRow(raw: RawImageRow): ImageRow {
+  return {
+    ...raw,
+    isFavorite: Boolean(raw.isFavorite),
+    varietyPlus: Boolean(raw.varietyPlus),
+  };
 }
 
 export async function listImagesPage(
@@ -1656,44 +1772,26 @@ export async function listImagesPage(
   }
 
   const db = getDB();
-  const where = buildImageWhereInput(normalized);
 
   if (normalized.builtinCategory === "random") {
-    const candidates = await db.image.findMany({
-      where,
-      select: { id: true },
-    });
-    const ids = pickRandomCandidateIds(
-      normalized.randomSeed,
-      candidates.map((c) => c.id),
-      normalized.pageSize,
-    );
-    if (ids.length === 0) {
-      return {
-        rows: [],
-        totalCount: 0,
-        page: normalized.page,
-        pageSize: normalized.pageSize,
-        totalPages: 1,
-      };
-    }
-    const rows = (await db.image.findMany({
-      where: { id: { in: ids } },
-      select: IMAGE_LIST_PAGE_SELECT,
-    })) as unknown as ImageRow[];
-    const rowMap = new Map(rows.map((row) => [row.id, row]));
-    const orderedRows = ids
-      .map((id) => rowMap.get(id))
-      .filter((row): row is ImageRow => row !== undefined);
+    const { sql: whereSql, params } = buildImageWhereSql(normalized);
+    const rows = (
+      await db.$queryRawUnsafe<RawImageRow[]>(
+        `SELECT ${IMAGE_LIST_PAGE_COLUMNS} FROM "Image" WHERE ${whereSql} ORDER BY RANDOM() LIMIT ?`,
+        ...params,
+        normalized.pageSize,
+      )
+    ).map(normalizeRawImageRow);
     return {
-      rows: orderedRows,
-      totalCount: ids.length,
+      rows,
+      totalCount: rows.length,
       page: normalized.page,
       pageSize: normalized.pageSize,
       totalPages: 1,
     };
   }
 
+  const where = buildImageWhereInput(normalized);
   const totalCount = await db.image.count({ where });
   const rows = (await db.image.findMany({
     where,

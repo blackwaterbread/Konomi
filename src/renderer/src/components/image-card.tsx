@@ -76,7 +76,6 @@ interface ImageCardProps {
   onBulkCategory?: () => void;
   onRescanMetadata?: (path: string) => void;
   onBulkRescanMetadata?: () => void;
-  onLoadTokens?: (imageId: string) => void;
 }
 
 export const ImageCard = memo(function ImageCard({
@@ -98,7 +97,6 @@ export const ImageCard = memo(function ImageCard({
   onBulkCategory,
   onRescanMetadata,
   onBulkRescanMetadata,
-  onLoadTokens,
 }: ImageCardProps) {
   const { t } = useTranslation();
   const { formatDate, formatDateTime } = useLocaleFormatters();
@@ -157,10 +155,7 @@ export const ImageCard = memo(function ImageCard({
 
   const handleHoverPreviewActivate = useCallback(() => {
     setHoverPreviewReady((prev) => prev || viewMode !== "list");
-    if (image.tokens.length === 0 && image.prompt && onLoadTokens) {
-      onLoadTokens(image.id);
-    }
-  }, [viewMode, image.tokens.length, image.prompt, image.id, onLoadTokens]);
+  }, [viewMode]);
 
   const contextMenuContent = contextMenuReady ? (
     <ContextMenuContent>

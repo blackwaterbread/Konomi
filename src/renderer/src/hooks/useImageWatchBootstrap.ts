@@ -64,9 +64,9 @@ export function useImageWatchBootstrap({
       // Phase 2: Conditional scan
       if (changedFolderIds.length === 0 && unchangedFolderIds.length > 0) {
         // Nothing changed — skip scan, just load cached data
+        // (gallery loads automatically via galleryReady gate)
         log.info("All folders unchanged, skipping initial scan");
         void loadSearchPresetStats();
-        schedulePageRefresh(0);
         scheduleAnalysis(0);
       } else {
         // Some folders changed — scan only those, skip unchanged

@@ -153,7 +153,7 @@ interface ImageGalleryActions {
   onClearSearch?: () => void;
   onAddFolder?: () => void;
   onLoadAllSelectableIds?: () => Promise<number[]>;
-  onLoadTokens?: (imageId: string) => void;
+
 }
 
 interface ImageGalleryPagination {
@@ -398,7 +398,7 @@ interface GalleryResultsProps {
   onBulkCategory: () => void;
   onRescanMetadata?: (path: string) => void;
   onBulkRescanMetadata: () => void;
-  onLoadTokens?: (imageId: string) => void;
+
   isInitializing: boolean;
   isRefreshing: boolean;
   scanning: boolean;
@@ -429,7 +429,6 @@ const GalleryResults = memo(function GalleryResults({
   onBulkCategory,
   onRescanMetadata,
   onBulkRescanMetadata,
-  onLoadTokens,
   isInitializing,
   isRefreshing,
   scanning,
@@ -618,7 +617,7 @@ const GalleryResults = memo(function GalleryResults({
                   onBulkCategory={onBulkCategory}
                   onRescanMetadata={onRescanMetadata}
                   onBulkRescanMetadata={onBulkRescanMetadata}
-                  onLoadTokens={onLoadTokens}
+
                 />
               );
 
@@ -678,7 +677,13 @@ const GalleryResults = memo(function GalleryResults({
   }
 
   if (isRefreshing) {
-    return <div className="flex-1" />;
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border/70 bg-background/88 text-primary shadow-xl">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -910,7 +915,6 @@ export const ImageGallery = memo(function ImageGallery({
     onClearSearch,
     onAddFolder,
     onLoadAllSelectableIds,
-    onLoadTokens,
   } = actions;
   const { pageSize = 50, page, totalPages, onPageChange } = pagination ?? {};
   const [internalPage, setInternalPage] = useState(1);
@@ -1117,7 +1121,6 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkCategory={handleBulkCategory}
         onRescanMetadata={onRescanMetadata}
         onBulkRescanMetadata={handleBulkRescanMetadata}
-        onLoadTokens={onLoadTokens}
         isInitializing={isInitializing}
         isRefreshing={isRefreshing}
         scanning={scanning}

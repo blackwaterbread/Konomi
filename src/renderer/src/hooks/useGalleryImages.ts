@@ -9,20 +9,13 @@ import { toast } from "sonner";
 import type { ImageData } from "@/components/image-card";
 import type { ImageListQuery } from "@preload/index.d";
 import i18n from "@/lib/i18n";
-import { parseTokens, rowToImageData } from "@/lib/image-utils";
-import type { PromptToken } from "@/lib/token";
-
-type TokenCache = {
-  tokens: PromptToken[];
-  negativeTokens: PromptToken[];
-  characterTokens: PromptToken[];
-};
+import { rowToImageData } from "@/lib/image-utils";
 
 const EMPTY_IMAGES: ImageData[] = [];
 
 export function useGalleryImages(
   listBaseQuery: Omit<ImageListQuery, "page">,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; overlayActiveRef?: React.RefObject<boolean> },
 ) {
   const enabled = options?.enabled ?? true;
   const [images, setImages] = useState<ImageData[]>([]);
@@ -38,7 +31,6 @@ export function useGalleryImages(
   const enabledRef = useRef(enabled);
   const listRequestSeqRef = useRef(0);
   const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
-  const tokenCacheRef = useRef(new Map<string, TokenCache>());
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -62,7 +54,11 @@ export function useGalleryImages(
     setIsLoading(true);
     // Eagerly unmount old cards so Blink can release decoded bitmaps
     // before new images arrive (batched with isLoading → single render).
-    setImages(EMPTY_IMAGES);
+    // Skip when overlay is active — old images stay hidden under the spinner
+    // and will be replaced atomically when new data arrives.
+    if (!options?.overlayActiveRef?.current) {
+      setImages(EMPTY_IMAGES);
+    }
     try {
       const result = await window.image.listPage({
         ...listBaseQuery,
@@ -70,19 +66,11 @@ export function useGalleryImages(
       });
       if (requestId !== listRequestSeqRef.current) return;
       startTransition(() => {
-        const cache = tokenCacheRef.current;
-        setImages(
-          result.rows.map((row) => {
-            const img = rowToImageData(row);
-            const cached = cache.get(img.id);
-            if (cached && img.tokens.length === 0) {
-              return { ...img, ...cached };
-            }
-            return img;
-          }),
-        );
+        setImages(result.rows.map((row) => rowToImageData(row)));
         setTotalImageCount(result.totalCount);
         setGalleryTotalPages(result.totalPages);
+        setIsLoading(false);
+        setHasLoadedOnce(true);
       });
       if (galleryPage > result.totalPages) {
         setGalleryPage(result.totalPages);
@@ -94,12 +82,10 @@ export function useGalleryImages(
           message: e instanceof Error ? e.message : String(e),
         }),
       );
-    } finally {
-      if (requestId === listRequestSeqRef.current) {
-        setIsLoading(false);
-        setHasLoadedOnce(true);
-      }
+      setIsLoading(false);
+      setHasLoadedOnce(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- overlayActiveRef is a stable ref
   }, [enabled, galleryPage, listBaseQuery]);
 
   const schedulePageRefresh = useCallback((delay = 120) => {
@@ -120,7 +106,7 @@ export function useGalleryImages(
   // are needed because Blink may defer reclamation.
   const prevImagesRef = useRef(images);
   useEffect(() => {
-    if (prevImagesRef.current !== images) {
+    if (prevImagesRef.current !== images && images.length > 0) {
       requestAnimationFrame(() => {
         window.appInfo.clearResourceCache();
       });
@@ -142,35 +128,6 @@ export function useGalleryImages(
     };
   }, []);
 
-  const tokenLoadingRef = useRef(new Set<string>());
-
-  const loadTokens = useCallback(async (imageId: string) => {
-    if (tokenLoadingRef.current.has(imageId)) return;
-    tokenLoadingRef.current.add(imageId);
-    try {
-      const rows = await window.image.listByIds([Number(imageId)]);
-      if (rows.length === 0) return;
-      const row = rows[0];
-      const tokens = parseTokens(row.promptTokens);
-      const negativeTokens = parseTokens(row.negativePromptTokens);
-      const characterTokens = parseTokens(row.characterPromptTokens);
-      tokenCacheRef.current.set(imageId, {
-        tokens,
-        negativeTokens,
-        characterTokens,
-      });
-      setImages((prev) =>
-        prev.map((img) =>
-          img.id === imageId
-            ? { ...img, tokens, negativeTokens, characterTokens }
-            : img,
-        ),
-      );
-    } finally {
-      tokenLoadingRef.current.delete(imageId);
-    }
-  }, []);
-
   return {
     images,
     setImages,
@@ -181,6 +138,5 @@ export function useGalleryImages(
     hasLoadedOnce,
     isLoading,
     schedulePageRefresh,
-    loadTokens,
   };
 }

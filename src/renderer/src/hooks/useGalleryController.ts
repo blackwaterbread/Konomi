@@ -25,6 +25,7 @@ interface UseGalleryControllerOptions {
   excludeTags: string[];
   folderCount: number | null;
   subfolderFilters?: ImageListQuery["subfolderFilters"];
+  enabled?: boolean;
 }
 
 export function useGalleryController({
@@ -38,6 +39,7 @@ export function useGalleryController({
   excludeTags,
   folderCount,
   subfolderFilters,
+  enabled = true,
 }: UseGalleryControllerOptions) {
   const [searchQuery, setSearchQuery] = useState("");
   const [galleryOverlayVisible, setGalleryOverlayVisible] = useState(false);
@@ -46,6 +48,8 @@ export function useGalleryController({
   const galleryOverlayEnterRafRef = useRef<number | null>(null);
   const galleryOverlayActionRafRef = useRef<number | null>(null);
   const galleryOverlayPhaseRef = useRef<"queued" | "loading" | null>(null);
+  const prevRandomSeedRef = useRef(queryFragment.randomSeed);
+  const galleryOverlayActiveRef = useRef(false);
 
   const listBaseQuery = useMemo<Omit<ImageListQuery, "page">>(
     () => ({
@@ -92,8 +96,7 @@ export function useGalleryController({
     hasLoadedOnce,
     isLoading: isGalleryLoading,
     schedulePageRefresh,
-    loadTokens,
-  } = useGalleryImages(listBaseQuery);
+  } = useGalleryImages(listBaseQuery, { enabled, overlayActiveRef: galleryOverlayActiveRef });
 
   const gallerySelectionScopeKey = useMemo(
     () =>
@@ -143,6 +146,7 @@ export function useGalleryController({
     (action: () => void) => {
       clearPendingGalleryOverlayFrames();
       galleryOverlayPhaseRef.current = "queued";
+      galleryOverlayActiveRef.current = true;
       setGalleryOverlayVisible(true);
       galleryOverlayEnterRafRef.current = requestAnimationFrame(() => {
         galleryOverlayEnterRafRef.current = null;
@@ -163,6 +167,16 @@ export function useGalleryController({
   );
 
   useEffect(() => {
+    if (queryFragment.randomSeed !== prevRandomSeedRef.current) {
+      prevRandomSeedRef.current = queryFragment.randomSeed;
+      clearPendingGalleryOverlayFrames();
+      galleryOverlayPhaseRef.current = "loading";
+      galleryOverlayActiveRef.current = true;
+      setGalleryOverlayVisible(true);
+    }
+  }, [queryFragment.randomSeed, clearPendingGalleryOverlayFrames]);
+
+  useEffect(() => {
     if (!galleryOverlayVisible) return;
     if (isGalleryLoading) {
       galleryOverlayPhaseRef.current = "loading";
@@ -170,6 +184,7 @@ export function useGalleryController({
     }
     if (galleryOverlayPhaseRef.current === "loading") {
       galleryOverlayPhaseRef.current = null;
+      galleryOverlayActiveRef.current = false;
       setGalleryOverlayVisible(false);
     }
   }, [galleryOverlayVisible, isGalleryLoading]);
@@ -220,8 +235,8 @@ export function useGalleryController({
       totalCount: totalImageCount,
       searchQuery: searchQuery || undefined,
       hasFolders: folderCount === null || folderCount > 0,
-      isInitializing: !hasLoadedOnce && isGalleryLoading,
-      isRefreshing: galleryOverlayVisible,
+      isInitializing: !hasLoadedOnce,
+      isRefreshing: galleryOverlayVisible || (isGalleryLoading && hasLoadedOnce),
       selectionScopeKey: gallerySelectionScopeKey,
     }),
     [
@@ -254,9 +269,8 @@ export function useGalleryController({
       onSortChange: setSortBy,
       onClearSearch: handleClearSearch,
       onLoadAllSelectableIds: handleLoadAllSelectableIds,
-      onLoadTokens: loadTokens,
     }),
-    [handleClearSearch, handleLoadAllSelectableIds, loadTokens],
+    [handleClearSearch, handleLoadAllSelectableIds],
   );
 
   return {

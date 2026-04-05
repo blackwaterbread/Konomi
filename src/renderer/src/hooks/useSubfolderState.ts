@@ -44,6 +44,7 @@ function writeDeselected(map: Map<number, Set<string>>): void {
 }
 
 export function useSubfolderState() {
+  const [subfolderReady, setSubfolderReady] = useState(false);
   const [subfoldersByFolder, setSubfoldersByFolder] = useState<
     Map<number, Subfolder[]>
   >(new Map());
@@ -97,6 +98,7 @@ export function useSubfolderState() {
         }
         return changed ? next : prev;
       });
+      setSubfolderReady(true);
     },
     [],
   );
@@ -214,6 +216,7 @@ export function useSubfolderState() {
   }, [deselected, subfoldersByFolder]);
 
   return {
+    subfolderReady,
     subfoldersByFolder,
     isSubfolderVisible,
     isRootVisible,

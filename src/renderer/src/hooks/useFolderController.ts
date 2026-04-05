@@ -27,6 +27,7 @@ export function useFolderController(
   } = useFolderSelection();
   const { collapsedFolderIds, toggleCollapse } = useFolderCollapse();
   const {
+    subfolderReady,
     subfoldersByFolder,
     isSubfolderVisible,
     isRootVisible,
@@ -42,6 +43,9 @@ export function useFolderController(
   } = useSubfolderState();
 
   const folderCount = hasLoaded ? folders.length : initialFolderCount;
+  // Gallery can start loading once subfolder state is known.
+  // Ready immediately when there are no folders (nothing to refresh).
+  const galleryReady = subfolderReady || (hasLoaded && folders.length === 0);
 
   // Load subfolders for all folders on mount and when folder list changes
   useEffect(() => {
@@ -185,5 +189,6 @@ export function useFolderController(
     refreshSubfolders,
     loadSubfolders,
     subfolderFilters,
+    galleryReady,
   };
 }
