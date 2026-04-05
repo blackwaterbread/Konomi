@@ -399,6 +399,7 @@ interface GalleryResultsProps {
   onBulkRescanMetadata: () => void;
   onLoadTokens?: (imageId: string) => void;
   isInitializing: boolean;
+  isRefreshing: boolean;
   scanning: boolean;
   hasFolders: boolean;
   onAddFolder?: () => void;
@@ -428,6 +429,7 @@ const GalleryResults = memo(function GalleryResults({
   onBulkRescanMetadata,
   onLoadTokens,
   isInitializing,
+  isRefreshing,
   scanning,
   hasFolders,
   onAddFolder,
@@ -667,6 +669,10 @@ const GalleryResults = memo(function GalleryResults({
         </p>
       </div>
     );
+  }
+
+  if (isRefreshing) {
+    return <div className="flex-1" />;
   }
 
   return (
@@ -1106,6 +1112,7 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkRescanMetadata={handleBulkRescanMetadata}
         onLoadTokens={onLoadTokens}
         isInitializing={isInitializing}
+        isRefreshing={isRefreshing}
         scanning={scanning}
         hasFolders={hasFolders}
         onAddFolder={onAddFolder}
