@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
-import type { QuickVerifyResult } from "@/bootstrap-app";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("renderer/useImageWatchBootstrap");
@@ -30,14 +29,12 @@ interface UseImageWatchBootstrapOptions {
  * Called explicitly from the App mount orchestrator instead of being triggered by a useEffect.
  */
 export function runAppInitialization({
-  quickVerifyResult,
   loadSearchPresetStats,
   scanningRef,
   scheduleAnalysis,
   runScan,
   onInitialRefreshDone,
 }: {
-  quickVerifyResult: QuickVerifyResult | null;
   loadSearchPresetStats: () => Promise<void>;
   scanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
@@ -47,32 +44,22 @@ export function runAppInitialization({
   let cancelled = false;
   let deferredTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Use bootstrap-provided quickVerify result, or run it now as fallback
   const initPromise = (async () => {
     let changedFolderIds: number[] = [];
     let unchangedFolderIds: number[] = [];
 
-    if (quickVerifyResult) {
-      changedFolderIds = quickVerifyResult.changedFolderIds;
-      unchangedFolderIds = quickVerifyResult.unchangedFolderIds;
-      log.info("Using bootstrap quickVerify result", {
+    try {
+      const result = await window.image.quickVerify();
+      changedFolderIds = result.changedFolderIds;
+      unchangedFolderIds = result.unchangedFolderIds;
+      log.info("Quick verify result", {
         changed: changedFolderIds.length,
         unchanged: unchangedFolderIds.length,
       });
-    } else {
-      try {
-        const result = await window.image.quickVerify();
-        changedFolderIds = result.changedFolderIds;
-        unchangedFolderIds = result.unchangedFolderIds;
-        log.info("Quick verify result (fallback)", {
-          changed: changedFolderIds.length,
-          unchanged: unchangedFolderIds.length,
-        });
-      } catch (error: unknown) {
-        log.warn("Quick verify failed, falling back to full scan", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    } catch (error: unknown) {
+      log.warn("Quick verify failed, falling back to full scan", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     if (cancelled) return;
@@ -248,7 +235,6 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     if (initRef.current) return { cancel: () => {} };
     initRef.current = true;
     return runAppInitialization({
-      quickVerifyResult: null,
       loadSearchPresetStats,
       scanningRef,
       scheduleAnalysis,

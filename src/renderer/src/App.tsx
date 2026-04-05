@@ -56,19 +56,16 @@ import { useKeybindings } from "@/hooks/useKeybindings";
 import { useGalleryFocus } from "@/hooks/useGalleryFocus";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import type { Folder } from "@preload/index.d";
-import type { QuickVerifyResult } from "@/bootstrap-app";
 import { useTranslation } from "react-i18next";
 
 interface AppProps {
   initialFolderCount?: number | null;
   initialFolders?: Folder[] | null;
-  initialQuickVerifyResult?: QuickVerifyResult | null;
 }
 
 export default function App({
   initialFolderCount = null,
   initialFolders = null,
-  initialQuickVerifyResult = null,
 }: AppProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { t } = useTranslation();
@@ -348,7 +345,6 @@ export default function App({
       // Step 2: Run quickVerify → conditional scan → deferred integrity check
       // Uses bootstrap-provided quickVerify result instead of running it again
       handle = runAppInitialization({
-        quickVerifyResult: initialQuickVerifyResult,
         loadSearchPresetStats,
         scanningRef,
         scheduleAnalysis,
