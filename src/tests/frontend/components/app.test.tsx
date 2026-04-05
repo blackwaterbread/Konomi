@@ -939,6 +939,7 @@ describe("App", () => {
       expect.objectContaining({
         searchQuery: "sunset beach",
       }),
+      expect.anything(),
     );
 
     await user.click(
@@ -953,6 +954,7 @@ describe("App", () => {
         resolutionFilters: [{ width: 832, height: 1216 }],
         modelFilters: ["nai-diffusion-4-5-full"],
       }),
+      expect.anything(),
     );
 
     await user.click(
