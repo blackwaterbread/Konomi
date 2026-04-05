@@ -335,21 +335,23 @@ async function serveThumb(
     .digest("hex");
   const cachePath = join(cacheDir, `${hash}.jpg`);
 
-  // Serve from disk cache if available
+  // Serve from disk cache if available (skip zero-byte corrupt entries)
   try {
-    await fs.promises.access(cachePath);
-    const data = Readable.toWeb(
-      fs.createReadStream(cachePath),
-    ) as unknown as BodyInit;
-    return new Response(data, {
-      headers: { "content-type": "image/jpeg", "cache-control": "no-store" },
-    });
+    const cacheStat = await fs.promises.stat(cachePath);
+    if (cacheStat.size > 0) {
+      const data = Readable.toWeb(
+        fs.createReadStream(cachePath),
+      ) as unknown as BodyInit;
+      return new Response(data, {
+        headers: { "content-type": "image/jpeg", "cache-control": "no-store" },
+      });
+    }
   } catch {
     // Cache miss — generate thumbnail
   }
 
   const jpegBuffer = await generateThumb(filePath, maxWidth);
-  if (!jpegBuffer) {
+  if (!jpegBuffer || jpegBuffer.length === 0) {
     // Image already small enough — serve original
     const data = Readable.toWeb(
       fs.createReadStream(filePath),
