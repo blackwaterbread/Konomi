@@ -1974,47 +1974,66 @@ export const Sidebar = memo(
                   .map((cat) => {
                     const isFavorites = cat.order === 0;
                     const isSelected = selectedCategoryId === cat.id;
+                    // Re-roll 버튼을 반드시 Button 바깥에 배치할 것.
+                    //
+                    // Button(shadcn)의 base CSS에 [&_svg]:pointer-events-none이 있어서
+                    // 내부 모든 SVG가 클릭 이벤트를 받지 못한다. 이전에는 <span> 안에
+                    // RefreshCw를 넣고 stopPropagation으로 부모 Button 클릭을 막았으나,
+                    // SVG에 pointer-events:none이 걸리면 클릭이 SVG를 통과해서 "아래"
+                    // 요소를 찾게 되는데, inline <span>이 hit target이 될지 부모
+                    // <button>이 될지는 span의 레이아웃 크기에 의존한다.
+                    //
+                    // Tailwind v4 Vite 플러그인은 dev(on-demand)와 prod(canonical order)에서
+                    // CSS 규칙 순서가 달라서, Button의 [&_svg:not(...)]:size-4 와
+                    // RefreshCw의 h-3.5 w-3.5 간 cascade 승자가 바뀐다.
+                    // → prod에서 SVG 크기가 달라지면 span hit area가 변해 클릭이
+                    //   span을 건너뛰고 부모 Button에 직접 도달
+                    // → 카테고리 토글(null) → "모든 이미지"로 전환되는 버그 발생.
+                    //
+                    // 해결: re-roll 버튼을 Button 바깥 absolute로 배치하여
+                    // 이벤트 전파 자체를 구조적으로 분리함.
                     return (
-                      <Button
-                        key={cat.id}
-                        variant="ghost"
-                        className={cn(
-                          "w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
-                          isSelected && "bg-sidebar-accent text-foreground",
-                        )}
-                        onClick={() =>
-                          onCategorySelect(isSelected ? null : cat.id)
-                        }
-                      >
-                        {isFavorites ? (
-                          <Star
-                            className={cn(
-                              "h-4 w-4",
-                              isSelected && "fill-current",
-                            )}
-                          />
-                        ) : (
-                          <Shuffle className="h-4 w-4" />
-                        )}
-                        <span className="flex-1 text-left">
-                          {t(
-                            isFavorites
-                              ? "sidebar.categories.favorites"
-                              : "sidebar.categories.randomPick",
+                      <div key={cat.id} className="relative flex items-center">
+                        <Button
+                          variant="ghost"
+                          className={cn(
+                            "w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
+                            isSelected && "bg-sidebar-accent text-foreground",
+                            !isFavorites && isSelected && "pr-9",
                           )}
-                        </span>
-                        {!isFavorites && isSelected && (
-                          <span
-                            title={t("sidebar.categories.reroll")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRandomRefresh();
-                            }}
-                          >
-                            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                          onClick={() =>
+                            onCategorySelect(isSelected ? null : cat.id)
+                          }
+                        >
+                          {isFavorites ? (
+                            <Star
+                              className={cn(
+                                "h-4 w-4",
+                                isSelected && "fill-current",
+                              )}
+                            />
+                          ) : (
+                            <Shuffle className="h-4 w-4" />
+                          )}
+                          <span className="flex-1 text-left">
+                            {t(
+                              isFavorites
+                                ? "sidebar.categories.favorites"
+                                : "sidebar.categories.randomPick",
+                            )}
                           </span>
+                        </Button>
+                        {!isFavorites && isSelected && (
+                          <button
+                            type="button"
+                            className="absolute right-2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground"
+                            title={t("sidebar.categories.reroll")}
+                            onClick={onRandomRefresh}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          </button>
                         )}
-                      </Button>
+                      </div>
                     );
                   })}
               </div>
