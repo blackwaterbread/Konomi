@@ -1671,12 +1671,9 @@ export const Sidebar = memo(
       addFolder: createFolder,
       onFolderAdded,
       onFolderRescan,
+      onCheckingDuplicatesChange,
       seedSubfolders,
     });
-
-    useEffect(() => {
-      onCheckingDuplicatesChange?.(checkingDuplicates);
-    }, [checkingDuplicates, onCheckingDuplicatesChange]);
 
     const handleRemoveFolder = async (id: number) => {
       try {

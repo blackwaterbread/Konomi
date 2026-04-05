@@ -171,9 +171,12 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
     }
   };
 
-  useEffect(() => {
-    setInputValue(searchQuery);
-  }, [searchQuery]);
+  // Sync inputValue when searchQuery changes externally (e.g. clear search)
+  const [prevSearchQuery, setPrevSearchQuery] = useState(searchQuery);
+  if (prevSearchQuery !== searchQuery) {
+    setPrevSearchQuery(searchQuery);
+    if (inputValue !== searchQuery) setInputValue(searchQuery);
+  }
 
   useEffect(() => {
     const handleAppendTag = (event: Event) => {
@@ -690,11 +693,7 @@ function computeEtaSeconds(
   const elapsed = Date.now() - entry.startTime;
   const processed = progress.done - entry.startDone;
   const ratio = progress.done / progress.total;
-  if (
-    elapsed < ETA_MIN_ELAPSED_MS ||
-    ratio < ETA_MIN_RATIO ||
-    processed <= 0
-  ) {
+  if (elapsed < ETA_MIN_ELAPSED_MS || ratio < ETA_MIN_RATIO || processed <= 0) {
     return null;
   }
   const rate = processed / (elapsed / 1000);

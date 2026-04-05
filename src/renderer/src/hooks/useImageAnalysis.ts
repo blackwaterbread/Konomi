@@ -20,23 +20,32 @@ export function useImageAnalysis({
   const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisPromiseRef = useRef<Promise<boolean> | null>(null);
   const suspendAutoAnalysisRef = useRef(false);
-  const visualThresholdRef = useRef(settings.similarityThreshold);
-  const promptThresholdRef = useRef<number | undefined>(undefined);
   const pendingSimilarityRecalcRef = useRef(false);
 
-  useEffect(() => {
-    visualThresholdRef.current = settings.useAdvancedSimilarityThresholds
-      ? settings.visualSimilarityThreshold
-      : settings.similarityThreshold;
-    promptThresholdRef.current = settings.useAdvancedSimilarityThresholds
-      ? settings.promptSimilarityThreshold
-      : undefined;
-  }, [
-    settings.similarityThreshold,
-    settings.useAdvancedSimilarityThresholds,
-    settings.visualSimilarityThreshold,
-    settings.promptSimilarityThreshold,
-  ]);
+  // Getter functions — replace ref sync useEffect.
+  // Consumers call these instead of reading .current from refs.
+  const getVisualThreshold = useCallback(
+    () =>
+      settings.useAdvancedSimilarityThresholds
+        ? settings.visualSimilarityThreshold
+        : settings.similarityThreshold,
+    [
+      settings.similarityThreshold,
+      settings.useAdvancedSimilarityThresholds,
+      settings.visualSimilarityThreshold,
+    ],
+  );
+
+  const getPromptThreshold = useCallback(
+    () =>
+      settings.useAdvancedSimilarityThresholds
+        ? settings.promptSimilarityThreshold
+        : undefined,
+    [
+      settings.useAdvancedSimilarityThresholds,
+      settings.promptSimilarityThreshold,
+    ],
+  );
 
   useEffect(() => {
     return () => {
@@ -60,8 +69,8 @@ export function useImageAnalysis({
       try {
         await window.image.computeHashes();
         const groups = await window.image.similarGroups(
-          visualThresholdRef.current,
-          promptThresholdRef.current,
+          getVisualThreshold(),
+          getPromptThreshold(),
         );
         setSimilarGroupCount(groups.length);
         pendingSimilarityRecalcRef.current = false;
@@ -90,7 +99,7 @@ export function useImageAnalysis({
 
     analysisPromiseRef.current = run;
     return run;
-  }, [scanningRef]);
+  }, [scanningRef, getVisualThreshold, getPromptThreshold]);
 
   const scheduleAnalysis = useCallback(
     (delay = 3000) => {
@@ -114,8 +123,8 @@ export function useImageAnalysis({
     similarGroupCount,
     analyzeTimerRef,
     pendingSimilarityRecalcRef,
-    visualThresholdRef,
-    promptThresholdRef,
+    getVisualThreshold,
+    getPromptThreshold,
     suspendAutoAnalysisRef,
     runAnalysisNow,
     scheduleAnalysis,

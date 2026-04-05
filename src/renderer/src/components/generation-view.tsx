@@ -872,11 +872,12 @@ function DeferredNumberInput({
   step?: number;
 }) {
   const [draftValue, setDraftValue] = useState<string | null>(null);
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
+    if (draftValue !== null) setDraftValue(null);
+  }
   const inputValue = draftValue ?? String(value);
-
-  useEffect(() => {
-    setDraftValue(null);
-  }, [value]);
 
   const handleCommit = useCallback(() => {
     const parsed = Number(inputValue);
@@ -1018,12 +1019,13 @@ const AdvancedSeedSummary = memo(function AdvancedSeedSummary({
 }) {
   const [draftSeed, setDraftSeed] = useState<string | null>(null);
   const [seedFocused, setSeedFocused] = useState(false);
+  const [prevSeedInput, setPrevSeedInput] = useState(seedInput);
+  if (prevSeedInput !== seedInput) {
+    setPrevSeedInput(seedInput);
+    if (draftSeed !== null) setDraftSeed(null);
+    if (seedFocused) setSeedFocused(false);
+  }
   const displayedSeed = draftSeed ?? seedInput;
-
-  useEffect(() => {
-    setDraftSeed(null);
-    setSeedFocused(false);
-  }, [seedInput]);
 
   const commitSeedInput = useCallback(
     (nextValue = displayedSeed) => {
@@ -1084,11 +1086,12 @@ const AdvancedSliderControl = memo(function AdvancedSliderControl({
   formatValue: (value: number) => string;
 }) {
   const [draftValue, setDraftValue] = useState<number | null>(null);
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
+    if (draftValue !== null) setDraftValue(null);
+  }
   const sliderValue = draftValue ?? value;
-
-  useEffect(() => {
-    setDraftValue(null);
-  }, [value]);
 
   const commitValue = useCallback(
     (nextValue: number) => {
@@ -1146,11 +1149,12 @@ const AdvancedSeedControl = memo(function AdvancedSeedControl({
 }) {
   const { t } = useTranslation();
   const [draftSeed, setDraftSeed] = useState<string | null>(null);
+  const [prevSeedInput, setPrevSeedInput] = useState(seedInput);
+  if (prevSeedInput !== seedInput) {
+    setPrevSeedInput(seedInput);
+    if (draftSeed !== null) setDraftSeed(null);
+  }
   const displayedSeed = draftSeed ?? seedInput;
-
-  useEffect(() => {
-    setDraftSeed(null);
-  }, [seedInput]);
 
   const commitSeedInput = useCallback(
     (nextValue = displayedSeed) => {
@@ -4618,7 +4622,8 @@ export const GenerationView = memo(
                 if (next.size > MAX_RECENT) {
                   const excess = next.size - MAX_RECENT;
                   const it = next.keys();
-                  for (let i = 0; i < excess; i++) next.delete(it.next().value!);
+                  for (let i = 0; i < excess; i++)
+                    next.delete(it.next().value!);
                 }
                 return next;
               });
@@ -4758,7 +4763,8 @@ export const GenerationView = memo(
                 if (next.size > MAX_RECENT) {
                   const excess = next.size - MAX_RECENT;
                   const it = next.keys();
-                  for (let i = 0; i < excess; i++) next.delete(it.next().value!);
+                  for (let i = 0; i < excess; i++)
+                    next.delete(it.next().value!);
                 }
                 return next;
               });

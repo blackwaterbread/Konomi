@@ -36,7 +36,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { useNaiGenSettings } from "@/hooks/useNaiGenSettings";
 import { useAppAppearance } from "@/hooks/useAppAppearance";
 import { useGalleryController } from "@/hooks/useGalleryController";
-import { useImageWatchBootstrap } from "@/hooks/useImageWatchBootstrap";
+import {
+  useImageEventSubscriptions,
+  runAppInitialization,
+} from "@/hooks/useImageWatchBootstrap";
 import { useScanning } from "@/hooks/useScanning";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { useBrowseScope } from "@/hooks/useBrowseScope";
@@ -52,14 +55,16 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useKeybindings } from "@/hooks/useKeybindings";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import type { Folder } from "@preload/index.d";
+import type { QuickVerifyResult } from "./bootstrap-app";
 import { useTranslation } from "react-i18next";
 
 interface AppProps {
   initialFolderCount?: number | null;
   initialFolders?: Folder[] | null;
+  initialQuickVerify?: QuickVerifyResult | null;
 }
 
-export default function App({ initialFolderCount = null, initialFolders = null }: AppProps) {
+export default function App({ initialFolderCount = null, initialFolders = null, initialQuickVerify = null }: AppProps) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { t } = useTranslation();
   const { outputFolder, setOutputFolder } = useNaiGenSettings();
@@ -92,6 +97,7 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     refreshSubfolders,
     subfolderFilters,
     galleryReady,
+    initialize: initializeFolders,
   } = useFolderController(initialFolderCount, initialFolders);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -199,8 +205,8 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     isAnalyzing,
     analyzeTimerRef,
     pendingSimilarityRecalcRef,
-    visualThresholdRef,
-    promptThresholdRef,
+    getVisualThreshold,
+    getPromptThreshold,
     suspendAutoAnalysisRef,
     runAnalysisNow,
     scheduleAnalysis,
@@ -294,8 +300,8 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     anchorId: detailAnchorId,
     isDetailOpen: detail.isOpen,
     detailContentReady,
-    visualThresholdRef,
-    promptThresholdRef,
+    getVisualThreshold,
+    getPromptThreshold,
     pageSize: settings.similarPageSize,
   });
   const rescanningRef = useRef(false);
@@ -313,16 +319,39 @@ export default function App({ initialFolderCount = null, initialFolders = null }
     };
   }, []);
 
-  useImageWatchBootstrap({
-    loadSearchPresetStats,
+  // Event subscriptions — pure IPC listeners, no initialization logic
+  useImageEventSubscriptions({
     scheduleSearchStatsRefresh,
     scanningRef,
     scanStartCountRef,
     rescanningRef,
     scheduleAnalysis,
     schedulePageRefresh,
-    runScan,
   });
+
+  // Single mount orchestrator — explicit sequential initialization
+  // Replaces the old cascade: useEffect(hasLoaded) → useEffect(mount) → quickVerify → scan
+  useEffect(() => {
+    let handle: { cancel: () => void } | null = null;
+
+    void (async () => {
+      // Step 1: Initialize subfolder state (was useEffect chain in useFolderController)
+      await initializeFolders();
+
+      // Step 2: Run quickVerify → conditional scan → deferred integrity check
+      // Uses bootstrap-provided quickVerify result instead of running it again
+      handle = runAppInitialization({
+        quickVerifyResult: initialQuickVerify,
+        loadSearchPresetStats,
+        scanningRef,
+        scheduleAnalysis,
+        runScan,
+      });
+    })();
+
+    return () => handle?.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once orchestrator
+  }, []);
 
   useKeyboardShortcuts({
     bindings,
