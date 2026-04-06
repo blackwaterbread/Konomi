@@ -306,11 +306,8 @@ app
 
 app.on("window-all-closed", () => {
   log.info("All windows closed", { platform: process.platform });
-  if (process.platform !== "darwin") app.quit();
-});
-
-app.on("before-quit", () => {
   bridge.stop();
+  if (process.platform !== "darwin") app.quit();
 });
 
 // ---------------------------------------------------------------------------
