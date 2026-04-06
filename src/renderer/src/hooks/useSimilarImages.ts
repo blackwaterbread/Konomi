@@ -7,6 +7,7 @@ export function useSimilarImages({
   anchorId,
   isDetailOpen,
   detailContentReady,
+  analysisReady = true,
   getVisualThreshold,
   getPromptThreshold,
   pageSize = 10,
@@ -14,6 +15,7 @@ export function useSimilarImages({
   anchorId: string | null;
   isDetailOpen: boolean;
   detailContentReady: boolean;
+  analysisReady?: boolean;
   getVisualThreshold: () => number;
   getPromptThreshold: () => number | undefined;
   pageSize?: number;
@@ -58,13 +60,13 @@ export function useSimilarImages({
       return;
     }
 
-    if (!detailContentReady) {
-      setSimilarImagesLoading(false);
+    if (!detailContentReady || !analysisReady) {
+      setSimilarImagesLoading(true);
       return;
     }
 
-    if (fetchedAnchorRef.current === anchorId) return;
-    fetchedAnchorRef.current = anchorId;
+    if (fetchedAnchorRef.current === `${anchorId}:${analysisReady}`) return;
+    fetchedAnchorRef.current = `${anchorId}:${analysisReady}`;
 
     const requestId = ++requestSeqRef.current;
     setSimilarImages([]);
@@ -132,7 +134,7 @@ export function useSimilarImages({
     return () => {
       cancelled = true;
     };
-  }, [anchorId, detailContentReady, isDetailOpen, getPromptThreshold, getVisualThreshold]);
+  }, [anchorId, detailContentReady, analysisReady, isDetailOpen, getPromptThreshold, getVisualThreshold]);
 
   // Phase 2: Fetch ImageData for the current page only
   useEffect(() => {

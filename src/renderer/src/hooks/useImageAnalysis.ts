@@ -14,6 +14,7 @@ export function useImageAnalysis({
   settings: Settings;
 }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [hasAnalyzedOnce, setHasAnalyzedOnce] = useState(false);
   const [similarGroupCount, setSimilarGroupCount] = useState(0);
 
   const analyzingRef = useRef(false);
@@ -74,6 +75,7 @@ export function useImageAnalysis({
         );
         setSimilarGroupCount(groups.length);
         pendingSimilarityRecalcRef.current = false;
+        setHasAnalyzedOnce(true);
         log.info("Analysis completed", {
           elapsedMs: Date.now() - startedAt,
           groups: groups.length,
@@ -120,6 +122,7 @@ export function useImageAnalysis({
 
   return {
     isAnalyzing,
+    hasAnalyzedOnce,
     similarGroupCount,
     analyzeTimerRef,
     pendingSimilarityRecalcRef,

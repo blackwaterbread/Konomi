@@ -208,6 +208,7 @@ export default function App({
 
   const {
     isAnalyzing,
+    hasAnalyzedOnce,
     analyzeTimerRef,
     pendingSimilarityRecalcRef,
     getVisualThreshold,
@@ -308,6 +309,7 @@ export default function App({
     anchorId: detailAnchorId,
     isDetailOpen: detail.isOpen,
     detailContentReady,
+    analysisReady: hasAnalyzedOnce && !isAnalyzing,
     getVisualThreshold,
     getPromptThreshold,
     pageSize: settings.similarPageSize,
