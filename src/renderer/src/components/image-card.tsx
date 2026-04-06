@@ -24,6 +24,7 @@ import type { PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
 import { TokenContainer } from "./token-container";
 import { useTranslation } from "react-i18next";
+import type { GalleryDensity } from "./image-gallery";
 
 export interface ImageData {
   id: string;
@@ -59,6 +60,7 @@ export interface ImageData {
 interface ImageCardProps {
   image: ImageData;
   viewMode?: "grid" | "list";
+  density?: GalleryDensity;
   onToggleFavorite: (id: string) => void;
   onCopyPrompt: (prompt: string) => void;
   onClick: (image: ImageData) => void;
@@ -82,6 +84,7 @@ interface ImageCardProps {
 export const ImageCard = memo(function ImageCard({
   image,
   viewMode = "grid",
+  density = "normal",
   onToggleFavorite,
   onCopyPrompt,
   onClick,
@@ -101,7 +104,10 @@ export const ImageCard = memo(function ImageCard({
 }: ImageCardProps) {
   const { t } = useTranslation();
   const { formatDate, formatDateTime } = useLocaleFormatters();
-  const TOKEN_PREVIEW_LIMIT = 10;
+  const TOKEN_PREVIEW_LIMIT = density === "compact" ? 5 : density === "dense" ? 3 : 10;
+  const showFooter = density === "normal" || density === "compact";
+  const showHoverOverlay = density !== "micro";
+  const showHoverTokens = density === "normal" || density === "compact" || density === "dense";
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
   const [hoverPreviewReady, setHoverPreviewReady] = useState(false);
@@ -110,7 +116,7 @@ export const ImageCard = memo(function ImageCard({
   const imgRef = useRef<HTMLImageElement>(null);
   const previewTokens = useMemo(
     () => image.tokens.slice(0, TOKEN_PREVIEW_LIMIT),
-    [image.tokens],
+    [image.tokens, TOKEN_PREVIEW_LIMIT],
   );
   const hiddenTokenCount = Math.max(
     0,
@@ -316,16 +322,43 @@ export const ImageCard = memo(function ImageCard({
     );
   }
 
+  const isDense = density === "dense" || density === "minimal" || density === "micro";
+  const isMinimalOrMicro = density === "minimal" || density === "micro";
+  const isMicro = density === "micro";
+
+  const roundedClass = isMicro
+    ? "rounded-sm"
+    : isMinimalOrMicro
+      ? "rounded-md"
+      : isDense
+        ? "rounded-lg"
+        : "rounded-xl";
+
+  const aspectClass = isMinimalOrMicro ? "aspect-square" : "aspect-[3/4]";
+
+  const favIconSize = isMicro
+    ? "h-2 w-2"
+    : isMinimalOrMicro
+      ? "h-3 w-3"
+      : isDense
+        ? "h-3.5 w-3.5"
+        : "h-4 w-4";
+
+  const favButtonPadding = isMicro ? "p-0.5" : isMinimalOrMicro ? "p-1" : "p-1.5";
+
   return (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger asChild>
         <div
-          className="group relative rounded-xl overflow-hidden bg-card border border-border hover:border-primary/50 transition-all duration-300 cursor-pointer"
+          className={cn(
+            "group relative overflow-hidden bg-card border border-border hover:border-primary/50 transition-all duration-300 cursor-pointer",
+            roundedClass,
+          )}
           onClick={handleCardClick}
           onPointerEnter={handleHoverPreviewActivate}
         >
           {/* Image */}
-          <div className="aspect-[3/4] relative overflow-hidden">
+          <div className={cn(aspectClass, "relative overflow-hidden")}>
             <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
               {image.src && !imageBroken && (
                 <img
@@ -346,16 +379,18 @@ export const ImageCard = memo(function ImageCard({
               )}
               {image.src && !imageLoaded && !imageBroken && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/40">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <Loader2 className={cn("animate-spin text-muted-foreground", isDense ? "h-4 w-4" : "h-6 w-6")} />
                 </div>
               )}
               {imageBroken && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground/60">
-                  <ImageOff className="h-8 w-8" />
-                  <span className="text-xs">{t("imageCard.missingImage")}</span>
+                  <ImageOff className={isDense ? "h-4 w-4" : "h-8 w-8"} />
+                  {!isDense && (
+                    <span className="text-xs">{t("imageCard.missingImage")}</span>
+                  )}
                 </div>
               )}
-              {!image.src && !imageBroken && (
+              {!image.src && !imageBroken && !isDense && (
                 <span className="text-muted-foreground text-sm">
                   {t("imageCard.emptyPreview")}
                 </span>
@@ -363,31 +398,46 @@ export const ImageCard = memo(function ImageCard({
             </div>
 
             {/* Hover Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <div className="absolute bottom-0 left-0 right-0 p-4">
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  onContextMenu={(e) => e.preventDefault()}
-                  className="relative max-h-28 overflow-hidden rounded-md border border-white/15 bg-black/55 p-2 shadow-lg backdrop-blur-sm"
-                >
-                  {hoverPreviewReady && (
-                    <TokenContainer tokens={previewTokens} isEditable={false} />
-                  )}
-                  {hoverPreviewReady && hiddenTokenCount > 0 && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/80 to-transparent px-2 pb-1 pt-5">
-                      <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">
-                        {t("imageCard.moreTokens", { count: hiddenTokenCount })}
-                      </span>
+            {showHoverOverlay && (
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className={cn("absolute bottom-0 left-0 right-0", isDense ? "p-1.5" : density === "compact" ? "p-3" : "p-4")}>
+                  {showHoverTokens ? (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.preventDefault()}
+                      className={cn(
+                        "relative overflow-hidden rounded-md border border-white/15 bg-black/55 shadow-lg backdrop-blur-sm",
+                        isDense ? "max-h-16 p-1" : "max-h-28 p-2",
+                      )}
+                    >
+                      {hoverPreviewReady && (
+                        <TokenContainer tokens={previewTokens} isEditable={false} />
+                      )}
+                      {hoverPreviewReady && hiddenTokenCount > 0 && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/80 to-transparent px-2 pb-1 pt-5">
+                          <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">
+                            {t("imageCard.moreTokens", { count: hiddenTokenCount })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* minimal: just model + date on hover */
+                    <div className="text-[10px] text-white/80 truncate text-center">
+                      {image.model}
                     </div>
                   )}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Favorite Button */}
             <button
               className={cn(
-                "absolute top-2 right-2 p-1.5 rounded-full bg-black/40 backdrop-blur-sm transition-opacity",
+                "absolute top-2 right-2 rounded-full bg-black/40 backdrop-blur-sm transition-opacity",
+                favButtonPadding,
+                isMicro && "top-0.5 right-0.5",
+                isMinimalOrMicro && !isMicro && "top-1 right-1",
                 image.isFavorite
                   ? "opacity-100"
                   : "opacity-0 group-hover:opacity-100",
@@ -399,7 +449,7 @@ export const ImageCard = memo(function ImageCard({
                 setTimeout(() => setFavoritePopping(false), 450);
               }}
             >
-              {favoritePopping && (
+              {favoritePopping && !isMicro && (
                 <span
                   className="absolute inset-0 rounded-full border-2 border-favorite pointer-events-none"
                   style={{ animation: "heart-ripple 0.45s ease-out forwards" }}
@@ -407,13 +457,14 @@ export const ImageCard = memo(function ImageCard({
               )}
               <Heart
                 className={cn(
-                  "h-4 w-4 relative",
+                  "relative",
+                  favIconSize,
                   image.isFavorite
                     ? "fill-favorite text-favorite"
                     : "text-white",
                 )}
                 style={
-                  favoritePopping
+                  favoritePopping && !isMicro
                     ? {
                         animation:
                           "heart-pop 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards",
@@ -426,7 +477,12 @@ export const ImageCard = memo(function ImageCard({
             {selectionMode && (
               <div
                 className={cn(
-                  "absolute top-3 left-3 rounded-md border px-1.5 py-1 backdrop-blur-sm",
+                  "absolute rounded-md border backdrop-blur-sm",
+                  isMicro
+                    ? "top-0.5 left-0.5 px-0.5 py-0.5"
+                    : isMinimalOrMicro
+                      ? "top-1.5 left-1.5 px-1 py-0.5"
+                      : "top-3 left-3 px-1.5 py-1",
                   selected
                     ? "bg-primary/90 border-primary"
                     : "bg-background/80 border-border",
@@ -436,41 +492,51 @@ export const ImageCard = memo(function ImageCard({
                 <Checkbox
                   checked={selected}
                   onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
-                  className={selected ? "border-primary-foreground" : ""}
+                  className={cn(
+                    selected ? "border-primary-foreground" : "",
+                    isMicro && "h-3 w-3",
+                  )}
                 />
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="p-3 space-y-2 bg-card">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge
-                variant="secondary"
-                className="text-xs bg-secondary text-secondary-foreground"
-              >
-                {image.category}
-              </Badge>
-              {image.tags.slice(0, 2).map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="outline"
-                  className="text-xs border-border text-muted-foreground"
-                >
-                  {tag}
-                </Badge>
-              ))}
-              {image.tags.length > 2 && (
-                <span className="text-xs text-muted-foreground">
-                  +{image.tags.length - 2}
-                </span>
+          {showFooter && (
+            <div className={cn("bg-card", density === "compact" ? "p-2 space-y-1" : "p-3 space-y-2")}>
+              {density === "normal" && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs bg-secondary text-secondary-foreground"
+                  >
+                    {image.category}
+                  </Badge>
+                  {image.tags.slice(0, 2).map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className="text-xs border-border text-muted-foreground"
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                  {image.tags.length > 2 && (
+                    <span className="text-xs text-muted-foreground">
+                      +{image.tags.length - 2}
+                    </span>
+                  )}
+                </div>
               )}
+              <div className={cn(
+                "flex items-center justify-between text-muted-foreground",
+                density === "compact" ? "text-[10px]" : "text-xs",
+              )}>
+                <span className="truncate">{image.model}</span>
+                <span className="shrink-0">{formatDate(image.fileModifiedAt)}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{image.model}</span>
-              <span>{formatDate(image.fileModifiedAt)}</span>
-            </div>
-          </div>
+          )}
         </div>
       </ContextMenuTrigger>
       {contextMenuContent}

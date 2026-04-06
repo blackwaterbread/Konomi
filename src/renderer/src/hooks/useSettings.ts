@@ -53,7 +53,7 @@ function migrateStoredSettings(raw: LegacyStoredSettings): Partial<Settings> {
     raw.galleryColumns === "auto" ||
     (typeof raw.galleryColumns === "number" &&
       raw.galleryColumns >= 1 &&
-      raw.galleryColumns <= 8)
+      raw.galleryColumns <= 25)
   ) {
     migrated.galleryColumns = raw.galleryColumns;
   }

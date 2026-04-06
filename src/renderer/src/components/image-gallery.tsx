@@ -39,11 +39,34 @@ import { useTranslation } from "react-i18next";
 
 type ViewMode = "grid" | "list";
 type SortBy = "recent" | "oldest" | "favorites" | "name";
-const GALLERY_GAP_PX = 16;
+export type GalleryDensity = "normal" | "compact" | "dense" | "minimal" | "micro";
+
 const GALLERY_PADDING_PX = 16;
 const GRID_VIRTUAL_OVERSCAN_ROWS = 2;
 const LIST_VIRTUAL_OVERSCAN_ROWS = 4;
 const MIN_VIRTUALIZED_ROWS = 3;
+
+function getGalleryDensity(columnCount: number): GalleryDensity {
+  if (columnCount <= 4) return "normal";
+  if (columnCount <= 6) return "compact";
+  if (columnCount <= 10) return "dense";
+  if (columnCount <= 16) return "minimal";
+  return "micro";
+}
+
+function getGalleryGapPx(density: GalleryDensity): number {
+  switch (density) {
+    case "normal":
+    case "compact":
+      return 16;
+    case "dense":
+      return 8;
+    case "minimal":
+      return 4;
+    case "micro":
+      return 2;
+  }
+}
 
 function getScrollAreaViewport(
   root: HTMLElement | null,
@@ -67,16 +90,20 @@ function getGalleryColumnCount(
 function estimateGalleryRowHeight(
   viewportWidth: number,
   columnCount: number,
+  density: GalleryDensity,
 ): number {
   if (columnCount <= 1) return 80;
+  const gapPx = getGalleryGapPx(density);
   const contentWidth = Math.max(
     0,
-    viewportWidth - GALLERY_PADDING_PX * 2 - GALLERY_GAP_PX * (columnCount - 1),
+    viewportWidth - GALLERY_PADDING_PX * 2 - gapPx * (columnCount - 1),
   );
   const cardWidth = columnCount > 0 ? contentWidth / columnCount : contentWidth;
-  const imageHeight = cardWidth * (4 / 3);
-  const footerHeight = 84;
-  return Math.max(1, imageHeight + footerHeight + GALLERY_GAP_PX);
+  const useSquare = density === "minimal" || density === "micro";
+  const imageHeight = useSquare ? cardWidth : cardWidth * (4 / 3);
+  const footerHeight =
+    density === "normal" ? 84 : density === "compact" ? 48 : 0;
+  return Math.max(1, imageHeight + footerHeight + gapPx);
 }
 
 function getVisibleGalleryRowRange({
@@ -287,10 +314,10 @@ const GalleryToolbar = memo(function GalleryToolbar({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                disabled={isCustomColumns && galleryColumns >= 8}
+                disabled={isCustomColumns && galleryColumns >= 25}
                 onClick={() => {
                   const current = isCustomColumns ? galleryColumns : 4;
-                  const next = Math.min(8, current + 1);
+                  const next = Math.min(25, current + 1);
                   onGalleryColumnsChange(next);
                 }}
                 title={t("gallery.columnSize.smaller")}
@@ -488,14 +515,16 @@ const GalleryResults = memo(function GalleryResults({
     [viewportSize.width, galleryColumns],
   );
   const viewMode: ViewMode = columnCount <= 1 ? "list" : "grid";
+  const density = useMemo(() => getGalleryDensity(columnCount), [columnCount]);
+  const gapPx = getGalleryGapPx(density);
 
   useEffect(() => {
     if (columnCount > 0) onColumnCountChange?.(columnCount);
   }, [columnCount, onColumnCountChange]);
 
   const estimatedRowHeight = useMemo(
-    () => estimateGalleryRowHeight(viewportSize.width, columnCount),
-    [columnCount, viewportSize.width],
+    () => estimateGalleryRowHeight(viewportSize.width, columnCount, density),
+    [columnCount, density, viewportSize.width],
   );
   const rowHeight = measuredRowHeight ?? estimatedRowHeight;
   const rowCount = Math.ceil(paged.length / columnCount);
@@ -603,7 +632,7 @@ const GalleryResults = memo(function GalleryResults({
       );
       if (!measuredCard) return;
       const nextRowHeight =
-        measuredCard.getBoundingClientRect().height + GALLERY_GAP_PX;
+        measuredCard.getBoundingClientRect().height + gapPx;
       setMeasuredRowHeight((prev) =>
         prev !== null && Math.abs(prev - nextRowHeight) < 1
           ? prev
@@ -614,26 +643,27 @@ const GalleryResults = memo(function GalleryResults({
     return () => {
       window.cancelAnimationFrame(raf);
     };
-  }, [scrollRef, shouldVirtualize, viewMode, viewportSize.width]);
+  }, [gapPx, scrollRef, shouldVirtualize, viewMode, viewportSize.width]);
 
   if (paged.length > 0) {
     return (
       <ScrollArea ref={scrollRef} className="flex-1 min-h-0">
-        <div className="p-4">
+        <div style={{ padding: density === "micro" ? 8 : GALLERY_PADDING_PX }}>
           {topSpacerHeight > 0 && (
             <div style={{ height: topSpacerHeight }} aria-hidden="true" />
           )}
           <div
             className={cn(
-              "grid gap-4",
+              "grid",
               viewMode === "list" && "grid-cols-1 w-full",
             )}
             style={
               viewMode === "grid"
                 ? {
+                    gap: gapPx,
                     gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
                   }
-                : undefined
+                : { gap: gapPx }
             }
           >
             {visibleImages.map((image, index) => {
@@ -644,6 +674,7 @@ const GalleryResults = memo(function GalleryResults({
                   key={image.id}
                   image={image}
                   viewMode={viewMode}
+                  density={density}
                   onToggleFavorite={onToggleFavorite}
                   onCopyPrompt={onCopyPrompt}
                   onClick={onImageClick}
