@@ -275,6 +275,7 @@ export function useGalleryController({
     searchQuery,
     handleSearchChange,
     schedulePageRefresh,
+    listBaseQuery,
     imageGalleryState,
     imageGalleryPagination,
     galleryCommands,

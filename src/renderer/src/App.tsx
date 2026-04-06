@@ -173,6 +173,7 @@ export default function App({
     searchQuery,
     handleSearchChange,
     schedulePageRefresh,
+    listBaseQuery,
     imageGalleryState,
     imageGalleryPagination,
     galleryCommands,
@@ -764,6 +765,10 @@ export default function App({
         hasNext={detail.hasNext}
         onPrev={detail.onPrev}
         onNext={detail.onNext}
+        filmstripBaseQuery={listBaseQuery}
+        filmstripPage={imageGalleryPagination.page}
+        filmstripTotalPages={imageGalleryPagination.totalPages}
+        onGalleryImageSelect={detail.onSelectImage}
         similarImages={similarImages}
         similarReasons={similarReasons}
         similarScores={similarScores}

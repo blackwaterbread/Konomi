@@ -41,7 +41,9 @@ import {
 import { cn } from "@/lib/utils";
 import { parsePromptTokens, isGroupRef, type PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
+import { rowToImageData } from "@/lib/image-utils";
 import type { ImageData } from "./image-card";
+import type { ImageListQuery } from "@preload/index.d";
 import { TokenContainer } from "./token-container";
 import { ComfyWorkflowViewer } from "./comfy-workflow-viewer";
 import { useTranslation } from "react-i18next";
@@ -1006,6 +1008,178 @@ const TheaterView = memo(function TheaterView({
   );
 });
 
+/* ── Filmstrip (bottom hover strip) ──────────────────────────── */
+
+const FILMSTRIP_THUMB = 64;
+const FILMSTRIP_GAP = 4;
+const FILMSTRIP_HEIGHT = FILMSTRIP_THUMB + 16; // thumb + padding
+
+const FilmstripThumb = memo(function FilmstripThumb({
+  img,
+  isCurrent,
+  onClick,
+}: {
+  img: ImageData;
+  isCurrent: boolean;
+  onClick: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(
+    () => () => {
+      if (imgRef.current) imgRef.current.src = "";
+    },
+    [],
+  );
+
+  return (
+    <button
+      className={cn(
+        "relative shrink-0 rounded-md overflow-hidden ring-2 transition-all",
+        isCurrent
+          ? "ring-primary"
+          : "ring-transparent hover:ring-primary/50",
+      )}
+      style={{ width: FILMSTRIP_THUMB, height: FILMSTRIP_THUMB }}
+      onClick={onClick}
+    >
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/50" />
+        </div>
+      )}
+      <img
+        ref={imgRef}
+        src={img.src}
+        alt=""
+        className={cn(
+          "w-full h-full object-cover transition-opacity duration-150",
+          loaded ? "opacity-100" : "opacity-0",
+        )}
+        onLoad={() => setLoaded(true)}
+      />
+    </button>
+  );
+});
+
+const Filmstrip = memo(function Filmstrip({
+  baseQuery,
+  page,
+  totalPages,
+  currentId,
+  onSelect,
+}: {
+  baseQuery: Omit<ImageListQuery, "page">;
+  page: number;
+  totalPages: number;
+  currentId: string | null;
+  onSelect: (img: ImageData) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [images, setImages] = useState<ImageData[]>([]);
+  const fetchKeyRef = useRef("");
+  const fetchIdRef = useRef(0);
+
+  // Stable query key for deduplication
+  const queryKey = JSON.stringify(baseQuery) + `:${page}:${totalPages}`;
+
+  // Fetch prev + current + next pages
+  useEffect(() => {
+    if (queryKey === fetchKeyRef.current) return;
+    fetchKeyRef.current = queryKey;
+    const id = ++fetchIdRef.current;
+
+    const pagesToFetch: number[] = [];
+    if (page > 1) pagesToFetch.push(page - 1);
+    pagesToFetch.push(page);
+    if (page < totalPages) pagesToFetch.push(page + 1);
+
+    Promise.all(
+      pagesToFetch.map((p) =>
+        window.image.listPage({ ...baseQuery, page: p }),
+      ),
+    ).then((results) => {
+      if (id !== fetchIdRef.current) return;
+      setImages(results.flatMap((r) => r.rows.map(rowToImageData)));
+    });
+  }, [queryKey, baseQuery, page, totalPages]);
+
+  // Scroll current image into center
+  useEffect(() => {
+    if (!currentId) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const idx = images.findIndex((img) => img.id === currentId);
+    if (idx < 0) return;
+    const itemLeft = idx * (FILMSTRIP_THUMB + FILMSTRIP_GAP);
+    const center = itemLeft + FILMSTRIP_THUMB / 2;
+    el.scrollLeft = center - el.clientWidth / 2;
+  }, [currentId, images]);
+
+  // Wheel → horizontal scroll
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    e.stopPropagation();
+    el.scrollLeft += e.deltaY !== 0 ? e.deltaY : e.deltaX;
+  }, []);
+
+  const hasImages = images.length > 0;
+
+  return (
+    <div
+      className="absolute bottom-0 left-0 right-0 z-20"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Hint line — always visible */}
+      <div
+        className={cn(
+          "mx-auto transition-all duration-300",
+          hovered || !hasImages
+            ? "w-0 h-0 opacity-0"
+            : "w-24 h-0.5 mb-2 rounded-full bg-foreground/20 opacity-100",
+        )}
+      />
+
+      {/* Filmstrip panel */}
+      <div
+        className={cn(
+          "transition-all duration-200 ease-out",
+          hovered && hasImages
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 translate-y-full pointer-events-none",
+        )}
+        style={{ height: FILMSTRIP_HEIGHT }}
+      >
+        <div className="relative h-full bg-background/80 backdrop-blur-md border-t border-border/40">
+          {/* Left/right fade gradients */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-background/80 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-background/80 to-transparent" />
+
+          <div
+            ref={scrollRef}
+            className="h-full overflow-x-auto overflow-y-hidden flex items-center gap-1"
+            style={{ scrollbarWidth: "none" }}
+            onWheel={handleWheel}
+          >
+            {images.map((img) => (
+              <FilmstripThumb
+                key={img.id}
+                img={img}
+                isCurrent={img.id === currentId}
+                onClick={() => onSelect(img)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 interface ImageDetailProps {
   image: ImageData | null;
   isOpen: boolean;
@@ -1020,6 +1194,10 @@ interface ImageDetailProps {
   hasNext: boolean;
   onPrev: () => void;
   onNext: () => void;
+  filmstripBaseQuery?: Omit<ImageListQuery, "page">;
+  filmstripPage?: number;
+  filmstripTotalPages?: number;
+  onGalleryImageSelect?: (image: ImageData) => void;
   similarImages?: ImageData[];
   similarReasons?: Record<string, SimilarityReason>;
   similarScores?: Record<string, number>;
@@ -1055,6 +1233,10 @@ export function ImageDetail({
   similarPage = 0,
   similarTotalPages = 0,
   onSimilarPageChange,
+  filmstripBaseQuery,
+  filmstripPage = 1,
+  filmstripTotalPages = 1,
+  onGalleryImageSelect,
   onAnchorChange,
 }: ImageDetailProps) {
   const { t } = useTranslation();
@@ -1199,6 +1381,15 @@ export function ImageDetail({
   const handleImageDoubleClick = useCallback(() => {
     setTheaterMode(true);
   }, []);
+
+  const handleFilmstripSelect = useCallback(
+    (img: ImageData) => {
+      setAnchorId(img.id);
+      onAnchorChange?.(img.id);
+      onGalleryImageSelect?.(img);
+    },
+    [onAnchorChange, onGalleryImageSelect],
+  );
 
   const handleTheaterImgLoad = useCallback(() => {
     setImgLoaded(true);
@@ -1412,6 +1603,17 @@ export function ImageDetail({
           >
             <ChevronRight className="h-5 w-5" />
           </button>
+
+          {/* Filmstrip */}
+          {filmstripBaseQuery && (
+            <Filmstrip
+              baseQuery={filmstripBaseQuery}
+              page={filmstripPage}
+              totalPages={filmstripTotalPages}
+              currentId={image.id}
+              onSelect={handleFilmstripSelect}
+            />
+          )}
         </div>
 
         {/* Info Panel */}
