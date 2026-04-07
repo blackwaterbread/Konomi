@@ -2073,14 +2073,20 @@ export async function quickVerifyFolders(
   const results = await Promise.all(
     folders.map(async (folder) => {
       try {
+        await fs.promises.access(folder.path);
+      } catch {
+        // folder inaccessible (NAS offline, deleted, permissions, etc.)
+        // → skip to avoid purging DB rows for temporarily unreachable folders
+        return { id: folder.id, changed: false };
+      }
+      try {
         const diskCount = await countImageFiles(folder.path, signal);
         const changed =
           folder.lastScanFileCount === null ||
           folder.lastScanFileCount !== diskCount;
         return { id: folder.id, changed };
       } catch {
-        // folder inaccessible (deleted, permissions, etc.) → treat as changed
-        return { id: folder.id, changed: true };
+        return { id: folder.id, changed: false };
       }
     }),
   );
@@ -2296,6 +2302,16 @@ export async function syncAllFolders(
 
     for (const folder of foldersToScan) {
       if (signal?.cancelled) break;
+
+      // Skip inaccessible folders (e.g. NAS offline) to avoid purging their DB rows
+      try {
+        await fs.promises.access(folder.path);
+      } catch {
+        console.info(
+          `[image.syncAllFolders] skipping inaccessible folder: ${folder.path}`,
+        );
+        continue;
+      }
 
       onFolderStart?.(folder.id, folder.name);
       try {

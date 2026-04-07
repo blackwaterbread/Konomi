@@ -157,6 +157,18 @@ class FolderWatcher {
     if (this.sender.isDestroyed()) return;
     try {
       const db = getDB();
+      // Skip if folder root is inaccessible (e.g. NAS offline) to avoid
+      // purging all DB rows for a temporarily unreachable folder.
+      const folder = await db.folder.findUnique({
+        where: { id: folderId },
+        select: { path: true },
+      });
+      if (!folder) return;
+      try {
+        await fs.promises.access(folder.path);
+      } catch {
+        return;
+      }
       const emitSearchStatsProgress = (done: number, total: number): void => {
         if (this.sender.isDestroyed()) return;
         this.sender.send("image:searchStatsProgress", { done, total });
