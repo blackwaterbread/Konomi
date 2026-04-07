@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => {
       delete: vi.fn(),
       upsert: vi.fn(),
     },
+    folder: {
+      findUnique: vi.fn(),
+    },
   };
 
   return {
@@ -132,6 +135,7 @@ beforeEach(() => {
   mocks.db.image.findUnique.mockReset();
   mocks.db.image.delete.mockReset();
   mocks.db.image.upsert.mockReset();
+  mocks.db.folder.findUnique.mockReset();
 
   mocks.getFolders.mockResolvedValue([]);
   mocks.readImageMeta.mockReturnValue(null);
@@ -147,6 +151,7 @@ beforeEach(() => {
   mocks.db.image.findUnique.mockResolvedValue(null);
   mocks.db.image.delete.mockResolvedValue(undefined);
   mocks.db.image.upsert.mockResolvedValue(undefined);
+  mocks.db.folder.findUnique.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -358,6 +363,8 @@ describe("watcher", () => {
     mocks.getFolders.mockResolvedValue([
       { id: 12, name: "reconcile", path: folderPath },
     ]);
+    mocks.db.folder.findUnique.mockResolvedValue({ path: folderPath });
+    vi.spyOn(fs.promises, "access").mockResolvedValue(undefined);
     mocks.db.image.findMany
       .mockResolvedValueOnce([missingRowA, missingRowB])
       .mockResolvedValue([]);
@@ -367,6 +374,7 @@ describe("watcher", () => {
 
     watchRecords[0]?.callback("rename", null);
     await vi.advanceTimersByTimeAsync(500);
+    await vi.runAllTimersAsync();
 
     expect(mocks.db.image.deleteMany).toHaveBeenCalledWith({
       where: { id: { in: [11, 12] } },
