@@ -807,6 +807,8 @@ function buildStatDeltasFromMutations(
   return Array.from(deltaMap.values()).filter((delta) => delta.delta !== 0);
 }
 
+const STAT_DELTA_BATCH_SIZE = 200;
+
 async function applySearchStatDeltasInTx(
   tx: Pick<ReturnType<typeof getDB>, "$executeRawUnsafe">,
   deltas: ImageSearchStatDelta[],
@@ -816,21 +818,17 @@ async function applySearchStatDeltasInTx(
   let done = 0;
   let lastProgressAt = 0;
   onProgress?.(done, total);
-  for (const delta of deltas) {
-    if (delta.delta > 0) {
-      await tx.$executeRawUnsafe(
-        `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-           ON CONFLICT(kind, key) DO UPDATE SET
-             count = ImageSearchStat.count + excluded.count,
-             width = COALESCE(ImageSearchStat.width, excluded.width),
-             height = COALESCE(ImageSearchStat.height, excluded.height),
-             model = CASE
-               WHEN ImageSearchStat.kind = 'tag'
-                 THEN COALESCE(NULLIF(ImageSearchStat.model, ''), excluded.model)
-               ELSE excluded.model
-             END,
-             updatedAt = CURRENT_TIMESTAMP`,
+
+  // Process positive deltas in batches using multi-row INSERT
+  const positives = deltas.filter((d) => d.delta > 0);
+  for (let i = 0; i < positives.length; i += STAT_DELTA_BATCH_SIZE) {
+    const chunk = positives.slice(i, i + STAT_DELTA_BATCH_SIZE);
+    const placeholders = chunk
+      .map(() => "(?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)")
+      .join(", ");
+    const params: unknown[] = [];
+    for (const delta of chunk) {
+      params.push(
         delta.kind,
         delta.key,
         delta.width,
@@ -838,22 +836,57 @@ async function applySearchStatDeltasInTx(
         delta.model,
         delta.delta,
       );
-    } else {
-      await tx.$executeRawUnsafe(
-        `UPDATE ImageSearchStat
-           SET count = count + ?, updatedAt = CURRENT_TIMESTAMP
-           WHERE kind = ? AND key = ?`,
-        delta.delta,
-        delta.kind,
-        delta.key,
-      );
-      await tx.$executeRawUnsafe(
-        "DELETE FROM ImageSearchStat WHERE kind = ? AND key = ? AND count <= 0",
-        delta.kind,
-        delta.key,
-      );
     }
-    done++;
+    await tx.$executeRawUnsafe(
+      `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+         VALUES ${placeholders}
+         ON CONFLICT(kind, key) DO UPDATE SET
+           count = ImageSearchStat.count + excluded.count,
+           width = COALESCE(ImageSearchStat.width, excluded.width),
+           height = COALESCE(ImageSearchStat.height, excluded.height),
+           model = CASE
+             WHEN ImageSearchStat.kind = 'tag'
+               THEN COALESCE(NULLIF(ImageSearchStat.model, ''), excluded.model)
+             ELSE excluded.model
+           END,
+           updatedAt = CURRENT_TIMESTAMP`,
+      ...params,
+    );
+    done += chunk.length;
+    const now = Date.now();
+    if (now - lastProgressAt >= 100) {
+      lastProgressAt = now;
+      onProgress?.(done, total);
+    }
+  }
+
+  // Process negative deltas in batches
+  const negatives = deltas.filter((d) => d.delta <= 0);
+  for (let i = 0; i < negatives.length; i += STAT_DELTA_BATCH_SIZE) {
+    const chunk = negatives.slice(i, i + STAT_DELTA_BATCH_SIZE);
+    // UPDATE with CASE expression for batch count decrement
+    const whenClauses = chunk
+      .map(() => "WHEN kind = ? AND key = ? THEN count + ?")
+      .join(" ");
+    const whereClauses = chunk.map(() => "(kind = ? AND key = ?)").join(" OR ");
+    const updateParams: unknown[] = [];
+    for (const delta of chunk) {
+      updateParams.push(delta.kind, delta.key, delta.delta);
+    }
+    const whereParams: unknown[] = [];
+    for (const delta of chunk) {
+      whereParams.push(delta.kind, delta.key);
+    }
+    await tx.$executeRawUnsafe(
+      `UPDATE ImageSearchStat
+         SET count = CASE ${whenClauses} ELSE count END,
+             updatedAt = CURRENT_TIMESTAMP
+         WHERE ${whereClauses}`,
+      ...updateParams,
+      ...whereParams,
+    );
+    await tx.$executeRawUnsafe(`DELETE FROM ImageSearchStat WHERE count <= 0`);
+    done += chunk.length;
     const now = Date.now();
     if (done === total || now - lastProgressAt >= 100) {
       lastProgressAt = now;
@@ -2354,6 +2387,7 @@ export async function syncAllFolders(
           fileModifiedAt: Date;
         };
         const pending: DataEntry[] = [];
+        const deferredStatMutations: ImageSearchStatMutation[] = [];
 
         const flushBatch = async (): Promise<void> => {
           if (pending.length === 0) return;
@@ -2373,13 +2407,12 @@ export async function syncAllFolders(
               }),
             ),
           );
-          await applyImageSearchStatsMutations(
-            batch.map((row) => ({
+          for (const row of batch) {
+            deferredStatMutations.push({
               before: beforeMap.get(row.path) ?? null,
               after: row,
-            })),
-            onSearchStatsProgress,
-          );
+            });
+          }
           onBatch(images as unknown as ImageRow[]);
         };
 
@@ -2506,11 +2539,18 @@ export async function syncAllFolders(
             await db.image.deleteMany({
               where: { id: { in: chunkIds } },
             });
-            await decrementImageSearchStatsForRows(
-              statRows,
-              onSearchStatsProgress,
-            );
+            for (const row of statRows) {
+              deferredStatMutations.push({ before: row, after: null });
+            }
           }
+        }
+
+        // Apply all deferred search stat mutations at once per folder
+        if (deferredStatMutations.length > 0) {
+          await applyImageSearchStatsMutations(
+            deferredStatMutations,
+            onSearchStatsProgress,
+          );
         }
         // Update folder fingerprint after successful sync
         await db.folder.update({
