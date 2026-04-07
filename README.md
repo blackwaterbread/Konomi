@@ -1,6 +1,7 @@
 # Konomi
 
 ![Test](https://github.com/blackwaterbread/Konomi/actions/workflows/test.yml/badge.svg)
+![GitHub Release](https://img.shields.io/github/v/release/blackwaterbread/Konomi)
 
 [한국어](https://github.com/blackwaterbread/Konomi/blob/main/README.ko.md)
 
