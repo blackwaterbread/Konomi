@@ -771,6 +771,7 @@ export default function App({
         filmstripPage={imageGalleryPagination.page}
         filmstripTotalPages={imageGalleryPagination.totalPages}
         onGalleryImageSelect={detail.onSelectImage}
+        onGalleryPageChange={imageGalleryPagination.onPageChange}
         similarImages={similarImages}
         similarReasons={similarReasons}
         similarScores={similarScores}

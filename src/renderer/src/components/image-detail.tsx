@@ -1069,16 +1069,19 @@ const Filmstrip = memo(function Filmstrip({
   totalPages,
   currentId,
   onSelect,
+  onPageChange,
 }: {
   baseQuery: Omit<ImageListQuery, "page">;
   page: number;
   totalPages: number;
   currentId: string | null;
   onSelect: (img: ImageData) => void;
+  onPageChange?: (page: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [images, setImages] = useState<ImageData[]>([]);
+  const imagePageMapRef = useRef<Map<string, number>>(new Map());
   const fetchKeyRef = useRef("");
   const fetchIdRef = useRef(0);
 
@@ -1102,7 +1105,18 @@ const Filmstrip = memo(function Filmstrip({
       ),
     ).then((results) => {
       if (id !== fetchIdRef.current) return;
-      setImages(results.flatMap((r) => r.rows.map(rowToImageData)));
+      const allImages: ImageData[] = [];
+      const pageMap = new Map<string, number>();
+      results.forEach((r, i) => {
+        const p = pagesToFetch[i];
+        r.rows.forEach((row) => {
+          const img = rowToImageData(row);
+          allImages.push(img);
+          pageMap.set(img.id, p);
+        });
+      });
+      imagePageMapRef.current = pageMap;
+      setImages(allImages);
     });
   }, [queryKey, baseQuery, page, totalPages]);
 
@@ -1126,6 +1140,17 @@ const Filmstrip = memo(function Filmstrip({
     el.scrollLeft += e.deltaY !== 0 ? e.deltaY : e.deltaX;
   }, []);
 
+  const handleSelect = useCallback(
+    (img: ImageData) => {
+      const imgPage = imagePageMapRef.current.get(img.id);
+      if (imgPage !== undefined && imgPage !== page) {
+        onPageChange?.(imgPage);
+      }
+      onSelect(img);
+    },
+    [onSelect, onPageChange, page],
+  );
+
   const hasImages = images.length > 0;
 
   return (
@@ -1134,16 +1159,6 @@ const Filmstrip = memo(function Filmstrip({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Hint line — always visible */}
-      <div
-        className={cn(
-          "mx-auto transition-all duration-300",
-          hovered || !hasImages
-            ? "w-0 h-0 opacity-0"
-            : "w-24 h-0.5 mb-2 rounded-full bg-foreground/20 opacity-100",
-        )}
-      />
-
       {/* Filmstrip panel */}
       <div
         className={cn(
@@ -1170,7 +1185,7 @@ const Filmstrip = memo(function Filmstrip({
                 key={img.id}
                 img={img}
                 isCurrent={img.id === currentId}
-                onClick={() => onSelect(img)}
+                onClick={() => handleSelect(img)}
               />
             ))}
           </div>
@@ -1198,6 +1213,7 @@ interface ImageDetailProps {
   filmstripPage?: number;
   filmstripTotalPages?: number;
   onGalleryImageSelect?: (image: ImageData) => void;
+  onGalleryPageChange?: (page: number) => void;
   similarImages?: ImageData[];
   similarReasons?: Record<string, SimilarityReason>;
   similarScores?: Record<string, number>;
@@ -1237,6 +1253,7 @@ export function ImageDetail({
   filmstripPage = 1,
   filmstripTotalPages = 1,
   onGalleryImageSelect,
+  onGalleryPageChange,
   onAnchorChange,
 }: ImageDetailProps) {
   const { t } = useTranslation();
@@ -1612,6 +1629,7 @@ export function ImageDetail({
               totalPages={filmstripTotalPages}
               currentId={image.id}
               onSelect={handleFilmstripSelect}
+              onPageChange={onGalleryPageChange}
             />
           )}
         </div>
