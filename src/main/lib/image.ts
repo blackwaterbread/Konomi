@@ -854,7 +854,7 @@ async function applySearchStatDeltasInTx(
     );
     done += chunk.length;
     const now = Date.now();
-    if (now - lastProgressAt >= 100) {
+    if (done === total || now - lastProgressAt >= 100) {
       lastProgressAt = now;
       onProgress?.(done, total);
     }
