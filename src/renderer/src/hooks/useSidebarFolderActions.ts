@@ -42,7 +42,7 @@ export function useSidebarFolderActions({
       addSelectedFolder(folderId);
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
-      void runScan().then((ok) => {
+      void runScan({ folderIds: [folderId], detectDuplicates: true }).then((ok) => {
         if (!ok) return;
         void refreshSubfolders([folderId]);
         setRollbackFolderIds((prev) => {
