@@ -77,6 +77,10 @@ const ko = {
         syncing: "이미지 동기화 중...",
       },
     },
+    pendingChanges: {
+      label:
+        "이미지 변동: 추가 {{added}}개, 제거 {{removed}}개 — 클릭하여 적용",
+    },
   },
   imageCard: {
     previewAlt: "이미지 미리보기",

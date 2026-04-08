@@ -76,6 +76,9 @@ const en = {
         syncing: "Syncing images...",
       },
     },
+    pendingChanges: {
+      label: "Changes: +{{added}}, -{{removed}} — click to apply",
+    },
   },
   imageCard: {
     previewAlt: "Image preview",

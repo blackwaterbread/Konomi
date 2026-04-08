@@ -41,6 +41,7 @@ import {
   runAppInitialization,
 } from "@/hooks/useImageWatchBootstrap";
 import { useScanning } from "@/hooks/useScanning";
+import { usePendingChanges } from "@/hooks/usePendingChanges";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { useBrowseScope } from "@/hooks/useBrowseScope";
 import { useFolderController } from "@/hooks/useFolderController";
@@ -191,6 +192,8 @@ export default function App({
     enabled: galleryReady,
   });
 
+  const { pending, addPending, clearPending } = usePendingChanges();
+
   const {
     scanning,
     activeScanFolderIds,
@@ -204,7 +207,7 @@ export default function App({
     runScan,
     handleCancelScan,
     confirmCancelScan,
-  } = useScanning({ schedulePageRefresh, loadSearchPresetStats });
+  } = useScanning({ loadSearchPresetStats, schedulePageRefresh });
 
   const {
     isAnalyzing,
@@ -336,7 +339,7 @@ export default function App({
     scanStartCountRef,
     rescanningRef,
     scheduleAnalysis,
-    schedulePageRefresh,
+    addPendingChanges: addPending,
   });
 
   // Single mount orchestrator — explicit sequential initialization
@@ -438,6 +441,12 @@ export default function App({
       });
     }
   }, []);
+
+  const applyPendingChanges = useCallback(() => {
+    clearPending();
+    schedulePageRefresh(0);
+    scheduleAnalysis();
+  }, [clearPending, schedulePageRefresh, scheduleAnalysis]);
 
   const handleHeaderPanelChange = useCallback(
     (panel: ActivePanel) => {
@@ -557,6 +566,9 @@ export default function App({
         checkingDuplicates={checkingDuplicates}
         isAnalyzing={isAnalyzing}
         onCancelScan={handleCancelScan}
+        pendingAdded={pending.added}
+        pendingRemoved={pending.removed}
+        onApplyPendingChanges={applyPendingChanges}
         advancedFilters={advancedFilters}
         onAdvancedFiltersChange={setAdvancedFilters}
         availableResolutions={availableResolutions}

@@ -1,10 +1,10 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useImageWatchBootstrap } from "@/hooks/useImageWatchBootstrap";
+import { useImageEventSubscriptions } from "@/hooks/useImageWatchBootstrap";
 import { createImageRow } from "../helpers/image-row";
 import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 
-describe("useImageWatchBootstrap", () => {
+describe("useImageEventSubscriptions", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -16,18 +16,14 @@ describe("useImageWatchBootstrap", () => {
       .mockRejectedValueOnce(new Error("watch failed"))
       .mockResolvedValueOnce(undefined);
 
-    const unmountScheduleAnalysis = vi.fn();
     const { unmount } = renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh: vi.fn(),
-
         scanningRef: { current: false },
         scanStartCountRef: { current: 0 },
         rescanningRef: { current: false },
-        scheduleAnalysis: unmountScheduleAnalysis,
-        schedulePageRefresh: vi.fn(),
-        runScan: vi.fn().mockResolvedValue(true),
+        scheduleAnalysis: vi.fn(),
+        addPendingChanges: vi.fn(),
       }),
     );
 
@@ -46,23 +42,19 @@ describe("useImageWatchBootstrap", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(preloadMocks.image.watch).toHaveBeenCalledTimes(2);
-    expect(unmountScheduleAnalysis).toHaveBeenCalledWith(0);
 
     preloadMocks.image.watch
       .mockReset()
       .mockRejectedValueOnce(new Error("watch failed again"));
 
     const { unmount: unmountBeforeRetry } = renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh: vi.fn(),
-
         scanningRef: { current: false },
         scanStartCountRef: { current: 0 },
         rescanningRef: { current: false },
         scheduleAnalysis: vi.fn(),
-        schedulePageRefresh: vi.fn(),
-        runScan: vi.fn().mockResolvedValue(true),
+        addPendingChanges: vi.fn(),
       }),
     );
 
@@ -83,28 +75,27 @@ describe("useImageWatchBootstrap", () => {
     unmount();
   });
 
-  it("boots watchers and reacts to batch and removed events", async () => {
-    const loadSearchPresetStats = vi.fn().mockResolvedValue(undefined);
+  it("accumulates pending changes from batch and removed events", async () => {
     const scheduleSearchStatsRefresh = vi.fn();
     const scheduleAnalysis = vi.fn();
-    const schedulePageRefresh = vi.fn();
+    const addPendingChanges = vi.fn();
     const scanningRef = { current: false };
 
     renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats,
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh,
         scanningRef,
         scanStartCountRef: { current: 0 },
         rescanningRef: { current: false },
         scheduleAnalysis,
-        schedulePageRefresh,
-        runScan: vi.fn().mockResolvedValue(true),
+        addPendingChanges,
       }),
     );
 
-    await waitFor(() => expect(loadSearchPresetStats).toHaveBeenCalledTimes(1));
-    expect(scheduleAnalysis).toHaveBeenCalledWith(0);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -113,59 +104,44 @@ describe("useImageWatchBootstrap", () => {
       preloadEvents.image.removed.emit([11, 12]);
     });
 
-    expect(schedulePageRefresh).toHaveBeenCalledWith(150);
-    expect(schedulePageRefresh).toHaveBeenCalledWith(60);
-    expect(scheduleAnalysis).toHaveBeenCalledTimes(3);
+    // Empty batch ignored
+    expect(addPendingChanges).toHaveBeenCalledTimes(2);
+    expect(addPendingChanges).toHaveBeenCalledWith(1, 0);
+    expect(addPendingChanges).toHaveBeenCalledWith(0, 2);
+    expect(scheduleAnalysis).toHaveBeenCalledTimes(2);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
   });
 
-  it("uses immediate refresh for the first scan batch, then slower for subsequent", async () => {
+  it("accumulates pending changes during scan without scheduling analysis", async () => {
     const scheduleSearchStatsRefresh = vi.fn();
     const scheduleAnalysis = vi.fn();
-    const schedulePageRefresh = vi.fn();
+    const addPendingChanges = vi.fn();
 
     renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh,
-
         scanningRef: { current: true },
         scanStartCountRef: { current: 1 },
         rescanningRef: { current: false },
         scheduleAnalysis,
-        schedulePageRefresh,
-        runScan: vi.fn().mockResolvedValue(true),
+        addPendingChanges,
       }),
     );
 
-    // Wait for the initial async chain (quickVerify → runScan → scheduleAnalysis)
     await act(async () => {
       await Promise.resolve();
     });
 
-    // scheduleAnalysis called once during initial setup (runScan().then)
-    const setupCallCount = scheduleAnalysis.mock.calls.length;
-
-    // First batch during scan → immediate refresh
     act(() => {
       preloadEvents.image.batch.emit([createImageRow({ id: 1 })]);
-    });
-
-    expect(schedulePageRefresh).toHaveBeenCalledWith(0);
-    // Batch handler during scan does not call scheduleAnalysis
-    expect(scheduleAnalysis).toHaveBeenCalledTimes(setupCallCount);
-    expect(scheduleSearchStatsRefresh).not.toHaveBeenCalled();
-
-    schedulePageRefresh.mockClear();
-
-    // Second batch during scan → debounced refresh
-    act(() => {
       preloadEvents.image.batch.emit([createImageRow({ id: 2 })]);
     });
 
-    // 두 번째 배치는 스로틀 경로 — 0보다 큰 지연값으로 호출되어야 한다
-    expect(schedulePageRefresh).toHaveBeenCalledTimes(1);
-    expect(schedulePageRefresh.mock.calls[0][0]).toBeGreaterThan(0);
+    expect(addPendingChanges).toHaveBeenCalledTimes(2);
+    expect(addPendingChanges).toHaveBeenCalledWith(1, 0);
+    // During scan, analysis and search stats are not scheduled
+    expect(scheduleAnalysis).not.toHaveBeenCalled();
+    expect(scheduleSearchStatsRefresh).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
 import { createLogger } from "@/lib/logger";
@@ -14,12 +14,11 @@ interface UseImageWatchBootstrapOptions {
   scanStartCountRef: MutableRefObject<number>;
   rescanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
-  schedulePageRefresh: (delay?: number) => void;
+  addPendingChanges: (added: number, removed: number) => void;
   runScan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
     skipFolderIds?: number[];
-    refreshPage?: boolean;
     refreshSearchPresetStats?: boolean;
   }) => Promise<boolean>;
 }
@@ -76,7 +75,6 @@ export function runAppInitialization({
         detectDuplicates: true,
         skipFolderIds:
           unchangedFolderIds.length > 0 ? unchangedFolderIds : undefined,
-        refreshPage: true,
         refreshSearchPresetStats: true,
       }).then(() => {
         if (!cancelled) onInitialRefreshDone?.();
@@ -93,7 +91,6 @@ export function runAppInitialization({
         void runScan({
           detectDuplicates: false,
           folderIds: unchangedFolderIds,
-          refreshPage: true,
           refreshSearchPresetStats: false,
         });
       }, DEFERRED_INTEGRITY_CHECK_MS);
@@ -123,41 +120,17 @@ export function useImageEventSubscriptions({
   scanStartCountRef,
   rescanningRef,
   scheduleAnalysis,
-  schedulePageRefresh,
-}: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan">) {
-  const SCAN_REFRESH_INTERVAL_MS = 3000;
-
+  addPendingChanges,
+}: Omit<
+  UseImageWatchBootstrapOptions,
+  "loadSearchPresetStats" | "runScan" | "schedulePageRefresh"
+>) {
   useEffect(() => {
-    let scanFirstBatchFired = false;
-    let lastScanRefreshAt = 0;
-    let lastSeenScanStart = 0;
-
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
       if (rescanningRef.current) return;
-      if (scanningRef.current) {
-        if (scanStartCountRef.current !== lastSeenScanStart) {
-          lastSeenScanStart = scanStartCountRef.current;
-          scanFirstBatchFired = false;
-          lastScanRefreshAt = 0;
-        }
-        if (!scanFirstBatchFired) {
-          scanFirstBatchFired = true;
-          lastScanRefreshAt = Date.now();
-          schedulePageRefresh(0);
-        } else {
-          const elapsed = Date.now() - lastScanRefreshAt;
-          if (elapsed >= SCAN_REFRESH_INTERVAL_MS) {
-            lastScanRefreshAt = Date.now();
-            schedulePageRefresh(0);
-          } else {
-            schedulePageRefresh(SCAN_REFRESH_INTERVAL_MS - elapsed);
-          }
-        }
-      } else {
-        scanFirstBatchFired = false;
-        lastScanRefreshAt = 0;
-        schedulePageRefresh(150);
+      addPendingChanges(rows.length, 0);
+      if (!scanningRef.current) {
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
       }
@@ -165,9 +138,11 @@ export function useImageEventSubscriptions({
 
     const offRemoved = window.image.onRemoved((ids: number[]) => {
       if (ids.length === 0) return;
-      schedulePageRefresh(60);
-      scheduleAnalysis();
-      scheduleSearchStatsRefresh(120);
+      addPendingChanges(0, ids.length);
+      if (!scanningRef.current) {
+        scheduleAnalysis();
+        scheduleSearchStatsRefresh(120);
+      }
     });
 
     // File watcher with retry
@@ -204,46 +179,7 @@ export function useImageEventSubscriptions({
     scanStartCountRef,
     rescanningRef,
     scheduleAnalysis,
-    schedulePageRefresh,
+    addPendingChanges,
     scheduleSearchStatsRefresh,
   ]);
-}
-
-/**
- * @deprecated Use useImageEventSubscriptions + runAppInitialization instead.
- * Kept temporarily for reference during migration.
- */
-export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
-  const {
-    loadSearchPresetStats,
-    scanningRef,
-    scheduleAnalysis,
-    runScan,
-    ...subscriptionOptions
-  } = options;
-
-  // Event subscriptions
-  useImageEventSubscriptions({
-    ...subscriptionOptions,
-    scanningRef,
-    scheduleAnalysis,
-  });
-
-  // Initialization — run once on mount with no quickVerify (fallback path)
-  const initRef = useRef(false);
-  const runInit = useCallback(() => {
-    if (initRef.current) return { cancel: () => {} };
-    initRef.current = true;
-    return runAppInitialization({
-      loadSearchPresetStats,
-      scanningRef,
-      scheduleAnalysis,
-      runScan,
-    });
-  }, [loadSearchPresetStats, scanningRef, scheduleAnalysis, runScan]);
-
-  useEffect(() => {
-    const handle = runInit();
-    return handle.cancel;
-  }, [runInit]);
 }

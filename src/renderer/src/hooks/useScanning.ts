@@ -6,11 +6,11 @@ import { createLogger } from "@/lib/logger";
 const log = createLogger("renderer/useScanning");
 
 export function useScanning({
-  schedulePageRefresh,
   loadSearchPresetStats,
+  schedulePageRefresh,
 }: {
-  schedulePageRefresh: (delay?: number) => void;
   loadSearchPresetStats: () => Promise<void>;
+  schedulePageRefresh: (delay?: number) => void;
 }) {
   const [scanning, setScanning] = useState(false);
   const [activeScanFolderIds, setActiveScanFolderIds] = useState<Set<number>>(
@@ -52,7 +52,6 @@ export function useScanning({
       detectDuplicates?: boolean;
       folderIds?: number[];
       skipFolderIds?: number[];
-      refreshPage?: boolean;
       refreshSearchPresetStats?: boolean;
     }): Promise<boolean> => {
       if (scanPromiseRef.current) {
@@ -63,7 +62,6 @@ export function useScanning({
         detectDuplicates,
         folderIds,
         skipFolderIds,
-        refreshPage = true,
         refreshSearchPresetStats = true,
       } = options ?? {};
       const startedAt = Date.now();
@@ -87,9 +85,6 @@ export function useScanning({
         .scan({ detectDuplicates, folderIds, orderedFolderIds, skipFolderIds })
         .then(() => {
           log.info("Scan completed", { elapsedMs: Date.now() - startedAt });
-          if (refreshPage) {
-            schedulePageRefresh(0);
-          }
           if (refreshSearchPresetStats) {
             void loadSearchPresetStats();
           }
@@ -116,7 +111,7 @@ export function useScanning({
       scanPromiseRef.current = scanPromise;
       return scanPromise;
     },
-    [loadSearchPresetStats, schedulePageRefresh],
+    [loadSearchPresetStats],
   );
 
   const waitForScanToStop = useCallback(async (timeoutMs = 15000) => {

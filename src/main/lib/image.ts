@@ -2140,6 +2140,7 @@ export async function quickVerifyFolders(
 
 export type SyncAllFoldersOptions = {
   onBatch: (images: ImageRow[]) => void;
+  onRemoved?: (ids: number[]) => void;
   onProgress?: (done: number, total: number) => void;
   onFolderStart?: (folderId: number, folderName: string) => void;
   onFolderEnd?: (folderId: number) => void;
@@ -2158,6 +2159,7 @@ export async function syncAllFolders(
 ): Promise<void> {
   const {
     onBatch,
+    onRemoved,
     onProgress,
     onFolderStart,
     onFolderEnd,
@@ -2539,6 +2541,7 @@ export async function syncAllFolders(
             await db.image.deleteMany({
               where: { id: { in: chunkIds } },
             });
+            onRemoved?.(chunkIds);
             for (const row of statRows) {
               deferredStatMutations.push({ before: row, after: null });
             }

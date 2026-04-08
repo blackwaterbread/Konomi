@@ -7,7 +7,6 @@ const log = createLogger("renderer/useSidebarFolderActions");
 interface RunScanOptions {
   detectDuplicates?: boolean;
   folderIds?: number[];
-  refreshPage?: boolean;
   refreshSearchPresetStats?: boolean;
 }
 

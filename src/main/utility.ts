@@ -243,6 +243,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       try {
         return await syncAllFolders({
           onBatch: (batch) => utilitySender.send("image:batch", batch),
+          onRemoved: (ids) => utilitySender.send("image:removed", ids),
           onProgress: (done, total) =>
             utilitySender.send("image:scanProgress", { done, total }),
           onFolderStart: (folderId, folderName) =>

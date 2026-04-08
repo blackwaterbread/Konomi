@@ -59,7 +59,8 @@ describe("useScanning", () => {
       await scanPromise;
     });
 
-    expect(schedulePageRefresh).toHaveBeenCalledWith(0);
+    // runScan no longer auto-refreshes; pending changes accumulate via events
+    expect(schedulePageRefresh).not.toHaveBeenCalled();
     expect(loadSearchPresetStats).toHaveBeenCalledTimes(1);
     expect(result.current.scanning).toBe(false);
     expect(result.current.activeScanFolderIds.size).toBe(0);
