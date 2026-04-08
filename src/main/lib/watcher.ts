@@ -19,6 +19,7 @@ import {
 } from "./phash";
 
 const DEBOUNCE_MS = 500;
+const BATCH_FLUSH_MS = 1000;
 
 export type EventSender = {
   send(channel: string, data: unknown): void;
@@ -36,6 +37,10 @@ class FolderWatcher {
   private scanActive = false;
   private deferredChanges = new Map<string, number>();
   private deferredReconcileFolders = new Set<number>();
+
+  // Batch accumulator for image:batch events
+  private pendingBatchRows: ImageRow[] = [];
+  private batchFlushTimer: NodeJS.Timeout | null = null;
 
   constructor(sender: EventSender) {
     this.sender = sender;
@@ -83,6 +88,27 @@ class FolderWatcher {
     this.scanActive = false;
     this.deferredChanges.clear();
     this.deferredReconcileFolders.clear();
+    this.flushBatch();
+  }
+
+  private enqueueBatch(row: ImageRow): void {
+    this.pendingBatchRows.push(row);
+    if (!this.batchFlushTimer) {
+      this.batchFlushTimer = setTimeout(() => this.flushBatch(), BATCH_FLUSH_MS);
+    }
+  }
+
+  private flushBatch(): void {
+    if (this.batchFlushTimer) {
+      clearTimeout(this.batchFlushTimer);
+      this.batchFlushTimer = null;
+    }
+    if (this.pendingBatchRows.length === 0) return;
+    const rows = this.pendingBatchRows;
+    this.pendingBatchRows = [];
+    if (!this.sender.isDestroyed()) {
+      this.sender.send("image:batch", rows);
+    }
   }
 
   setScanActive(active: boolean): void {
@@ -320,9 +346,7 @@ class FolderWatcher {
       );
       await refreshSimilarityCacheForImageIds([image.id]);
 
-      if (!this.sender.isDestroyed()) {
-        this.sender.send("image:batch", [image as ImageRow]);
-      }
+      this.enqueueBatch(image as ImageRow);
     } catch {
       // skip unreadable files
     }

@@ -114,9 +114,6 @@ interface HeaderProps {
   checkingDuplicates?: boolean;
   isAnalyzing?: boolean;
   onCancelScan?: () => void;
-  pendingAdded?: number;
-  pendingRemoved?: number;
-  onApplyPendingChanges?: () => void;
   advancedFilters: AdvancedFilter[];
   onAdvancedFiltersChange: (filters: AdvancedFilter[]) => void;
   availableResolutions: { width: number; height: number }[];
@@ -903,9 +900,6 @@ export const Header = memo(function Header({
   checkingDuplicates,
   isAnalyzing,
   onCancelScan,
-  pendingAdded = 0,
-  pendingRemoved = 0,
-  onApplyPendingChanges,
   advancedFilters,
   onAdvancedFiltersChange,
   availableResolutions,
@@ -1037,25 +1031,6 @@ export const Header = memo(function Header({
               )}
             </div>
           )}
-          {!scanning &&
-            !checkingDuplicates &&
-            !isAnalyzing &&
-            !hasRescanProgress &&
-            !hasSimilarityProgress &&
-            !hasSearchStatsProgress &&
-            (pendingAdded > 0 || pendingRemoved > 0) && (
-              <button
-                onClick={onApplyPendingChanges}
-                className="absolute left-full ml-3 flex items-center gap-1.5 text-xs text-primary whitespace-nowrap hover:underline cursor-pointer select-none"
-              >
-                <span className="tabular-nums">
-                  {t("header.pendingChanges.label", {
-                    added: pendingAdded,
-                    removed: pendingRemoved,
-                  })}
-                </span>
-              </button>
-            )}
         </div>
 
         <HeaderSearchSection

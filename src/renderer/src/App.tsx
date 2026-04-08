@@ -566,9 +566,6 @@ export default function App({
         checkingDuplicates={checkingDuplicates}
         isAnalyzing={isAnalyzing}
         onCancelScan={handleCancelScan}
-        pendingAdded={pending.added}
-        pendingRemoved={pending.removed}
-        onApplyPendingChanges={applyPendingChanges}
         advancedFilters={advancedFilters}
         onAdvancedFiltersChange={setAdvancedFilters}
         availableResolutions={availableResolutions}
@@ -684,6 +681,9 @@ export default function App({
               onGalleryColumnsChange={(v) =>
                 updateSettings({ galleryColumns: v })
               }
+              pendingAdded={pending.added}
+              pendingRemoved={pending.removed}
+              onApplyPendingChanges={applyPendingChanges}
             />
           </div>
         </div>

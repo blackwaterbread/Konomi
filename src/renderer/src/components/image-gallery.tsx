@@ -192,6 +192,9 @@ interface ImageGalleryProps {
   onColumnCountChange?: (count: number) => void;
   galleryColumns?: "auto" | number;
   onGalleryColumnsChange?: (value: "auto" | number) => void;
+  pendingAdded?: number;
+  pendingRemoved?: number;
+  onApplyPendingChanges?: () => void;
 }
 
 interface GalleryToolbarProps {
@@ -215,6 +218,9 @@ interface GalleryToolbarProps {
   onBulkDelete: () => void;
   galleryColumns?: "auto" | number;
   onGalleryColumnsChange?: (value: "auto" | number) => void;
+  pendingAdded?: number;
+  pendingRemoved?: number;
+  onApplyPendingChanges?: () => void;
 }
 
 const GalleryToolbar = memo(function GalleryToolbar({
@@ -238,6 +244,9 @@ const GalleryToolbar = memo(function GalleryToolbar({
   onBulkDelete,
   galleryColumns,
   onGalleryColumnsChange,
+  pendingAdded = 0,
+  pendingRemoved = 0,
+  onApplyPendingChanges,
 }: GalleryToolbarProps) {
   const { t } = useTranslation();
   const isCustomColumns = typeof galleryColumns === "number";
@@ -252,6 +261,17 @@ const GalleryToolbar = memo(function GalleryToolbar({
           <span className="text-sm text-muted-foreground select-none">
             {t("gallery.totalImages", { count: totalCount })}
           </span>
+          {(pendingAdded > 0 || pendingRemoved > 0) && (
+            <button
+              onClick={onApplyPendingChanges}
+              className="text-xs text-primary hover:underline underline-offset-2 cursor-pointer select-none tabular-nums"
+            >
+              {t("header.pendingChanges.label", {
+                added: pendingAdded,
+                removed: pendingRemoved,
+              })}
+            </button>
+          )}
           {searchQuery && (
             <button
               onClick={onClearSearch}
@@ -963,6 +983,9 @@ export const ImageGallery = memo(function ImageGallery({
   onColumnCountChange,
   galleryColumns,
   onGalleryColumnsChange,
+  pendingAdded,
+  pendingRemoved,
+  onApplyPendingChanges,
 }: ImageGalleryProps) {
   const {
     images,
@@ -1176,6 +1199,9 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkDelete={handleBulkDelete}
         galleryColumns={galleryColumns}
         onGalleryColumnsChange={onGalleryColumnsChange}
+        pendingAdded={pendingAdded}
+        pendingRemoved={pendingRemoved}
+        onApplyPendingChanges={onApplyPendingChanges}
       />
 
       {syncing && (
