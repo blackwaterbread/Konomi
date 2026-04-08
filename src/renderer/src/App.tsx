@@ -340,19 +340,17 @@ export default function App({
   });
 
   // Single mount orchestrator — explicit sequential initialization
-  // Replaces the old cascade: useEffect(hasLoaded) → useEffect(mount) → quickVerify → scan
   useEffect(() => {
     let handle: { cancel: () => void } | null = null;
 
     void (async () => {
-      // Step 1: Initialize subfolder state (was useEffect chain in useFolderController)
       await initializeFolders();
 
-      // Step 2: Run quickVerify → conditional scan → deferred integrity check
-      // Uses bootstrap-provided quickVerify result instead of running it again
+      // Full scan on every startup; watcher is already running (started by
+      // useImageEventSubscriptions) with scanActive=true so file changes
+      // during scan are deferred and flushed when the scan finishes.
       handle = runAppInitialization({
         loadSearchPresetStats,
-        scanningRef,
         scheduleAnalysis,
         runScan,
         onInitialRefreshDone: () => setInitialRefreshDone(true),

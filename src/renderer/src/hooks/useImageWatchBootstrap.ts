@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
-import { createLogger } from "@/lib/logger";
-
-const log = createLogger("renderer/useImageWatchBootstrap");
-
-const DEFERRED_INTEGRITY_CHECK_MS = 30_000;
 
 interface UseImageWatchBootstrapOptions {
   loadSearchPresetStats: () => Promise<void>;
@@ -25,97 +20,46 @@ interface UseImageWatchBootstrapOptions {
 }
 
 /**
- * Runs the app initialization sequence: quickVerify → conditional scan → deferred integrity check.
- * Called explicitly from the App mount orchestrator instead of being triggered by a useEffect.
+ * Runs the app initialization sequence: full scan → analysis.
+ * The watcher is started automatically in the utility process at boot in
+ * paused mode (scanActive=true), so file changes during scan are queued
+ * and flushed when the scan finishes.
  */
 export function runAppInitialization({
   loadSearchPresetStats,
-  scanningRef,
   scheduleAnalysis,
   runScan,
   onInitialRefreshDone,
 }: {
   loadSearchPresetStats: () => Promise<void>;
-  scanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
   runScan: UseImageWatchBootstrapOptions["runScan"];
   onInitialRefreshDone?: () => void;
 }): { cancel: () => void } {
   let cancelled = false;
-  let deferredTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const initPromise = (async () => {
-    let changedFolderIds: number[] = [];
-    let unchangedFolderIds: number[] = [];
-
-    try {
-      const result = await window.image.quickVerify();
-      changedFolderIds = result.changedFolderIds;
-      unchangedFolderIds = result.unchangedFolderIds;
-      log.info("Quick verify result", {
-        changed: changedFolderIds.length,
-        unchanged: unchangedFolderIds.length,
-      });
-    } catch (error: unknown) {
-      log.warn("Quick verify failed, falling back to full scan", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    if (cancelled) return;
-
-    // Conditional scan
-    if (changedFolderIds.length === 0 && unchangedFolderIds.length > 0) {
-      log.info("All folders unchanged, skipping initial scan");
-      void loadSearchPresetStats();
-      scheduleAnalysis(0);
-      onInitialRefreshDone?.();
-    } else {
-      void loadSearchPresetStats();
-      void runScan({
-        detectDuplicates: true,
-        skipFolderIds:
-          unchangedFolderIds.length > 0 ? unchangedFolderIds : undefined,
-        refreshPage: true,
-        refreshSearchPresetStats: true,
-      }).then(() => {
-        if (!cancelled) onInitialRefreshDone?.();
-        scheduleAnalysis(0);
-      });
-    }
-
-    // Deferred integrity check for unchanged folders
-    if (unchangedFolderIds.length > 0 && !cancelled) {
-      deferredTimer = setTimeout(() => {
-        deferredTimer = null;
-        if (cancelled || scanningRef.current) return;
-        log.info("Running deferred integrity check for unchanged folders");
-        void runScan({
-          detectDuplicates: false,
-          folderIds: unchangedFolderIds,
-          refreshPage: true,
-          refreshSearchPresetStats: false,
-        });
-      }, DEFERRED_INTEGRITY_CHECK_MS);
-    }
+  void (async () => {
+    void loadSearchPresetStats();
+    await runScan({
+      detectDuplicates: true,
+      refreshPage: true,
+      refreshSearchPresetStats: true,
+    });
+    if (!cancelled) onInitialRefreshDone?.();
+    scheduleAnalysis(0);
   })();
-
-  void initPromise;
 
   return {
     cancel: () => {
       cancelled = true;
-      if (deferredTimer) {
-        clearTimeout(deferredTimer);
-        deferredTimer = null;
-      }
     },
   };
 }
 
 /**
- * Subscribes to IPC events (onBatch, onRemoved) and starts the file watcher.
+ * Subscribes to IPC events (onBatch, onRemoved).
  * Pure event subscription — no initialization logic.
+ * Watcher is started separately in runAppInitialization.
  */
 export function useImageEventSubscriptions({
   scheduleSearchStatsRefresh,
@@ -170,32 +114,7 @@ export function useImageEventSubscriptions({
       scheduleSearchStatsRefresh(120);
     });
 
-    // File watcher with retry
-    let watchCancelled = false;
-    let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
-    const startWatch = (attempt = 0): void => {
-      void window.image.watch().catch((error: unknown) => {
-        if (watchCancelled) return;
-        const delayMs = Math.min(10000, 1000 * 2 ** attempt);
-        log.warn("Image watcher start failed; retry scheduled", {
-          attempt: attempt + 1,
-          delayMs,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        watchRetryTimer = setTimeout(() => {
-          watchRetryTimer = null;
-          startWatch(attempt + 1);
-        }, delayMs);
-      });
-    };
-    startWatch();
-
     return () => {
-      watchCancelled = true;
-      if (watchRetryTimer) {
-        clearTimeout(watchRetryTimer);
-        watchRetryTimer = null;
-      }
       offBatch();
       offRemoved();
     };
@@ -236,11 +155,10 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     initRef.current = true;
     return runAppInitialization({
       loadSearchPresetStats,
-      scanningRef,
       scheduleAnalysis,
       runScan,
     });
-  }, [loadSearchPresetStats, scanningRef, scheduleAnalysis, runScan]);
+  }, [loadSearchPresetStats, scheduleAnalysis, runScan]);
 
   useEffect(() => {
     const handle = runInit();

@@ -331,11 +331,22 @@ class FolderWatcher {
 
 let activeWatcher: FolderWatcher | null = null;
 
-export async function startWatching(sender: EventSender): Promise<void> {
+/**
+ * Start watching all folders immediately.
+ * When `paused` is true the watcher begins with scanActive=true so that
+ * all detected changes are queued instead of processed.  The queue is
+ * flushed when setWatcherScanActive(false) is called (e.g. after scan).
+ */
+export async function startWatching(
+  sender: EventSender,
+  options?: { paused?: boolean },
+): Promise<void> {
   activeWatcher?.stopAll();
-  activeWatcher = new FolderWatcher(sender);
+  const watcher = new FolderWatcher(sender);
+  if (options?.paused) watcher.setScanActive(true);
+  activeWatcher = watcher;
   const folders = await getFolders();
-  folders.forEach((f) => activeWatcher!.watchFolder(f.id, f.path));
+  folders.forEach((f) => watcher.watchFolder(f.id, f.path));
 }
 
 export function watchNewFolder(folderId: number, folderPath: string): void {

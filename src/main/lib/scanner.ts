@@ -59,6 +59,53 @@ export async function countImageFiles(
   return count;
 }
 
+/**
+ * Counts image files and collects the max directory mtime in a single walk.
+ * Directory mtime changes when direct children are added/deleted, so checking
+ * every directory in the tree detects structural changes at any depth without
+ * stat-ing individual files.
+ */
+export async function verifyImageFolder(
+  rootDir: string,
+  signal?: CancelToken,
+): Promise<{ fileCount: number; maxDirMtimeMs: number }> {
+  let fileCount = 0;
+  let maxDirMtimeMs = 0;
+
+  const stack = [rootDir];
+  while (stack.length > 0 && !signal?.cancelled) {
+    const currentDir = stack.pop()!;
+    let handle: fs.Dir | null = null;
+    try {
+      const dirStat = await fs.promises.stat(currentDir);
+      if (dirStat.mtimeMs > maxDirMtimeMs) {
+        maxDirMtimeMs = dirStat.mtimeMs;
+      }
+      handle = await fs.promises.opendir(currentDir);
+      for await (const entry of handle) {
+        if (signal?.cancelled) break;
+        const fullPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (![".png", ".webp"].includes(path.extname(entry.name).toLowerCase()))
+          continue;
+        fileCount++;
+      }
+    } catch {
+      // folder not accessible
+    } finally {
+      if (handle) {
+        await handle.close().catch(() => {});
+      }
+    }
+  }
+
+  return { fileCount, maxDirMtimeMs };
+}
+
 export async function withConcurrency<T>(
   items: T[] | AsyncIterable<T>,
   limit: number,

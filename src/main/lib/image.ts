@@ -5,7 +5,7 @@ import os from "os";
 import { Worker } from "worker_threads";
 import { getDB, getRawDB } from "./db";
 import { getFolders } from "./folder";
-import { scanImageFiles, walkImageFiles, countImageFiles, withConcurrency } from "./scanner";
+import { scanImageFiles, walkImageFiles, countImageFiles, verifyImageFolder, withConcurrency } from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
 import { deleteSimilarityCacheForImageIds } from "./phash";
@@ -2095,12 +2095,21 @@ export type QuickVerifyResult = {
   unchangedFolderIds: number[];
 };
 
+// NOTE: Not used — file count + directory mtime comparison cannot reliably
+// detect all change types (e.g. in-place file overwrites don't update parent
+// directory mtime). Kept for potential future use if a more accurate
+// fingerprinting strategy is implemented.
 export async function quickVerifyFolders(
   signal?: CancelToken,
 ): Promise<QuickVerifyResult> {
   const db = getDB();
   const folders = await db.folder.findMany({
-    select: { id: true, path: true, lastScanFileCount: true },
+    select: {
+      id: true,
+      path: true,
+      lastScanFileCount: true,
+      lastScanFinishedAt: true,
+    },
   });
 
   const results = await Promise.all(
@@ -2113,11 +2122,25 @@ export async function quickVerifyFolders(
         return { id: folder.id, changed: false };
       }
       try {
-        const diskCount = await countImageFiles(folder.path, signal);
-        const changed =
+        const { fileCount, maxDirMtimeMs } = await verifyImageFolder(
+          folder.path,
+          signal,
+        );
+        if (
           folder.lastScanFileCount === null ||
-          folder.lastScanFileCount !== diskCount;
-        return { id: folder.id, changed };
+          folder.lastScanFileCount !== fileCount
+        ) {
+          return { id: folder.id, changed: true };
+        }
+        // Directory mtime changes when direct children are added/deleted.
+        // Walking every directory in the tree covers all depths.
+        if (
+          folder.lastScanFinishedAt !== null &&
+          maxDirMtimeMs > folder.lastScanFinishedAt.getTime()
+        ) {
+          return { id: folder.id, changed: true };
+        }
+        return { id: folder.id, changed: false };
       } catch {
         return { id: folder.id, changed: false };
       }

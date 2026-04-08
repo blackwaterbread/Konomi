@@ -278,7 +278,8 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return setImageFavorite(id, isFavorite);
     }
     case "image:watch":
-      await startWatching(utilitySender);
+      // No-op if watcher was already started at boot (paused mode).
+      // Kept for backwards compatibility; the watcher is now auto-started.
       return null;
     case "image:listIgnoredDuplicates":
       return listIgnoredDuplicatePaths();
@@ -510,6 +511,14 @@ ensureIgnoredDuplicatePathsLoaded()
   .then(() => log.info("Loaded ignored duplicate paths"))
   .catch((error) =>
     log.errorWithStack("Failed to load ignored duplicate paths", error),
+  );
+
+// Start watching folders immediately in paused mode so file changes that
+// occur before the first scan are queued and flushed after the scan finishes.
+startWatching(utilitySender, { paused: true })
+  .then(() => log.info("Watcher started in paused mode"))
+  .catch((error) =>
+    log.errorWithStack("Failed to start watcher on boot", error),
   );
 
 process.parentPort.on("message", async (e: Electron.MessageEvent) => {
