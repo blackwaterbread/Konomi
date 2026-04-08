@@ -3,7 +3,11 @@ import { extname } from "path";
 import type { ImageMeta } from "@/types/image-meta";
 import { readComfyuiMetaFromBuffer } from "./comfyui";
 import { readMidjourneyMetaFromBuffer } from "./midjourney";
-import { readNaiMetaFromBuffer, readNaiMetaFromWebp } from "./nai";
+import {
+  readNaiMetaFromBuffer,
+  readNaiMetaFromPngText,
+  readNaiMetaFromWebp,
+} from "./nai";
 import { readWebuiMetaFromBuffer } from "./webui";
 
 function isWebp(buf: Buffer): boolean {
@@ -54,13 +58,26 @@ function readPngHeaderBytes(filePath: string): Buffer | null {
   }
 }
 
+/**
+ * Try only text-chunk-based parsers (no LSB / pixel decode).
+ * Safe to call with a truncated buffer containing just pre-IDAT bytes.
+ */
+function readPngTextMeta(buf: Buffer): ImageMeta | null {
+  return (
+    readWebuiMetaFromBuffer(buf) ??
+    readComfyuiMetaFromBuffer(buf) ??
+    readMidjourneyMetaFromBuffer(buf) ??
+    readNaiMetaFromPngText(buf)
+  );
+}
+
 export function readImageMeta(filePath: string): ImageMeta | null {
   try {
     // PNG fast path: read only the header for text-based metadata
     if (extname(filePath).toLowerCase() === ".png") {
       const headerBuf = readPngHeaderBytes(filePath);
       if (headerBuf) {
-        const meta = readImageMetaFromBuffer(headerBuf);
+        const meta = readPngTextMeta(headerBuf);
         if (meta) return meta;
       }
       // No text metadata found — fall through to full read for LSB

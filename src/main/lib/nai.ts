@@ -251,7 +251,7 @@ export function readNaiMeta(filePath: string): ImageMeta | null {
   }
 }
 
-function readNaiMetaFromPngText(buf: Buffer): ImageMeta | null {
+export function readNaiMetaFromPngText(buf: Buffer): ImageMeta | null {
   try {
     const chunks = readPngTextChunks(buf);
     if (!isNovelAI(chunks)) return null;
