@@ -239,6 +239,12 @@ app
     syncBundledPromptsDBToUserData();
     bridge.start(join(__dirname, "utility.js"));
 
+    // 1×1 transparent PNG returned for missing files to avoid console 404 errors
+    const TRANSPARENT_1X1_PNG = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAA0lEQVQI12P4z8BQDwAEgAF/QualzQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+
     // Serve local image files via konomi:// protocol
     // URL format: konomi://local/<encodeURIComponent(forwardSlashPath)>[?w=<maxWidth>]
     // When ?w is provided, returns a resized JPEG thumbnail to reduce decoded bitmap memory.
@@ -265,6 +271,19 @@ app
           return new Response(null, { status: 403 });
         }
 
+        // Return a transparent 1×1 PNG for missing files instead of 404
+        // to avoid noisy console errors when deleted images are still displayed.
+        try {
+          await fs.promises.access(filePath);
+        } catch {
+          return new Response(TRANSPARENT_1X1_PNG, {
+            headers: {
+              "content-type": "image/png",
+              "cache-control": "no-store",
+            },
+          });
+        }
+
         const maxWidth = parseInt(parsedUrl.searchParams.get("w") ?? "", 10);
         if (maxWidth > 0) {
           return await serveThumb(filePath, maxWidth, thumbCacheDir);
@@ -281,7 +300,12 @@ app
         });
       } catch {
         log.debug("konomi protocol file miss", { url: request.url });
-        return new Response(null, { status: 404 });
+        return new Response(TRANSPARENT_1X1_PNG, {
+          headers: {
+            "content-type": "image/png",
+            "cache-control": "no-store",
+          },
+        });
       }
     });
 

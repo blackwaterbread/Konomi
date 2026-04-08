@@ -1,26 +1,37 @@
 import { useState, useCallback } from "react";
 
-export interface PendingChanges {
-  added: number;
-  removed: number;
+interface PendingState {
+  netDelta: number;
+  maxBatchId: number;
 }
 
 export function usePendingChanges() {
-  const [pending, setPending] = useState<PendingChanges>({
-    added: 0,
-    removed: 0,
+  const [state, setState] = useState<PendingState>({
+    netDelta: 0,
+    maxBatchId: 0,
   });
 
-  const addPending = useCallback((added: number, removed: number) => {
-    setPending((prev) => ({
-      added: prev.added + added,
-      removed: prev.removed + removed,
-    }));
-  }, []);
+  const addPending = useCallback(
+    (added: number, removed: number, maxId?: number) => {
+      setState((prev) => ({
+        netDelta: prev.netDelta + added - removed,
+        maxBatchId:
+          maxId !== undefined
+            ? Math.max(prev.maxBatchId, maxId)
+            : prev.maxBatchId,
+      }));
+    },
+    [],
+  );
 
   const clearPending = useCallback(() => {
-    setPending({ added: 0, removed: 0 });
+    setState({ netDelta: 0, maxBatchId: 0 });
   }, []);
 
-  return { pending, addPending, clearPending };
+  return {
+    netDelta: state.netDelta,
+    maxBatchId: state.maxBatchId,
+    addPending,
+    clearPending,
+  };
 }

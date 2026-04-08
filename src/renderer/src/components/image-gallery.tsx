@@ -37,6 +37,7 @@ import { OnboardingView } from "./onboarding-view";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
+
 type ViewMode = "grid" | "list";
 type SortBy = "recent" | "oldest" | "favorites" | "name";
 export type GalleryDensity = "normal" | "compact" | "dense" | "minimal" | "micro";
@@ -192,8 +193,8 @@ interface ImageGalleryProps {
   onColumnCountChange?: (count: number) => void;
   galleryColumns?: "auto" | number;
   onGalleryColumnsChange?: (value: "auto" | number) => void;
-  pendingAdded?: number;
-  pendingRemoved?: number;
+  pendingNetDelta?: number;
+  hasPendingChanges?: boolean;
   onApplyPendingChanges?: () => void;
 }
 
@@ -218,8 +219,8 @@ interface GalleryToolbarProps {
   onBulkDelete: () => void;
   galleryColumns?: "auto" | number;
   onGalleryColumnsChange?: (value: "auto" | number) => void;
-  pendingAdded?: number;
-  pendingRemoved?: number;
+  pendingNetDelta?: number;
+  hasPendingChanges?: boolean;
   onApplyPendingChanges?: () => void;
 }
 
@@ -244,8 +245,8 @@ const GalleryToolbar = memo(function GalleryToolbar({
   onBulkDelete,
   galleryColumns,
   onGalleryColumnsChange,
-  pendingAdded = 0,
-  pendingRemoved = 0,
+  pendingNetDelta = 0,
+  hasPendingChanges = false,
   onApplyPendingChanges,
 }: GalleryToolbarProps) {
   const { t } = useTranslation();
@@ -261,15 +262,20 @@ const GalleryToolbar = memo(function GalleryToolbar({
           <span className="text-sm text-muted-foreground select-none">
             {t("gallery.totalImages", { count: totalCount })}
           </span>
-          {(pendingAdded > 0 || pendingRemoved > 0) && (
+          {hasPendingChanges && (
             <button
               onClick={onApplyPendingChanges}
               className="text-xs text-primary hover:underline underline-offset-2 cursor-pointer select-none tabular-nums"
             >
-              {t("header.pendingChanges.label", {
-                added: pendingAdded,
-                removed: pendingRemoved,
-              })}
+              {pendingNetDelta > 0
+                ? t("header.pendingChanges.added", {
+                    count: pendingNetDelta,
+                  })
+                : pendingNetDelta < 0
+                  ? t("header.pendingChanges.removed", {
+                      count: -pendingNetDelta,
+                    })
+                  : t("header.pendingChanges.changed")}
             </button>
           )}
           {searchQuery && (
@@ -983,8 +989,8 @@ export const ImageGallery = memo(function ImageGallery({
   onColumnCountChange,
   galleryColumns,
   onGalleryColumnsChange,
-  pendingAdded,
-  pendingRemoved,
+  pendingNetDelta,
+  hasPendingChanges,
   onApplyPendingChanges,
 }: ImageGalleryProps) {
   const {
@@ -1199,8 +1205,8 @@ export const ImageGallery = memo(function ImageGallery({
         onBulkDelete={handleBulkDelete}
         galleryColumns={galleryColumns}
         onGalleryColumnsChange={onGalleryColumnsChange}
-        pendingAdded={pendingAdded}
-        pendingRemoved={pendingRemoved}
+        pendingNetDelta={pendingNetDelta}
+        hasPendingChanges={hasPendingChanges}
         onApplyPendingChanges={onApplyPendingChanges}
       />
 

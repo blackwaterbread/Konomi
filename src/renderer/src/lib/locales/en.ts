@@ -77,7 +77,9 @@ const en = {
       },
     },
     pendingChanges: {
-      label: "Changes: +{{added}}, -{{removed}} — click to apply",
+      added: "Changes: +{{count}} — click to apply",
+      removed: "Changes: -{{count}} — click to apply",
+      changed: "Images changed — click to apply",
     },
   },
   imageCard: {

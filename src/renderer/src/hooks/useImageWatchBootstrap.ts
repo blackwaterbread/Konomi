@@ -14,7 +14,7 @@ interface UseImageWatchBootstrapOptions {
   scanStartCountRef: MutableRefObject<number>;
   rescanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
-  addPendingChanges: (added: number, removed: number) => void;
+  addPendingChanges: (added: number, removed: number, maxId?: number) => void;
   runScan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
@@ -132,7 +132,8 @@ export function useImageEventSubscriptions({
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
       if (rescanningRef.current) return;
-      addPendingChanges(rows.length, 0);
+      const maxId = Math.max(...rows.map((r) => r.id));
+      addPendingChanges(rows.length, 0, maxId);
       if (!scanningRef.current) {
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);

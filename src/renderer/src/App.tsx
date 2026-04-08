@@ -192,7 +192,8 @@ export default function App({
     enabled: galleryReady,
   });
 
-  const { pending, addPending, clearPending } = usePendingChanges();
+  const { netDelta, maxBatchId, addPending, clearPending } =
+    usePendingChanges();
 
   const {
     scanning,
@@ -445,6 +446,15 @@ export default function App({
     }
   }, []);
 
+  // Max image id from the last gallery load — used to detect content changes at net-zero delta
+  const snapshotMaxId = useMemo(() => {
+    if (images.length === 0) return 0;
+    return Math.max(...images.map((img) => Number(img.id)));
+  }, [images]);
+
+  const hasPendingChanges =
+    netDelta !== 0 || (maxBatchId > 0 && maxBatchId > snapshotMaxId);
+
   const applyPendingChanges = useCallback(() => {
     clearPending();
     schedulePageRefresh(0);
@@ -684,8 +694,8 @@ export default function App({
               onGalleryColumnsChange={(v) =>
                 updateSettings({ galleryColumns: v })
               }
-              pendingAdded={pending.added}
-              pendingRemoved={pending.removed}
+              pendingNetDelta={hasPendingChanges ? netDelta : 0}
+              hasPendingChanges={hasPendingChanges}
               onApplyPendingChanges={applyPendingChanges}
             />
           </div>

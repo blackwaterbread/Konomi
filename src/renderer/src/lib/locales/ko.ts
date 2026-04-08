@@ -78,8 +78,9 @@ const ko = {
       },
     },
     pendingChanges: {
-      label:
-        "이미지 변동: 추가 {{added}}개, 제거 {{removed}}개 — 클릭하여 적용",
+      added: "이미지 변동: +{{count}}개 — 클릭하여 적용",
+      removed: "이미지 변동: -{{count}}개 — 클릭하여 적용",
+      changed: "이미지 변동 있음 — 클릭하여 적용",
     },
   },
   imageCard: {

@@ -35,7 +35,7 @@ describe("useImageEventSubscriptions", () => {
 
     // Empty batch ignored
     expect(addPendingChanges).toHaveBeenCalledTimes(2);
-    expect(addPendingChanges).toHaveBeenCalledWith(1, 0);
+    expect(addPendingChanges).toHaveBeenCalledWith(1, 0, 1);
     expect(addPendingChanges).toHaveBeenCalledWith(0, 2);
     expect(scheduleAnalysis).toHaveBeenCalledTimes(2);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
@@ -64,7 +64,7 @@ describe("useImageEventSubscriptions", () => {
     });
 
     expect(addPendingChanges).toHaveBeenCalledTimes(2);
-    expect(addPendingChanges).toHaveBeenCalledWith(1, 0);
+    expect(addPendingChanges).toHaveBeenCalledWith(1, 0, 1);
     // During scan, analysis and search stats are not scheduled
     expect(scheduleAnalysis).not.toHaveBeenCalled();
     expect(scheduleSearchStatsRefresh).not.toHaveBeenCalled();
