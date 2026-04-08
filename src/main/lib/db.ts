@@ -80,21 +80,34 @@ export function runMigrations(
       const checksum = crypto.createHash("sha256").update(sql).digest("hex");
       onProgress?.({ done, total: pending.length, migrationName: dir });
       log.info("Applying migration", { migration: dir });
-      const applyMigration = db.transaction(
-        (
-          migrationName: string,
-          migrationSql: string,
-          migrationChecksum: string,
-        ) => {
-          db.exec(migrationSql);
+
+      // VACUUM cannot run inside a transaction — execute such migrations
+      // outside a transaction and record completion separately.
+      const needsNoTxn = /^\s*VACUUM\s*;/im.test(sql);
+
+      try {
+        if (needsNoTxn) {
+          db.exec(sql);
           db.prepare(
             `INSERT INTO "_prisma_migrations" (id, checksum, migration_name, finished_at, applied_steps_count)
              VALUES (?, ?, ?, datetime('now'), 1)`,
-          ).run(crypto.randomUUID(), migrationChecksum, migrationName);
-        },
-      );
-      try {
-        applyMigration(dir, sql, checksum);
+          ).run(crypto.randomUUID(), checksum, dir);
+        } else {
+          const applyMigration = db.transaction(
+            (
+              migrationName: string,
+              migrationSql: string,
+              migrationChecksum: string,
+            ) => {
+              db.exec(migrationSql);
+              db.prepare(
+                `INSERT INTO "_prisma_migrations" (id, checksum, migration_name, finished_at, applied_steps_count)
+                 VALUES (?, ?, ?, datetime('now'), 1)`,
+              ).run(crypto.randomUUID(), migrationChecksum, migrationName);
+            },
+          );
+          applyMigration(dir, sql, checksum);
+        }
         log.info("Migration applied", { migration: dir });
       } catch (error) {
         // 트랜잭션 실패 시 롤백됨 — _prisma_migrations에 기록되지 않으므로

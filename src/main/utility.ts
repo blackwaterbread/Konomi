@@ -155,7 +155,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         emitSearchStatsProgress,
       );
       try {
-        await getDB().$executeRawUnsafe("VACUUM");
+        await getDB().$executeRawUnsafe("PRAGMA incremental_vacuum");
       } catch {
         /* ignore */
       }
