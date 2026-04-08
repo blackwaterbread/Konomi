@@ -355,9 +355,15 @@ class FolderWatcher {
 
 let activeWatcher: FolderWatcher | null = null;
 
-export async function startWatching(sender: EventSender): Promise<void> {
+export async function startWatching(
+  sender: EventSender,
+  options?: { paused?: boolean },
+): Promise<void> {
   activeWatcher?.stopAll();
   activeWatcher = new FolderWatcher(sender);
+  if (options?.paused) {
+    activeWatcher.setScanActive(true);
+  }
   const folders = await getFolders();
   folders.forEach((f) => activeWatcher!.watchFolder(f.id, f.path));
 }

@@ -278,8 +278,13 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       const { id, isFavorite } = payload as { id: number; isFavorite: boolean };
       return setImageFavorite(id, isFavorite);
     }
-    case "image:watch":
-      await startWatching(utilitySender);
+    case "image:watch": {
+      const watchOpts = payload as { paused?: boolean } | undefined;
+      await startWatching(utilitySender, watchOpts);
+      return null;
+    }
+    case "image:unpauseWatch":
+      setWatcherScanActive(false);
       return null;
     case "image:listIgnoredDuplicates":
       return listIgnoredDuplicatePaths();

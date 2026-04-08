@@ -304,7 +304,8 @@ declare global {
         skipFolderIds?: number[];
       }) => Promise<void>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
-      watch: () => Promise<void>;
+      watch: (options?: { paused?: boolean }) => Promise<void>;
+      unpauseWatch: () => Promise<void>;
       listIgnoredDuplicates: () => Promise<string[]>;
       clearIgnoredDuplicates: () => Promise<number>;
       onBatch: (cb: (images: ImageRow[]) => void) => () => void;

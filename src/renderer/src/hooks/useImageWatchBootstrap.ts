@@ -69,8 +69,11 @@ export function runAppInitialization({
       void loadSearchPresetStats();
       scheduleAnalysis(0);
       onInitialRefreshDone?.();
+      // Watcher was started paused — unpause to flush deferred events
+      void window.image.unpauseWatch();
     } else {
       void loadSearchPresetStats();
+      // Scan's finally block calls setWatcherScanActive(false), which unpauses the watcher
       void runScan({
         detectDuplicates: true,
         skipFolderIds:
@@ -145,32 +148,7 @@ export function useImageEventSubscriptions({
       }
     });
 
-    // File watcher with retry
-    let watchCancelled = false;
-    let watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
-    const startWatch = (attempt = 0): void => {
-      void window.image.watch().catch((error: unknown) => {
-        if (watchCancelled) return;
-        const delayMs = Math.min(10000, 1000 * 2 ** attempt);
-        log.warn("Image watcher start failed; retry scheduled", {
-          attempt: attempt + 1,
-          delayMs,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        watchRetryTimer = setTimeout(() => {
-          watchRetryTimer = null;
-          startWatch(attempt + 1);
-        }, delayMs);
-      });
-    };
-    startWatch();
-
     return () => {
-      watchCancelled = true;
-      if (watchRetryTimer) {
-        clearTimeout(watchRetryTimer);
-        watchRetryTimer = null;
-      }
       offBatch();
       offRemoved();
     };

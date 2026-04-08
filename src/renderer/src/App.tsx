@@ -346,13 +346,14 @@ export default function App({
   // Replaces the old cascade: useEffect(hasLoaded) → useEffect(mount) → quickVerify → scan
   useEffect(() => {
     let handle: { cancel: () => void } | null = null;
-
     void (async () => {
       // Step 1: Initialize subfolder state (was useEffect chain in useFolderController)
       await initializeFolders();
 
-      // Step 2: Run quickVerify → conditional scan → deferred integrity check
-      // Uses bootstrap-provided quickVerify result instead of running it again
+      // Step 2: Start watcher in paused mode (captures events, defers processing until scan completes)
+      await window.image.watch({ paused: true });
+
+      // Step 3: Run quickVerify → conditional scan; scan's setWatcherScanActive(false) flushes deferred events
       handle = runAppInitialization({
         loadSearchPresetStats,
         scanningRef,
@@ -362,7 +363,9 @@ export default function App({
       });
     })();
 
-    return () => handle?.cancel();
+    return () => {
+      handle?.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once orchestrator
   }, []);
 

@@ -2,77 +2,12 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useImageEventSubscriptions } from "@/hooks/useImageWatchBootstrap";
 import { createImageRow } from "../helpers/image-row";
-import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
+import { preloadEvents } from "../helpers/preload-mocks";
 
 describe("useImageEventSubscriptions", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
-  });
-
-  it("retries watcher startup with backoff and stops retrying after unmount", async () => {
-    vi.useFakeTimers();
-    preloadMocks.image.watch
-      .mockRejectedValueOnce(new Error("watch failed"))
-      .mockResolvedValueOnce(undefined);
-
-    const { unmount } = renderHook(() =>
-      useImageEventSubscriptions({
-        scheduleSearchStatsRefresh: vi.fn(),
-        scanningRef: { current: false },
-        scanStartCountRef: { current: 0 },
-        rescanningRef: { current: false },
-        scheduleAnalysis: vi.fn(),
-        addPendingChanges: vi.fn(),
-      }),
-    );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(999);
-    });
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(2);
-
-    preloadMocks.image.watch
-      .mockReset()
-      .mockRejectedValueOnce(new Error("watch failed again"));
-
-    const { unmount: unmountBeforeRetry } = renderHook(() =>
-      useImageEventSubscriptions({
-        scheduleSearchStatsRefresh: vi.fn(),
-        scanningRef: { current: false },
-        scanStartCountRef: { current: 0 },
-        rescanningRef: { current: false },
-        scheduleAnalysis: vi.fn(),
-        addPendingChanges: vi.fn(),
-      }),
-    );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
-
-    unmountBeforeRetry();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
-    });
-
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
-
-    unmount();
   });
 
   it("accumulates pending changes from batch and removed events", async () => {
@@ -91,12 +26,6 @@ describe("useImageEventSubscriptions", () => {
         addPendingChanges,
       }),
     );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(preloadMocks.image.watch).toHaveBeenCalledTimes(1);
 
     act(() => {
       preloadEvents.image.batch.emit([]);
@@ -128,10 +57,6 @@ describe("useImageEventSubscriptions", () => {
         addPendingChanges,
       }),
     );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
 
     act(() => {
       preloadEvents.image.batch.emit([createImageRow({ id: 1 })]);
