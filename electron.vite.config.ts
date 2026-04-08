@@ -63,6 +63,7 @@ export default defineConfig({
           index: resolve("src/main/index.ts"),
           "nai.worker": resolve("src/main/lib/nai.worker.ts"),
           "phash.worker": resolve("src/main/lib/phash.worker.ts"),
+          "bench-scan-worker": resolve("src/main/lib/bench-scan-worker.ts"),
           utility: resolve("src/main/utility.ts"),
         },
       },
