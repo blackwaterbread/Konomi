@@ -38,8 +38,12 @@ describe("useImageWatchBootstrap", () => {
       preloadEvents.image.removed.emit([11, 12]);
     });
 
-    expect(schedulePageRefresh).toHaveBeenCalledWith(150);
+    // Batch events no longer trigger schedulePageRefresh — they call
+    // incrementPendingNew instead (gallery shows "new images" banner).
+    // Only the removed event triggers schedulePageRefresh(60).
+    expect(schedulePageRefresh).toHaveBeenCalledTimes(1);
     expect(schedulePageRefresh).toHaveBeenCalledWith(60);
+    // init(0) + batch + removed = 3
     expect(scheduleAnalysis).toHaveBeenCalledTimes(3);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
