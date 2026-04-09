@@ -99,6 +99,7 @@ interface SidebarFolderActions {
   onFolderToggleCollapse?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
+  onFoldersAdded?: (folderIds: number[]) => void;
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
   onSubfolderToggle?: (path: string, folderId: number) => void;
@@ -1614,6 +1615,7 @@ export const Sidebar = memo(
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
+      onFoldersAdded,
       onFolderCancelled,
       onFolderRescan,
       onSubfolderToggle,
@@ -1775,17 +1777,22 @@ export const Sidebar = memo(
     const handleMultiFolderSubmit = useCallback(
       async (paths: string[]) => {
         const { added, errors } = await addFolders(paths);
-        for (const folder of added) {
-          onFolderAdded?.(folder.id);
-        }
         if (added.length > 0) {
+          const addedIds = added.map((f) => f.id);
+          if (onFoldersAdded) {
+            onFoldersAdded(addedIds);
+          } else {
+            for (const folder of added) {
+              onFolderAdded?.(folder.id);
+            }
+          }
           toast.success(
             t("sidebar.folders.addedMultiple", { count: added.length }),
           );
         }
         return { errors };
       },
-      [addFolders, onFolderAdded, t],
+      [addFolders, onFolderAdded, onFoldersAdded, t],
     );
 
     useImperativeHandle(

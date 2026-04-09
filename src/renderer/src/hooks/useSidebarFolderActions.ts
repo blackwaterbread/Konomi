@@ -63,6 +63,49 @@ export function useSidebarFolderActions({
     ],
   );
 
+  const handleFoldersAdded = useCallback(
+    (folderIds: number[]) => {
+      if (folderIds.length === 0) return;
+      if (folderIds.length === 1) {
+        handleFolderAdded(folderIds[0]);
+        return;
+      }
+      log.info("Multiple folders added", { folderIds });
+      for (const folderId of folderIds) {
+        addSelectedFolder(folderId);
+      }
+      setRollbackFolderIds((prev) => {
+        const next = new Set(prev);
+        for (const id of folderIds) next.add(id);
+        return next;
+      });
+      setActiveScanFolderIds((prev) => {
+        const next = new Set(prev);
+        for (const id of folderIds) next.add(id);
+        return next;
+      });
+      void runScan({ folderIds, detectDuplicates: true }).then((ok) => {
+        if (!ok) return;
+        void refreshSubfolders(folderIds);
+        setRollbackFolderIds((prev) => {
+          const next = new Set(prev);
+          for (const id of folderIds) next.delete(id);
+          return next;
+        });
+        scheduleAnalysis(0);
+      });
+    },
+    [
+      addSelectedFolder,
+      handleFolderAdded,
+      refreshSubfolders,
+      runScan,
+      scheduleAnalysis,
+      setActiveScanFolderIds,
+      setRollbackFolderIds,
+    ],
+  );
+
   const handleFolderCancelled = useCallback(
     (folderId: number) => {
       log.info("Folder add rollback/cancelled", { folderId });
@@ -145,6 +188,7 @@ export function useSidebarFolderActions({
 
   return {
     handleFolderAdded,
+    handleFoldersAdded,
     handleFolderCancelled,
     handleFolderRemoved,
     handleFolderRescan,

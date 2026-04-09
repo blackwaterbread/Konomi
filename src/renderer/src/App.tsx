@@ -219,6 +219,7 @@ export default function App({
 
   const {
     handleFolderAdded,
+    handleFoldersAdded,
     handleFolderCancelled,
     handleFolderRemoved,
     handleFolderRescan,
@@ -480,6 +481,7 @@ export default function App({
       onFolderToggleCollapse: toggleCollapse,
       onFolderRemoved: handleFolderRemoved,
       onFolderAdded: handleFolderAdded,
+      onFoldersAdded: handleFoldersAdded,
       onFolderCancelled: handleFolderCancelled,
       onFolderRescan: handleFolderRescan,
       onSubfolderToggle: toggleSubfolder,
@@ -490,6 +492,7 @@ export default function App({
       addFolder,
       addFolders,
       handleFolderAdded,
+      handleFoldersAdded,
       handleFolderCancelled,
       handleFolderRemoved,
       handleFolderRescan,
