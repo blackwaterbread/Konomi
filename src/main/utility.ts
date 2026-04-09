@@ -149,16 +149,19 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       const folderImageIds = await listImageIdsForFolder(id);
       const folderStatRows = await listImageSearchStatSourcesForFolder(id);
       await deleteFolder(id);
-      await deleteSimilarityCacheForImageIds(folderImageIds);
-      await decrementImageSearchStatsForRows(
-        folderStatRows,
-        emitSearchStatsProgress,
-      );
-      try {
-        await getDB().$executeRawUnsafe("PRAGMA incremental_vacuum");
-      } catch {
-        /* ignore */
-      }
+      // Defer non-critical cleanup so the UI gets an immediate response
+      (async () => {
+        await deleteSimilarityCacheForImageIds(folderImageIds);
+        await decrementImageSearchStatsForRows(
+          folderStatRows,
+          emitSearchStatsProgress,
+        );
+        try {
+          await getDB().$executeRawUnsafe("PRAGMA incremental_vacuum");
+        } catch {
+          /* ignore */
+        }
+      })();
       return null;
     }
     case "folder:rename": {
