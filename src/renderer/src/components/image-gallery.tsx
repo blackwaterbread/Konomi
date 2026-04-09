@@ -1185,6 +1185,13 @@ export const ImageGallery = memo(function ImageGallery({
         </div>
       )}
 
+      {scanning && images.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground bg-muted/50 border-b border-border">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("gallery.scanningBanner")}
+        </div>
+      )}
+
       <GalleryResults
         paged={paged}
         scrollRef={scrollRef}

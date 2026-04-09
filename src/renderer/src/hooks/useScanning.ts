@@ -163,7 +163,6 @@ export function useScanning({
     folderRollbackRequest,
     setFolderRollbackRequest,
     scanningRef,
-    scanStartCountRef,
     runScan,
     waitForScanToStop,
     handleCancelScan,

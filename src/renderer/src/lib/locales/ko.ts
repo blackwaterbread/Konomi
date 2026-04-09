@@ -180,6 +180,7 @@ const ko = {
       "등록된 폴더를 확인하고 이미지를 불러오고 있습니다.",
     scanningTitle: "폴더를 스캔하고 있습니다",
     scanningDescription: "이미지를 불러오는 중입니다. 잠시만 기다려 주세요.",
+    scanningBanner: "스캔 중 — 완료 후 갤러리가 갱신됩니다",
     syncingBanner: "라이브러리 동기화 중...",
     emptyTitle: "이미지가 없습니다",
     emptyDescription: "검색 조건을 변경하거나 필터를 조정해 보세요.",

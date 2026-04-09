@@ -6,7 +6,6 @@ interface UseImageWatchBootstrapOptions {
   loadSearchPresetStats: () => Promise<void>;
   scheduleSearchStatsRefresh: (delay?: number) => void;
   scanningRef: MutableRefObject<boolean>;
-  scanStartCountRef: MutableRefObject<number>;
   rescanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
   schedulePageRefresh: (delay?: number) => void;
@@ -40,8 +39,11 @@ export function runAppInitialization({
 
   void (async () => {
     void loadSearchPresetStats();
+    // Skip duplicate detection on boot — it requires hashing candidate files
+    // which adds significant IO. The watcher catches duplicates in real-time
+    // for new files, and folder-add scans run with detectDuplicates=true.
     await runScan({
-      detectDuplicates: true,
+      detectDuplicates: false,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
@@ -64,43 +66,19 @@ export function runAppInitialization({
 export function useImageEventSubscriptions({
   scheduleSearchStatsRefresh,
   scanningRef,
-  scanStartCountRef,
   rescanningRef,
   scheduleAnalysis,
   schedulePageRefresh,
 }: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan">) {
-  const SCAN_REFRESH_INTERVAL_MS = 3000;
-
   useEffect(() => {
-    let scanFirstBatchFired = false;
-    let lastScanRefreshAt = 0;
-    let lastSeenScanStart = 0;
-
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
       if (rescanningRef.current) return;
       if (scanningRef.current) {
-        if (scanStartCountRef.current !== lastSeenScanStart) {
-          lastSeenScanStart = scanStartCountRef.current;
-          scanFirstBatchFired = false;
-          lastScanRefreshAt = 0;
-        }
-        if (!scanFirstBatchFired) {
-          scanFirstBatchFired = true;
-          lastScanRefreshAt = Date.now();
-          schedulePageRefresh(0);
-        } else {
-          const elapsed = Date.now() - lastScanRefreshAt;
-          if (elapsed >= SCAN_REFRESH_INTERVAL_MS) {
-            lastScanRefreshAt = Date.now();
-            schedulePageRefresh(0);
-          } else {
-            schedulePageRefresh(SCAN_REFRESH_INTERVAL_MS - elapsed);
-          }
-        }
+        // Skip gallery refresh during scan — scan completion in useScanning
+        // triggers a full schedulePageRefresh(0) anyway. Refreshing mid-scan
+        // causes DB reads + image file reads that compete with scan IO.
       } else {
-        scanFirstBatchFired = false;
-        lastScanRefreshAt = 0;
         schedulePageRefresh(150);
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
@@ -120,7 +98,6 @@ export function useImageEventSubscriptions({
     };
   }, [
     scanningRef,
-    scanStartCountRef,
     rescanningRef,
     scheduleAnalysis,
     schedulePageRefresh,

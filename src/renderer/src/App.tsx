@@ -200,7 +200,6 @@ export default function App({
     setScanCancelConfirmOpen,
     folderRollbackRequest,
     scanningRef,
-    scanStartCountRef,
     runScan,
     handleCancelScan,
     confirmCancelScan,
@@ -333,7 +332,6 @@ export default function App({
   useImageEventSubscriptions({
     scheduleSearchStatsRefresh,
     scanningRef,
-    scanStartCountRef,
     rescanningRef,
     scheduleAnalysis,
     schedulePageRefresh,

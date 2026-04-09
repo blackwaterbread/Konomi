@@ -162,6 +162,7 @@ const HASH_SCAN_CONCURRENCY = Math.min(
   Math.max(4, Math.ceil(CPU_COUNT * 1.5)),
 );
 const SYNC_SCAN_CONCURRENCY = Math.min(24, Math.max(8, CPU_COUNT * 2));
+const STAT_CONCURRENCY = Math.min(128, Math.max(32, CPU_COUNT * 4));
 
 class WorkerPool {
   private idle: Worker[] = [];
@@ -2383,8 +2384,6 @@ export async function syncAllFolders(
         const existingMap = new Map(existing.map((e) => [e.path, e] as const));
         // 스트리밍 중 발견된 경로를 기록 → 완료 후 stale row 감지에 사용
         const discoveredPathSet = new Set<string>();
-        // 기존 파일 중 mtime 변경되어 재처리가 필요한 항목은 스트리밍 후 2차 처리
-        const deferredExisting: string[] = [];
 
         type DataEntry = {
           path: string;
@@ -2499,27 +2498,27 @@ export async function syncAllFolders(
           }
         };
 
-        // Phase 1: 스트리밍으로 신규 파일을 발견 즉시 처리, 기존 파일은 분류만
+        // Phase 1: stat 전용 고병렬 패스 — 파일 분류만 수행
+        // stat()은 순수 I/O이므로 높은 동시성으로 실행하여 콜드 캐시에서도 빠르게 분류
+        const newFiles: string[] = [];
+        const changedFiles: string[] = [];
         await withConcurrency(
           walkImageFiles(folder.path, signal),
-          SYNC_SCAN_CONCURRENCY,
+          STAT_CONCURRENCY,
           async (filePath) => {
             discoveredPathSet.add(filePath);
             const existingRow = existingMap.get(filePath);
             if (!existingRow) {
-              // 신규 파일 → 즉시 처리
-              await processFile(filePath);
+              newFiles.push(filePath);
+            } else if (existingRow.source === "unknown") {
+              changedFiles.push(filePath);
             } else {
-              // 기존 파일 → mtime 변경 여부 확인 후 재처리 대상만 기록
-              if (
-                existingRow.fileModifiedAt.getTime() !==
-                  (await fs.promises
-                    .stat(filePath)
-                    .then((s) => s.mtime.getTime())
-                    .catch(() => existingRow.fileModifiedAt.getTime())) ||
-                existingRow.source === "unknown"
-              ) {
-                deferredExisting.push(filePath);
+              const mtime = await fs.promises
+                .stat(filePath)
+                .then((s) => s.mtime.getTime())
+                .catch(() => existingRow.fileModifiedAt.getTime());
+              if (existingRow.fileModifiedAt.getTime() !== mtime) {
+                changedFiles.push(filePath);
               } else {
                 done++;
                 const progressNow = Date.now();
@@ -2533,10 +2532,10 @@ export async function syncAllFolders(
           signal,
         );
 
-        // Phase 2: 기존 파일 중 재처리 필요한 항목 처리
-        if (deferredExisting.length > 0 && !signal?.cancelled) {
+        // Phase 2: 신규 + 변경 파일만 메타데이터 추출
+        if (!signal?.cancelled && newFiles.length + changedFiles.length > 0) {
           await withConcurrency(
-            deferredExisting,
+            [...newFiles, ...changedFiles],
             SYNC_SCAN_CONCURRENCY,
             processFile,
             signal,

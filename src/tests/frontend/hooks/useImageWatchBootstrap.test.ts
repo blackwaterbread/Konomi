@@ -22,7 +22,6 @@ describe("useImageWatchBootstrap", () => {
         loadSearchPresetStats,
         scheduleSearchStatsRefresh,
         scanningRef,
-        scanStartCountRef: { current: 0 },
         rescanningRef: { current: false },
         scheduleAnalysis,
         schedulePageRefresh,
@@ -46,7 +45,7 @@ describe("useImageWatchBootstrap", () => {
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
   });
 
-  it("uses immediate refresh for the first scan batch, then slower for subsequent", async () => {
+  it("skips gallery refresh during scan to avoid IO contention", async () => {
     const scheduleSearchStatsRefresh = vi.fn();
     const scheduleAnalysis = vi.fn();
     const schedulePageRefresh = vi.fn();
@@ -57,7 +56,6 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh,
 
         scanningRef: { current: true },
-        scanStartCountRef: { current: 1 },
         rescanningRef: { current: false },
         scheduleAnalysis,
         schedulePageRefresh,
@@ -65,33 +63,17 @@ describe("useImageWatchBootstrap", () => {
       }),
     );
 
-    // Wait for the initial async chain (quickVerify → runScan → scheduleAnalysis)
     await act(async () => {
       await Promise.resolve();
     });
 
-    // scheduleAnalysis called once during initial setup (runScan().then)
-    const setupCallCount = scheduleAnalysis.mock.calls.length;
-
-    // First batch during scan → immediate refresh
+    // Batches during scan should NOT trigger gallery refresh
     act(() => {
       preloadEvents.image.batch.emit([createImageRow({ id: 1 })]);
-    });
-
-    expect(schedulePageRefresh).toHaveBeenCalledWith(0);
-    // Batch handler during scan does not call scheduleAnalysis
-    expect(scheduleAnalysis).toHaveBeenCalledTimes(setupCallCount);
-    expect(scheduleSearchStatsRefresh).not.toHaveBeenCalled();
-
-    schedulePageRefresh.mockClear();
-
-    // Second batch during scan → debounced refresh
-    act(() => {
       preloadEvents.image.batch.emit([createImageRow({ id: 2 })]);
     });
 
-    // 두 번째 배치는 스로틀 경로 — 0보다 큰 지연값으로 호출되어야 한다
-    expect(schedulePageRefresh).toHaveBeenCalledTimes(1);
-    expect(schedulePageRefresh.mock.calls[0][0]).toBeGreaterThan(0);
+    expect(schedulePageRefresh).not.toHaveBeenCalled();
+    expect(scheduleSearchStatsRefresh).not.toHaveBeenCalled();
   });
 });
