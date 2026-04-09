@@ -392,6 +392,10 @@ const en = {
     next: "Next",
     summary:
       "{{existingCount}} existing file(s) / {{incomingCount}} new file(s)",
+    pathLabel: {
+      existing: "Existing files:",
+      incoming: "New files:",
+    },
     sample: "Sample: {{fileName}}",
     choice: {
       existing: "Keep existing",

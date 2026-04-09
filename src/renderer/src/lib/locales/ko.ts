@@ -391,6 +391,10 @@ const ko = {
     previous: "이전",
     next: "다음",
     summary: "기존 파일 {{existingCount}}개 / 새 파일 {{incomingCount}}개",
+    pathLabel: {
+      existing: "기존 파일:",
+      incoming: "새 파일:",
+    },
     sample: "샘플: {{fileName}}",
     choice: {
       existing: "기존 유지 (새 파일 제거)",

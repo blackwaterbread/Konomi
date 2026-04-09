@@ -130,18 +130,25 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           keep: "existing" | "incoming" | "ignore";
         }>;
       };
-      const resolved = await resolveFolderDuplicates(
-        resolutions,
-        emitSearchStatsProgress,
-      );
-      if (resolved.removedImageIds.length > 0) {
-        utilitySender.send("image:removed", resolved.removedImageIds);
+      // Pause watcher during resolution to prevent it from re-detecting
+      // deleted/retained files as new changes or new duplicates.
+      setWatcherScanActive(true);
+      try {
+        const resolved = await resolveFolderDuplicates(
+          resolutions,
+          emitSearchStatsProgress,
+        );
+        if (resolved.removedImageIds.length > 0) {
+          utilitySender.send("image:removed", resolved.removedImageIds);
+        }
+        notifyWatchDuplicateResolved({
+          touchedIncomingPaths: resolved.touchedIncomingPaths,
+          retainedIncomingPaths: resolved.retainedIncomingPaths,
+        });
+        return null;
+      } finally {
+        setWatcherScanActive(false);
       }
-      notifyWatchDuplicateResolved({
-        touchedIncomingPaths: resolved.touchedIncomingPaths,
-        retainedIncomingPaths: resolved.retainedIncomingPaths,
-      });
-      return null;
     }
     case "folder:delete": {
       const { id } = payload as { id: number };

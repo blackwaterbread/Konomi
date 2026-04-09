@@ -200,20 +200,37 @@ export function DuplicateResolutionDialog({
                         />
                       </button>
 
-                      <div className="rounded-md border border-border/60 bg-secondary/10 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                      <div className="rounded-md border border-border/60 bg-secondary/10 px-3 py-2 text-xs text-muted-foreground space-y-2 max-h-40 overflow-y-auto">
                         <p>
                           {t("duplicateResolution.summary", {
                             existingCount: currentItem.existingEntries.length,
                             incomingCount: currentItem.incomingEntries.length,
                           })}
                         </p>
-                        <p className="break-all">
-                          {t("duplicateResolution.sample", {
-                            fileName: currentItem.previewFileName,
-                          })}
-                          <br />
-                          {currentItem.previewPath}
-                        </p>
+                        {currentItem.existingEntries.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-foreground/70">
+                              {t("duplicateResolution.pathLabel.existing")}
+                            </p>
+                            {currentItem.existingEntries.map((entry) => (
+                              <p key={entry.path} className="break-all pl-2">
+                                {entry.path}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                        {currentItem.incomingEntries.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-foreground/70">
+                              {t("duplicateResolution.pathLabel.incoming")}
+                            </p>
+                            {currentItem.incomingEntries.map((entry) => (
+                              <p key={entry.path} className="break-all pl-2">
+                                {entry.path}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex gap-2">
