@@ -180,6 +180,7 @@ const en = {
     scanningDescription: "Loading images. Please wait a moment.",
     scanningBanner: "Scanning — gallery will refresh when done",
     syncingBanner: "Syncing library...",
+    pendingNewBanner: "{{count}} new image(s) — click to refresh",
     emptyTitle: "No images found",
     emptyDescription: "Try changing the search or adjusting filters.",
     columnSize: {

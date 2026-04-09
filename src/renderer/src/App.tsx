@@ -173,6 +173,8 @@ export default function App({
     searchQuery,
     handleSearchChange,
     schedulePageRefresh,
+    incrementPendingNew,
+    applyPendingRefresh,
     listBaseQuery,
     imageGalleryState,
     imageGalleryPagination,
@@ -336,6 +338,7 @@ export default function App({
     rescanningRef,
     scheduleAnalysis,
     schedulePageRefresh,
+    incrementPendingNew,
   });
 
   // Single mount orchestrator — explicit sequential initialization
@@ -671,6 +674,7 @@ export default function App({
               onGalleryColumnsChange={(v) =>
                 updateSettings({ galleryColumns: v })
               }
+              onApplyPendingRefresh={applyPendingRefresh}
             />
           </div>
         </div>

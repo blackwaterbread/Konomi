@@ -150,6 +150,7 @@ interface ImageGalleryState {
   isInitializing?: boolean;
   isRefreshing?: boolean;
   selectionScopeKey?: string;
+  pendingNewCount?: number;
 }
 
 interface ImageGalleryActions {
@@ -192,6 +193,7 @@ interface ImageGalleryProps {
   onColumnCountChange?: (count: number) => void;
   galleryColumns?: "auto" | number;
   onGalleryColumnsChange?: (value: "auto" | number) => void;
+  onApplyPendingRefresh?: () => void;
 }
 
 interface GalleryToolbarProps {
@@ -963,6 +965,7 @@ export const ImageGallery = memo(function ImageGallery({
   onColumnCountChange,
   galleryColumns,
   onGalleryColumnsChange,
+  onApplyPendingRefresh,
 }: ImageGalleryProps) {
   const {
     images,
@@ -973,6 +976,7 @@ export const ImageGallery = memo(function ImageGallery({
     isInitializing = false,
     isRefreshing = false,
     selectionScopeKey,
+    pendingNewCount = 0,
   } = gallery;
   const { t } = useTranslation();
   const {
@@ -1190,6 +1194,17 @@ export const ImageGallery = memo(function ImageGallery({
           <Loader2 className="h-3 w-3 animate-spin" />
           {t("gallery.scanningBanner")}
         </div>
+      )}
+
+      {pendingNewCount > 0 && !scanning && (
+        <button
+          type="button"
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-primary-foreground bg-primary/90 border-b border-primary hover:bg-primary transition-colors cursor-pointer select-none"
+          onClick={onApplyPendingRefresh}
+        >
+          <RotateCw className="h-4 w-4" />
+          {t("gallery.pendingNewBanner", { count: pendingNewCount })}
+        </button>
       )}
 
       <GalleryResults

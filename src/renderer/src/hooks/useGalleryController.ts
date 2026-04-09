@@ -93,6 +93,9 @@ export function useGalleryController({
     galleryTotalPages,
     hasLoadedOnce,
     isLoading: isGalleryLoading,
+    pendingNewCount,
+    incrementPendingNew,
+    applyPendingRefresh,
     schedulePageRefresh,
   } = useGalleryImages(listBaseQuery, { enabled, overlayActiveRef: galleryOverlayActiveRef });
 
@@ -235,6 +238,7 @@ export function useGalleryController({
       isInitializing: !hasLoadedOnce,
       isRefreshing: galleryOverlayVisible || (isGalleryLoading && hasLoadedOnce),
       selectionScopeKey: gallerySelectionScopeKey,
+      pendingNewCount,
     }),
     [
       folderCount,
@@ -243,6 +247,7 @@ export function useGalleryController({
       hasLoadedOnce,
       images,
       isGalleryLoading,
+      pendingNewCount,
       searchQuery,
       sortBy,
       totalImageCount,
@@ -275,6 +280,8 @@ export function useGalleryController({
     searchQuery,
     handleSearchChange,
     schedulePageRefresh,
+    incrementPendingNew,
+    applyPendingRefresh,
     listBaseQuery,
     imageGalleryState,
     imageGalleryPagination,

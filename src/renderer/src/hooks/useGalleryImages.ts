@@ -24,6 +24,7 @@ export function useGalleryImages(
   const [galleryTotalPages, setGalleryTotalPages] = useState(1);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingNewCount, setPendingNewCount] = useState(0);
 
   const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -55,6 +56,7 @@ export function useGalleryImages(
 
   const loadImagesPage = useCallback(async () => {
     if (!enabled) return;
+    setPendingNewCount(0);
     const requestId = ++listRequestSeqRef.current;
     setIsLoading(true);
     // Eagerly unmount old cards so Blink can release decoded bitmaps
@@ -92,6 +94,20 @@ export function useGalleryImages(
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- overlayActiveRef is a stable ref
   }, [enabled, galleryPage, listBaseQuery]);
+
+  const incrementPendingNew = useCallback((count: number) => {
+    if (!enabledRef.current) return;
+    if (builtinCategoryRef.current === "random") return;
+    setPendingNewCount((prev) => prev + count);
+  }, []);
+
+  const applyPendingRefresh = useCallback(() => {
+    setPendingNewCount(0);
+    if (pageRefreshTimerRef.current) clearTimeout(pageRefreshTimerRef.current);
+    pageRefreshTimerRef.current = setTimeout(() => {
+      void loadImagesPageRef.current();
+    }, 0);
+  }, []);
 
   const schedulePageRefresh = useCallback((delay = 120) => {
     if (!enabledRef.current) return;
@@ -147,6 +163,9 @@ export function useGalleryImages(
     galleryTotalPages,
     hasLoadedOnce,
     isLoading,
+    pendingNewCount,
+    incrementPendingNew,
+    applyPendingRefresh,
     schedulePageRefresh,
   };
 }

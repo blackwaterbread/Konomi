@@ -69,7 +69,15 @@ export function useImageEventSubscriptions({
   rescanningRef,
   scheduleAnalysis,
   schedulePageRefresh,
-}: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan">) {
+  incrementPendingNew,
+}: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan"> & {
+  incrementPendingNew: (count: number) => void;
+}) {
+  const incrementPendingNewRef = useRef(incrementPendingNew);
+  useEffect(() => {
+    incrementPendingNewRef.current = incrementPendingNew;
+  }, [incrementPendingNew]);
+
   useEffect(() => {
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
@@ -79,7 +87,9 @@ export function useImageEventSubscriptions({
         // triggers a full schedulePageRefresh(0) anyway. Refreshing mid-scan
         // causes DB reads + image file reads that compete with scan IO.
       } else {
-        schedulePageRefresh(150);
+        // Accumulate count instead of refreshing — gallery shows a banner
+        // so the user can refresh when ready.
+        incrementPendingNewRef.current(rows.length);
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
       }
@@ -87,6 +97,7 @@ export function useImageEventSubscriptions({
 
     const offRemoved = window.image.onRemoved((ids: number[]) => {
       if (ids.length === 0) return;
+      // Removals still auto-refresh to avoid showing stale/broken cards
       schedulePageRefresh(60);
       scheduleAnalysis();
       scheduleSearchStatsRefresh(120);
@@ -123,6 +134,7 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     ...subscriptionOptions,
     scanningRef,
     scheduleAnalysis,
+    incrementPendingNew: () => {},
   });
 
   // Initialization — run once on mount with no quickVerify (fallback path)

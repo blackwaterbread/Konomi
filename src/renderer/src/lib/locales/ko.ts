@@ -182,6 +182,7 @@ const ko = {
     scanningDescription: "이미지를 불러오는 중입니다. 잠시만 기다려 주세요.",
     scanningBanner: "스캔 중 — 완료 후 갤러리가 갱신됩니다",
     syncingBanner: "라이브러리 동기화 중...",
+    pendingNewBanner: "새 이미지 {{count}}장 — 클릭하여 새로고침",
     emptyTitle: "이미지가 없습니다",
     emptyDescription: "검색 조건을 변경하거나 필터를 조정해 보세요.",
     columnSize: {
