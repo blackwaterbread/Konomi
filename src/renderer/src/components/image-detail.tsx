@@ -23,6 +23,11 @@ import {
   MonitorPlay,
   Play,
   Pause,
+  ExternalLink,
+  Tag,
+  Trash2,
+  ImagePlus,
+  RotateCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -38,6 +43,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { parsePromptTokens, isGroupRef, type PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
@@ -341,70 +353,39 @@ const InfoPanel = memo(function InfoPanel({
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
-      <div className="p-4 space-y-3">
-        {/* Prompt */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => toggleSection("prompt")}
-              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
-            >
-              <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed.prompt && "-rotate-90")} />
-              Prompt
-            </button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-              onClick={() => onCopy("prompt", image.prompt)}
-            >
-              {copiedKey === "prompt" ? (
-                <Check className="h-3 w-3 text-success" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-            </Button>
-          </div>
-          {!collapsed.prompt && (
-            <TokenContainer
-              tokens={image.tokens}
-              isEditable={false}
-              onAddTagToSearch={onAddTagToSearch}
-              onAddTagToGeneration={onAddTagToGenerator}
-              highlightFilter={tagFilter}
-            />
-          )}
-        </div>
-
-        {/* Negative Prompt */}
-        {image.negativePrompt && (
-          <div className="space-y-1 border-t border-border/60 pt-3">
+        <div className="p-4 space-y-3">
+          {/* Prompt */}
+          <div className="space-y-1">
             <div className="flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => toggleSection("negative")}
+                onClick={() => toggleSection("prompt")}
                 className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
               >
-                <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed.negative && "-rotate-90")} />
-                Negative
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    collapsed.prompt && "-rotate-90",
+                  )}
+                />
+                Prompt
               </button>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-                onClick={() => onCopy("negative", image.negativePrompt!)}
+                onClick={() => onCopy("prompt", image.prompt)}
               >
-                {copiedKey === "negative" ? (
+                {copiedKey === "prompt" ? (
                   <Check className="h-3 w-3 text-success" />
                 ) : (
                   <Copy className="h-3 w-3" />
                 )}
               </Button>
             </div>
-            {!collapsed.negative && (
+            {!collapsed.prompt && (
               <TokenContainer
-                tokens={image.negativeTokens}
+                tokens={image.tokens}
                 isEditable={false}
                 onAddTagToSearch={onAddTagToSearch}
                 onAddTagToGeneration={onAddTagToGenerator}
@@ -412,39 +393,40 @@ const InfoPanel = memo(function InfoPanel({
               />
             )}
           </div>
-        )}
 
-        {/* Character Prompts */}
-        {image.characterPrompts &&
-          image.characterPrompts.map((cp, i) => (
-            <div key={i} className="space-y-1 border-t border-border/60 pt-3">
+          {/* Negative Prompt */}
+          {image.negativePrompt && (
+            <div className="space-y-1 border-t border-border/60 pt-3">
               <div className="flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => toggleSection("char")}
+                  onClick={() => toggleSection("negative")}
                   className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
                 >
-                  <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed.char && "-rotate-90")} />
-                  Char {i + 1}
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 transition-transform",
+                      collapsed.negative && "-rotate-90",
+                    )}
+                  />
+                  Negative
                 </button>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => onCopy(`char-${i}`, cp)}
+                  onClick={() => onCopy("negative", image.negativePrompt!)}
                 >
-                  {copiedKey === `char-${i}` ? (
+                  {copiedKey === "negative" ? (
                     <Check className="h-3 w-3 text-success" />
                   ) : (
                     <Copy className="h-3 w-3" />
                   )}
                 </Button>
               </div>
-              {!collapsed.char && (
+              {!collapsed.negative && (
                 <TokenContainer
-                  tokens={parsePromptTokens(cp).filter(
-                    (t): t is PromptToken => !isGroupRef(t),
-                  )}
+                  tokens={image.negativeTokens}
                   isEditable={false}
                   onAddTagToSearch={onAddTagToSearch}
                   onAddTagToGeneration={onAddTagToGenerator}
@@ -452,130 +434,182 @@ const InfoPanel = memo(function InfoPanel({
                 />
               )}
             </div>
-          ))}
-
-        {/* Metadata */}
-        <div className="border-t border-border/60 pt-3 space-y-1">
-          <button
-            type="button"
-            onClick={() => toggleSection("info")}
-            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
-          >
-            <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed.info && "-rotate-90")} />
-            Info
-          </button>
-          {!collapsed.info && (<>
-          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.model")}
-            </span>
-            <span className="text-foreground/80 truncate">
-              {image.model || t("imageDetail.info.unavailable")}
-            </span>
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.seed")}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="font-mono text-foreground/80">
-                {hasSeed ? image.seed : t("imageDetail.info.unavailable")}
-              </span>
-              {hasSeed ? (
-                <button
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => onCopy("seed", String(image.seed))}
-                >
-                  {copiedKey === "seed" ? (
-                    <Check className="h-3 w-3 text-success" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </button>
-              ) : null}
-            </span>
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.size")}
-            </span>
-            <span className="font-mono text-foreground/80">
-              {image.width}×{image.height}
-            </span>
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.sampler")}
-            </span>
-            <span className="text-foreground/80 truncate">
-              {image.sampler || t("imageDetail.info.unavailable")}
-            </span>
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.steps")}
-            </span>
-            <span className="font-mono text-foreground/80">
-              {image.steps || t("imageDetail.info.unavailable")}
-            </span>
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.cfg")}
-            </span>
-            <span className="font-mono text-foreground/80">
-              {image.cfgScale || t("imageDetail.info.unavailable")}
-            </span>
-            {image.cfgRescale ? (
-              <>
-                <span className="text-muted-foreground/70">
-                  {t("imageDetail.info.cfgRescale")}
-                </span>
-                <span className="font-mono text-foreground/80">
-                  {image.cfgRescale}
-                </span>
-              </>
-            ) : null}
-            {image.noiseSchedule ? (
-              <>
-                <span className="text-muted-foreground/70">
-                  {t("imageDetail.info.noiseSchedule")}
-                </span>
-                <span className="text-foreground/80 truncate">
-                  {image.noiseSchedule}
-                </span>
-              </>
-            ) : null}
-            {image.varietyPlus ? (
-              <>
-                <span className="text-muted-foreground/70">
-                  {t("imageDetail.info.varietyPlus")}
-                </span>
-                <span className="text-foreground/80">ON</span>
-              </>
-            ) : null}
-            <span className="text-muted-foreground/70">
-              {t("imageDetail.info.date")}
-            </span>
-            <span className="text-foreground/80">
-              {formatDate(image.fileModifiedAt)}
-            </span>
-            {image.pHash ? (
-              <>
-                <span className="text-muted-foreground/70">
-                  {t("imageDetail.info.phash")}
-                </span>
-                <span className="font-mono text-muted-foreground/80 truncate">
-                  {image.pHash}
-                </span>
-              </>
-            ) : null}
-          </div>
-          {image.source === "comfyui" && onViewWorkflow && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-2 w-full gap-1.5 text-xs"
-              onClick={onViewWorkflow}
-            >
-              <Workflow className="h-3.5 w-3.5" />
-              {t("imageDetail.info.viewWorkflow")}
-            </Button>
           )}
-          </>)}
+
+          {/* Character Prompts */}
+          {image.characterPrompts &&
+            image.characterPrompts.map((cp, i) => (
+              <div key={i} className="space-y-1 border-t border-border/60 pt-3">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection("char")}
+                    className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-3 w-3 transition-transform",
+                        collapsed.char && "-rotate-90",
+                      )}
+                    />
+                    Char {i + 1}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1.5 py-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => onCopy(`char-${i}`, cp)}
+                  >
+                    {copiedKey === `char-${i}` ? (
+                      <Check className="h-3 w-3 text-success" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+                {!collapsed.char && (
+                  <TokenContainer
+                    tokens={parsePromptTokens(cp).filter(
+                      (t): t is PromptToken => !isGroupRef(t),
+                    )}
+                    isEditable={false}
+                    onAddTagToSearch={onAddTagToSearch}
+                    onAddTagToGeneration={onAddTagToGenerator}
+                    highlightFilter={tagFilter}
+                  />
+                )}
+              </div>
+            ))}
+
+          {/* Metadata */}
+          <div className="border-t border-border/60 pt-3 space-y-1">
+            <button
+              type="button"
+              onClick={() => toggleSection("info")}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none hover:text-muted-foreground transition-colors"
+            >
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  collapsed.info && "-rotate-90",
+                )}
+              />
+              Info
+            </button>
+            {!collapsed.info && (
+              <>
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.model")}
+                  </span>
+                  <span className="text-foreground/80 truncate">
+                    {image.model || t("imageDetail.info.unavailable")}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.seed")}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono text-foreground/80">
+                      {hasSeed ? image.seed : t("imageDetail.info.unavailable")}
+                    </span>
+                    {hasSeed ? (
+                      <button
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => onCopy("seed", String(image.seed))}
+                      >
+                        {copiedKey === "seed" ? (
+                          <Check className="h-3 w-3 text-success" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    ) : null}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.size")}
+                  </span>
+                  <span className="font-mono text-foreground/80">
+                    {image.width}×{image.height}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.sampler")}
+                  </span>
+                  <span className="text-foreground/80 truncate">
+                    {image.sampler || t("imageDetail.info.unavailable")}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.steps")}
+                  </span>
+                  <span className="font-mono text-foreground/80">
+                    {image.steps || t("imageDetail.info.unavailable")}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.cfg")}
+                  </span>
+                  <span className="font-mono text-foreground/80">
+                    {image.cfgScale || t("imageDetail.info.unavailable")}
+                  </span>
+                  {image.cfgRescale ? (
+                    <>
+                      <span className="text-muted-foreground/70">
+                        {t("imageDetail.info.cfgRescale")}
+                      </span>
+                      <span className="font-mono text-foreground/80">
+                        {image.cfgRescale}
+                      </span>
+                    </>
+                  ) : null}
+                  {image.noiseSchedule ? (
+                    <>
+                      <span className="text-muted-foreground/70">
+                        {t("imageDetail.info.noiseSchedule")}
+                      </span>
+                      <span className="text-foreground/80 truncate">
+                        {image.noiseSchedule}
+                      </span>
+                    </>
+                  ) : null}
+                  {image.varietyPlus ? (
+                    <>
+                      <span className="text-muted-foreground/70">
+                        {t("imageDetail.info.varietyPlus")}
+                      </span>
+                      <span className="text-foreground/80">ON</span>
+                    </>
+                  ) : null}
+                  <span className="text-muted-foreground/70">
+                    {t("imageDetail.info.date")}
+                  </span>
+                  <span className="text-foreground/80">
+                    {formatDate(image.fileModifiedAt)}
+                  </span>
+                  {image.pHash ? (
+                    <>
+                      <span className="text-muted-foreground/70">
+                        {t("imageDetail.info.phash")}
+                      </span>
+                      <span className="font-mono text-muted-foreground/80 truncate">
+                        {image.pHash}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+                {image.source === "comfyui" && onViewWorkflow && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-2 w-full gap-1.5 text-xs"
+                    onClick={onViewWorkflow}
+                  >
+                    <Workflow className="h-3.5 w-3.5" />
+                    {t("imageDetail.info.viewWorkflow")}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </ScrollArea>
+      </ScrollArea>
     </div>
   );
 });
@@ -706,18 +740,15 @@ const TheaterView = memo(function TheaterView({
   const isScrollable = fitMode !== "contain" || manualZoom !== null;
 
   // Wheel zoom
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      e.preventDefault();
-      setManualZoom((prev) => {
-        const base = prev ?? 1;
-        const next = base + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-        const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
-        return clamped;
-      });
-    },
-    [],
-  );
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    setManualZoom((prev) => {
+      const base = prev ?? 1;
+      const next = base + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+      const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+      return clamped;
+    });
+  }, []);
 
   // Double-click cycles: contain → actual → width → contain
   const handleDoubleClick = useCallback(() => {
@@ -747,16 +778,13 @@ const TheaterView = memo(function TheaterView({
     [isScrollable, pan],
   );
 
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!isDraggingRef.current) return;
-      setPan({
-        x: panStart.current.x + (e.clientX - dragStart.current.x),
-        y: panStart.current.y + (e.clientY - dragStart.current.y),
-      });
-    },
-    [],
-  );
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return;
+    setPan({
+      x: panStart.current.x + (e.clientX - dragStart.current.x),
+      y: panStart.current.y + (e.clientY - dragStart.current.y),
+    });
+  }, []);
 
   const handlePointerUp = useCallback(() => {
     isDraggingRef.current = false;
@@ -780,14 +808,10 @@ const TheaterView = memo(function TheaterView({
 
   const fileName = image.path.split(/[\\/]/).pop() ?? "";
   const promptPreview =
-    image.prompt.length > 120
-      ? image.prompt.slice(0, 120) + "…"
-      : image.prompt;
+    image.prompt.length > 120 ? image.prompt.slice(0, 120) + "…" : image.prompt;
 
   return (
-    <div
-      className="fixed inset-0 z-60 flex flex-col bg-black select-none"
-    >
+    <div className="fixed inset-0 z-60 flex flex-col bg-black select-none">
       {/* Header hover trigger zone + header bar */}
       <div
         className="absolute top-0 left-0 right-0 z-10"
@@ -802,94 +826,94 @@ const TheaterView = memo(function TheaterView({
               : "opacity-0 -translate-y-full pointer-events-none",
           )}
         >
-        <div className="flex items-center gap-3">
-          {/* Slideshow toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-8 text-white/70 hover:text-white hover:bg-white/10",
-              slideshowActive && "text-white bg-white/15",
-            )}
-            onClick={() => setSlideshowActive((v) => !v)}
-          >
-            {slideshowActive ? (
-              <Pause className="h-4 w-4 mr-1.5" />
-            ) : (
-              <Play className="h-4 w-4 mr-1.5" />
-            )}
-            {t("imageDetail.theater.slideshow")}
-          </Button>
+          <div className="flex items-center gap-3">
+            {/* Slideshow toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 text-white/70 hover:text-white hover:bg-white/10",
+                slideshowActive && "text-white bg-white/15",
+              )}
+              onClick={() => setSlideshowActive((v) => !v)}
+            >
+              {slideshowActive ? (
+                <Pause className="h-4 w-4 mr-1.5" />
+              ) : (
+                <Play className="h-4 w-4 mr-1.5" />
+              )}
+              {t("imageDetail.theater.slideshow")}
+            </Button>
 
-          {/* Interval selector */}
-          <div className="flex items-center gap-1">
-            {SLIDESHOW_INTERVALS.map((n) => (
-              <button
-                key={n}
-                className={cn(
-                  "rounded px-2 py-0.5 text-xs transition-colors",
-                  slideshowInterval === n
-                    ? "bg-white/20 text-white"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/10",
-                )}
-                onClick={() => setSlideshowInterval(n)}
-              >
-                {t("imageDetail.theater.seconds", { n })}
-              </button>
-            ))}
+            {/* Interval selector */}
+            <div className="flex items-center gap-1">
+              {SLIDESHOW_INTERVALS.map((n) => (
+                <button
+                  key={n}
+                  className={cn(
+                    "rounded px-2 py-0.5 text-xs transition-colors",
+                    slideshowInterval === n
+                      ? "bg-white/20 text-white"
+                      : "text-white/50 hover:text-white/80 hover:bg-white/10",
+                  )}
+                  onClick={() => setSlideshowInterval(n)}
+                >
+                  {t("imageDetail.theater.seconds", { n })}
+                </button>
+              ))}
+            </div>
+
+            <div className="mx-2 h-4 w-px bg-white/20" />
+
+            {/* Fit mode selector */}
+            <div className="flex items-center gap-1">
+              {(["contain", "width", "actual"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  className={cn(
+                    "rounded px-2 py-0.5 text-xs transition-colors",
+                    fitMode === mode && manualZoom === null
+                      ? "bg-white/20 text-white"
+                      : "text-white/50 hover:text-white/80 hover:bg-white/10",
+                  )}
+                  onClick={() => handleFitModeChange(mode)}
+                >
+                  {t(`imageDetail.theater.fit.${mode}`)}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="mx-2 h-4 w-px bg-white/20" />
-
-          {/* Fit mode selector */}
-          <div className="flex items-center gap-1">
-            {(["contain", "width", "actual"] as const).map((mode) => (
-              <button
-                key={mode}
-                className={cn(
-                  "rounded px-2 py-0.5 text-xs transition-colors",
-                  fitMode === mode && manualZoom === null
-                    ? "bg-white/20 text-white"
-                    : "text-white/50 hover:text-white/80 hover:bg-white/10",
-                )}
-                onClick={() => handleFitModeChange(mode)}
-              >
-                {t(`imageDetail.theater.fit.${mode}`)}
-              </button>
-            ))}
+          <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-white/50">
+            {image.model && <span>{image.model}</span>}
+            {image.model && <span>·</span>}
+            <span>
+              {image.width} × {image.height}
+            </span>
           </div>
-        </div>
 
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-white/50">
-          {image.model && <span>{image.model}</span>}
-          {image.model && <span>·</span>}
-          <span>
-            {image.width} × {image.height}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button
-            className={cn(
-              "flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-              pinBars
-                ? "bg-white/20 text-white"
-                : "text-white/50 hover:text-white/80 hover:bg-white/10",
-            )}
-            onClick={() => setPinBars((v) => !v)}
-          >
-            <Pin className="h-3 w-3" />
-            {t("imageDetail.theater.pinBars")}
-          </button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
-            onClick={onExit}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
+          <div className="flex items-center gap-1">
+            <button
+              className={cn(
+                "flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
+                pinBars
+                  ? "bg-white/20 text-white"
+                  : "text-white/50 hover:text-white/80 hover:bg-white/10",
+              )}
+              onClick={() => setPinBars((v) => !v)}
+            >
+              <Pin className="h-3 w-3" />
+              {t("imageDetail.theater.pinBars")}
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+              onClick={onExit}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -905,7 +929,9 @@ const TheaterView = memo(function TheaterView({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        style={{ cursor: isScrollable ? (isDragging ? "grabbing" : "grab") : "default" }}
+        style={{
+          cursor: isScrollable ? (isDragging ? "grabbing" : "grab") : "default",
+        }}
       >
         {!imgLoaded && displaySrc && (
           <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
@@ -920,7 +946,9 @@ const TheaterView = memo(function TheaterView({
             className={cn(
               "transition-opacity duration-200",
               imgLoaded ? "opacity-100" : "opacity-0",
-              fitMode === "contain" && manualZoom === null && "max-w-full max-h-full object-contain",
+              fitMode === "contain" &&
+                manualZoom === null &&
+                "max-w-full max-h-full object-contain",
               fitMode === "width" && manualZoom === null && "w-full h-auto",
             )}
             style={{
@@ -1037,9 +1065,7 @@ const FilmstripThumb = memo(function FilmstripThumb({
     <button
       className={cn(
         "relative shrink-0 rounded-md overflow-hidden ring-2 transition-all",
-        isCurrent
-          ? "ring-primary"
-          : "ring-transparent hover:ring-primary/50",
+        isCurrent ? "ring-primary" : "ring-transparent hover:ring-primary/50",
       )}
       style={{ width: FILMSTRIP_THUMB, height: FILMSTRIP_THUMB }}
       onClick={onClick}
@@ -1100,9 +1126,7 @@ const Filmstrip = memo(function Filmstrip({
     if (page < totalPages) pagesToFetch.push(page + 1);
 
     Promise.all(
-      pagesToFetch.map((p) =>
-        window.image.listPage({ ...baseQuery, page: p }),
-      ),
+      pagesToFetch.map((p) => window.image.listPage({ ...baseQuery, page: p })),
     ).then((results) => {
       if (id !== fetchIdRef.current) return;
       const allImages: ImageData[] = [];
@@ -1224,6 +1248,12 @@ interface ImageDetailProps {
   similarTotalPages?: number;
   onSimilarPageChange?: (page: number) => void;
   onAnchorChange?: (anchorId: string | null) => void;
+  onReveal?: (path: string) => void;
+  onDelete?: (id: string) => void;
+  onChangeCategory?: (image: ImageData) => void;
+  onSendToGenerator?: (image: ImageData) => void;
+  onSendToSource?: (image: ImageData) => void;
+  onRescanMetadata?: (path: string) => void;
 }
 
 export function ImageDetail({
@@ -1255,6 +1285,12 @@ export function ImageDetail({
   onGalleryImageSelect,
   onGalleryPageChange,
   onAnchorChange,
+  onReveal,
+  onDelete,
+  onChangeCategory,
+  onSendToGenerator,
+  onSendToSource,
+  onRescanMetadata,
 }: ImageDetailProps) {
   const { t } = useTranslation();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -1312,7 +1348,8 @@ export function ImageDetail({
   // similarImages already contains only the current page's data (fetched by useSimilarImages)
   const hasSimilar = deferredSimilarImages && deferredSimilarImages.length > 1;
   const currentThumb = hasSimilar
-    ? (deferredSimilarImages.find((img) => img.id === effectiveAnchorId) ?? null)
+    ? (deferredSimilarImages.find((img) => img.id === effectiveAnchorId) ??
+      null)
     : null;
   const otherSimilar = hasSimilar
     ? deferredSimilarImages.filter((img) => img.id !== effectiveAnchorId)
@@ -1450,9 +1487,7 @@ export function ImageDetail({
     <div
       className={cn(
         "fixed inset-0 z-50 bg-background/95 flex flex-col",
-        isOpen
-          ? "animate-in fade-in-0 duration-150"
-          : "hidden",
+        isOpen ? "animate-in fade-in-0 duration-150" : "hidden",
       )}
     >
       {/* Top Bar */}
@@ -1515,7 +1550,9 @@ export function ImageDetail({
           {totalPages > 1 && (
             <div className="flex shrink-0 items-center justify-between border-t border-border/60 px-1.5 py-1.5">
               <button
-                onClick={() => onSimilarPageChange?.(Math.max(0, similarPage - 1))}
+                onClick={() =>
+                  onSimilarPageChange?.(Math.max(0, similarPage - 1))
+                }
                 disabled={similarPage === 0}
                 className="text-muted-foreground/70 hover:text-foreground disabled:opacity-20 transition-colors"
               >
@@ -1526,7 +1563,9 @@ export function ImageDetail({
               </span>
               <button
                 onClick={() =>
-                  onSimilarPageChange?.(Math.min(totalPages - 1, similarPage + 1))
+                  onSimilarPageChange?.(
+                    Math.min(totalPages - 1, similarPage + 1),
+                  )
                 }
                 disabled={similarPage === totalPages - 1}
                 className="text-muted-foreground/70 hover:text-foreground disabled:opacity-20 transition-colors"
@@ -1538,101 +1577,178 @@ export function ImageDetail({
         </div>
 
         {/* Image Area */}
-        <div className="relative flex-1 min-w-0 min-h-0 overflow-hidden">
-          {!imgLoaded && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/70" />
-            </div>
-          )}
-          {fitMode === "fit" ? (
-            <div
-              className="absolute inset-0 flex items-center justify-center p-3 cursor-pointer"
-              onClick={onClose}
-            >
-              {displaySrc && (
-                <img
-                  ref={detailImgRef}
-                  key={image.id}
-                  src={displaySrc}
-                  alt=""
-                  className={cn(
-                    "max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default transition-opacity duration-200",
-                    imgLoaded ? "opacity-100" : "opacity-0",
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div className="relative flex-1 min-w-0 min-h-0 overflow-hidden">
+              {!imgLoaded && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/70" />
+                </div>
+              )}
+              {fitMode === "fit" ? (
+                <div
+                  className="absolute inset-0 flex items-center justify-center p-3 cursor-pointer"
+                  onClick={onClose}
+                >
+                  {displaySrc && (
+                    <img
+                      ref={detailImgRef}
+                      key={image.id}
+                      src={displaySrc}
+                      alt=""
+                      className={cn(
+                        "max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default transition-opacity duration-200",
+                        imgLoaded ? "opacity-100" : "opacity-0",
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={handleImageDoubleClick}
+                      onLoad={() => setImgLoaded(true)}
+                    />
                   )}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={handleImageDoubleClick}
-                  onLoad={() => setImgLoaded(true)}
+                </div>
+              ) : (
+                <ScrollArea className="h-full w-full">
+                  <div
+                    className="flex items-center justify-center p-3"
+                    style={{
+                      minWidth: image.width + 24,
+                      minHeight: image.height + 24,
+                    }}
+                  >
+                    {displaySrc && (
+                      <img
+                        ref={detailImgRef}
+                        key={image.id}
+                        src={displaySrc}
+                        alt=""
+                        className={cn(
+                          "rounded-lg shadow-2xl transition-opacity duration-200",
+                          imgLoaded ? "opacity-100" : "opacity-0",
+                        )}
+                        style={{
+                          width: image.width,
+                          height: image.height,
+                          maxWidth: "none",
+                        }}
+                        onDoubleClick={handleImageDoubleClick}
+                        onLoad={() => setImgLoaded(true)}
+                      />
+                    )}
+                  </div>
+                </ScrollArea>
+              )}
+
+              {/* Prev button */}
+              <button
+                className={cn(
+                  "absolute left-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
+                  (!hasPrev || image.id !== effectiveAnchorId) &&
+                    "opacity-0 pointer-events-none",
+                )}
+                onClick={handlePrev}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              {/* Next button */}
+              <button
+                className={cn(
+                  "absolute right-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
+                  (!hasNext || image.id !== effectiveAnchorId) &&
+                    "opacity-0 pointer-events-none",
+                )}
+                onClick={handleNext}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+
+              {/* Filmstrip */}
+              {filmstripBaseQuery && (
+                <Filmstrip
+                  baseQuery={filmstripBaseQuery}
+                  page={filmstripPage}
+                  totalPages={filmstripTotalPages}
+                  currentId={image.id}
+                  onSelect={handleFilmstripSelect}
+                  onPageChange={onGalleryPageChange}
                 />
               )}
             </div>
-          ) : (
-            <ScrollArea className="h-full w-full">
-              <div
-                className="flex items-center justify-center p-3"
-                style={{
-                  minWidth: image.width + 24,
-                  minHeight: image.height + 24,
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={() => onToggleFavorite(image.id)}>
+              <Heart
+                className={cn(
+                  "h-4 w-4",
+                  image.isFavorite ? "fill-favorite text-favorite" : "",
+                )}
+              />
+              {image.isFavorite
+                ? t("imageCard.menu.removeFavorite")
+                : t("imageCard.menu.addFavorite")}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onCopyPrompt(image.prompt)}>
+              <Copy className="h-4 w-4" />
+              {t("imageCard.menu.copyPrompt")}
+            </ContextMenuItem>
+            {onSendToGenerator && (
+              <ContextMenuItem
+                onSelect={() => {
+                  onSendToGenerator(image);
+                  onClose();
                 }}
               >
-                {displaySrc && (
-                  <img
-                    ref={detailImgRef}
-                    key={image.id}
-                    src={displaySrc}
-                    alt=""
-                    className={cn(
-                      "rounded-lg shadow-2xl transition-opacity duration-200",
-                      imgLoaded ? "opacity-100" : "opacity-0",
-                    )}
-                    style={{
-                      width: image.width,
-                      height: image.height,
-                      maxWidth: "none",
-                    }}
-                    onDoubleClick={handleImageDoubleClick}
-                    onLoad={() => setImgLoaded(true)}
-                  />
-                )}
-              </div>
-            </ScrollArea>
-          )}
-
-          {/* Prev button */}
-          <button
-            className={cn(
-              "absolute left-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
-              (!hasPrev || image.id !== effectiveAnchorId) &&
-                "opacity-0 pointer-events-none",
+                <ImagePlus className="h-4 w-4" />
+                {t("imageCard.menu.sendToGenerator")}
+              </ContextMenuItem>
             )}
-            onClick={handlePrev}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-
-          {/* Next button */}
-          <button
-            className={cn(
-              "absolute right-3 top-1/2 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/75 text-muted-foreground/80 hover:bg-background/90 hover:text-foreground transition-colors",
-              (!hasNext || image.id !== effectiveAnchorId) &&
-                "opacity-0 pointer-events-none",
+            {onSendToSource && (
+              <ContextMenuItem
+                onSelect={() => {
+                  onSendToSource(image);
+                  onClose();
+                }}
+              >
+                <ImagePlus className="h-4 w-4" />
+                {t("imageCard.menu.sendToSource")}
+              </ContextMenuItem>
             )}
-            onClick={handleNext}
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-
-          {/* Filmstrip */}
-          {filmstripBaseQuery && (
-            <Filmstrip
-              baseQuery={filmstripBaseQuery}
-              page={filmstripPage}
-              totalPages={filmstripTotalPages}
-              currentId={image.id}
-              onSelect={handleFilmstripSelect}
-              onPageChange={onGalleryPageChange}
-            />
-          )}
-        </div>
+            <ContextMenuSeparator />
+            {onReveal && (
+              <ContextMenuItem onSelect={() => onReveal(image.path)}>
+                <ExternalLink className="h-4 w-4" />
+                {t("imageCard.menu.revealOriginal")}
+              </ContextMenuItem>
+            )}
+            {onChangeCategory && (
+              <ContextMenuItem onSelect={() => onChangeCategory(image)}>
+                <Tag className="h-4 w-4" />
+                {t("imageCard.menu.changeCategory")}
+              </ContextMenuItem>
+            )}
+            {onRescanMetadata && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => onRescanMetadata(image.path)}>
+                  <RotateCw className="h-4 w-4" />
+                  {t("imageCard.menu.rescanMetadata")}
+                </ContextMenuItem>
+              </>
+            )}
+            {onDelete && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => onDelete(image.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("imageCard.menu.delete")}
+                </ContextMenuItem>
+              </>
+            )}
+          </ContextMenuContent>
+        </ContextMenu>
 
         {/* Info Panel */}
         <div className="w-80 shrink-0 border-l border-border/60 bg-card/70">

@@ -785,6 +785,12 @@ export default function App({
         similarTotalPages={similarTotalPages}
         onSimilarPageChange={goToSimilarPage}
         onAnchorChange={handleDetailAnchorChange}
+        onReveal={imageActions.onReveal}
+        onDelete={imageActions.onDelete}
+        onChangeCategory={imageActions.onChangeCategory}
+        onSendToGenerator={imageActions.onSendToGenerator}
+        onSendToSource={imageActions.onSendToSource}
+        onRescanMetadata={imageActions.onRescanMetadata}
       />
 
       <FeatureTour
