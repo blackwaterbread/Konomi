@@ -1242,7 +1242,6 @@ interface ImageDetailProps {
   similarReasons?: Record<string, SimilarityReason>;
   similarScores?: Record<string, number>;
   similarImagesLoading?: boolean;
-  detailContentReady?: boolean;
   onSimilarImageClick?: (image: ImageData) => void;
   similarPage?: number;
   similarTotalPages?: number;
@@ -1274,7 +1273,6 @@ export function ImageDetail({
   similarReasons,
   similarScores,
   similarImagesLoading = false,
-  detailContentReady = true,
   onSimilarImageClick,
   similarPage = 0,
   similarTotalPages = 0,
@@ -1481,7 +1479,6 @@ export function ImageDetail({
 
   // otherSimilar already contains only the current page's candidates (pre-sliced by hook)
   const pagedOther = otherSimilar;
-  const isPanelLoading = !detailContentReady;
 
   return (
     <div
@@ -1510,7 +1507,7 @@ export function ImageDetail({
             {t("imageDetail.similarImages")}
           </p>
           <div className="relative flex-1 min-h-0 overflow-y-auto">
-            {isPanelLoading || similarImagesLoading ? (
+            {similarImagesLoading ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/70">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <p className="text-[10px]">{t("common.loading")}</p>

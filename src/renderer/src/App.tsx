@@ -4,7 +4,6 @@ import {
   useMemo,
   useCallback,
   useRef,
-  useDeferredValue,
 } from "react";
 import { Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
@@ -295,11 +294,6 @@ export default function App({
     (id: string | null) => setDetailAnchorId(id),
     [],
   );
-  const deferredDetailContentImageId = useDeferredValue(
-    detail.isOpen ? detail.imageId : null,
-  );
-  const detailContentReady =
-    !!detail.imageId && deferredDetailContentImageId === detail.imageId;
   const {
     similarImages,
     similarReasons,
@@ -311,7 +305,6 @@ export default function App({
   } = useSimilarImages({
     anchorId: detailAnchorId,
     isDetailOpen: detail.isOpen,
-    detailContentReady,
     analysisReady: hasAnalyzedOnce && !isAnalyzing,
     getVisualThreshold,
     getPromptThreshold,
@@ -786,7 +779,6 @@ export default function App({
         similarReasons={similarReasons}
         similarScores={similarScores}
         similarImagesLoading={similarImagesLoading}
-        detailContentReady={detailContentReady}
         onSimilarImageClick={detail.onSelectImage}
         similarPage={similarPage}
         similarTotalPages={similarTotalPages}

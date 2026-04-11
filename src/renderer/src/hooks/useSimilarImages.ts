@@ -6,7 +6,6 @@ import { rowToImageData } from "@/lib/image-utils";
 export function useSimilarImages({
   anchorId,
   isDetailOpen,
-  detailContentReady,
   analysisReady = true,
   getVisualThreshold,
   getPromptThreshold,
@@ -14,7 +13,6 @@ export function useSimilarImages({
 }: {
   anchorId: string | null;
   isDetailOpen: boolean;
-  detailContentReady: boolean;
   analysisReady?: boolean;
   getVisualThreshold: () => number;
   getPromptThreshold: () => number | undefined;
@@ -60,13 +58,15 @@ export function useSimilarImages({
       return;
     }
 
-    if (!detailContentReady || !analysisReady) {
+    const cacheKey = `${anchorId}:${analysisReady}`;
+    if (fetchedAnchorRef.current === cacheKey) return;
+
+    if (!analysisReady) {
       setSimilarImagesLoading(true);
       return;
     }
 
-    if (fetchedAnchorRef.current === `${anchorId}:${analysisReady}`) return;
-    fetchedAnchorRef.current = `${anchorId}:${analysisReady}`;
+    fetchedAnchorRef.current = cacheKey;
 
     const requestId = ++requestSeqRef.current;
     setSimilarImages([]);
@@ -111,8 +111,11 @@ export function useSimilarImages({
               reasons.map((item) => [String(item.imageId), item.score]),
             );
 
+            // Only keep candidates that have a direct similarity link
+            const linkedIds = candidateIds.filter((id) => scoreMap.has(id));
+
             // Sort candidates by score descending
-            const sorted = [...candidateIds].sort(
+            const sorted = [...linkedIds].sort(
               (a, b) => (scoreMap.get(b) ?? 0) - (scoreMap.get(a) ?? 0),
             );
 
@@ -134,7 +137,8 @@ export function useSimilarImages({
     return () => {
       cancelled = true;
     };
-  }, [anchorId, detailContentReady, analysisReady, isDetailOpen, getPromptThreshold, getVisualThreshold]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- detailContentReady excluded: anchor fetch is independent of deferred info panel rendering
+  }, [anchorId, analysisReady, isDetailOpen, getPromptThreshold, getVisualThreshold]);
 
   // Phase 2: Fetch ImageData for the current page only
   useEffect(() => {

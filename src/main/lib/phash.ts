@@ -1129,9 +1129,11 @@ export async function getSimilarityReasons(
     }
   }
 
-  return candidates.map((id) => ({
-    imageId: id,
-    reason: resultMap.get(id)?.reason ?? "both",
-    score: resultMap.get(id)?.score ?? 0,
-  }));
+  return candidates
+    .filter((id) => resultMap.has(id))
+    .map((id) => ({
+      imageId: id,
+      reason: resultMap.get(id)!.reason,
+      score: resultMap.get(id)!.score,
+    }));
 }

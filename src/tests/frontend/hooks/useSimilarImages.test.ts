@@ -39,7 +39,7 @@ describe("useSimilarImages", () => {
       (props: {
         anchorId: string | null;
         isDetailOpen: boolean;
-        detailContentReady: boolean;
+
       }) =>
         useSimilarImages({
           ...props,
@@ -50,7 +50,7 @@ describe("useSimilarImages", () => {
         initialProps: {
           anchorId: "10",
           isDetailOpen: true,
-          detailContentReady: true,
+
         },
       },
     );
@@ -77,7 +77,6 @@ describe("useSimilarImages", () => {
     rerender({
       anchorId: "10",
       isDetailOpen: false,
-      detailContentReady: true,
     });
 
     expect(result.current.similarImages).toEqual([]);
@@ -130,7 +129,7 @@ describe("useSimilarImages", () => {
       (props: {
         anchorId: string | null;
         isDetailOpen: boolean;
-        detailContentReady: boolean;
+
       }) =>
         useSimilarImages({
           ...props,
@@ -141,7 +140,7 @@ describe("useSimilarImages", () => {
         initialProps: {
           anchorId: "10",
           isDetailOpen: true,
-          detailContentReady: true,
+
         },
       },
     );
@@ -150,14 +149,12 @@ describe("useSimilarImages", () => {
     rerender({
       anchorId: "10",
       isDetailOpen: false,
-      detailContentReady: true,
     });
 
     // Reopen for image 20 — new anchor, new fetch starts
     rerender({
       anchorId: "20",
       isDetailOpen: true,
-      detailContentReady: true,
     });
 
     // Second fetch (image 20) resolves first
@@ -212,7 +209,6 @@ describe("useSimilarImages", () => {
       useSimilarImages({
         anchorId: "10",
         isDetailOpen: true,
-        detailContentReady: true,
         getVisualThreshold,
         getPromptThreshold,
       }),
