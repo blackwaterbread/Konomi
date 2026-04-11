@@ -415,6 +415,10 @@ export function useImageActions({
       onOpenChange: handleBulkDeleteDialogOpenChange,
       onConfirm: handleConfirmBulkDelete,
     },
+    clearSelection: useCallback(() => {
+      setSelectedImage(null);
+      setIsDetailOpen(false);
+    }, []),
     detail: {
       image: selectedImage,
       imageId: selectedImageId,

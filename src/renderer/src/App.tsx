@@ -273,6 +273,7 @@ export default function App({
   const {
     imageActions,
     generatorTransitioning,
+    clearSelection,
     categoryDialog,
     deleteDialog,
     bulkDeleteDialog,
@@ -552,7 +553,13 @@ export default function App({
     <div className="h-screen bg-background flex flex-col">
       <Header
         searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
+        onSearchChange={useCallback(
+          (q: string) => {
+            handleSearchChange(q);
+            clearSelection();
+          },
+          [handleSearchChange, clearSelection],
+        )}
         activePanel={activePanel}
         onPanelChange={handleHeaderPanelChange}
         scanning={scanning}
