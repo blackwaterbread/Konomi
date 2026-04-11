@@ -757,7 +757,7 @@ describe("App", () => {
     expect(preloadMocks.image.delete).toHaveBeenCalledWith(
       "C:\\gallery\\sample.png",
     );
-    expect(schedulePageRefresh).toHaveBeenCalledWith(60);
+    expect(schedulePageRefresh).toHaveBeenCalledWith(1500);
   });
 
   it("loads similar images for the detail view and lets the app switch selection", async () => {

@@ -160,7 +160,7 @@ describe("useImageActions", () => {
     );
     expect(result.current.deleteDialog.open).toBe(false);
     expect(result.current.detail.isOpen).toBe(false);
-    expect(schedulePageRefresh).toHaveBeenCalledWith(60);
+    expect(schedulePageRefresh).toHaveBeenCalledWith(1500);
 
     act(() => {
       result.current.imageActions.onSendToGenerator(result.current.images[1]);
