@@ -68,6 +68,14 @@ import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import type { Subfolder } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 interface SidebarViewState {
   activeView: string;
   onViewChange: (view: string) => void;
@@ -593,7 +601,6 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   const skipCommitRef = useRef(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingName, setEditingName] = useState(folder.name);
-
   useEffect(() => {
     if (!isEditing) {
       setEditingName(folder.name);
@@ -639,6 +646,23 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   const [editingName, setEditingName] = useState<string | null>(null);
   const isEditing = editingName !== null;
   const currentEditingName = editingName ?? folder.name;
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [folderStats, setFolderStats] = useState<{
+    path: string;
+    imageCount: number;
+    createdAt: Date;
+  } | null>(null);
+  const [folderSize, setFolderSize] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!propertiesOpen) return;
+    setFolderStats(null);
+    setFolderSize(null);
+    window.folder.stats(folder.id).then((stats) => {
+      if (stats) setFolderStats(stats);
+    });
+    window.folder.size(folder.id).then(setFolderSize);
+  }, [propertiesOpen, folder.id]);
 
   const handleStartEditing = useCallback(() => {
     if (isScanning) return;
@@ -851,6 +875,10 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
         <ContextMenuItem disabled={isScanning} onSelect={handleStartEditing}>
           {t("sidebar.folders.rename")}
         </ContextMenuItem>
+        <ContextMenuItem onSelect={() => setPropertiesOpen(true)}>
+          {t("sidebar.folders.properties")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem
           className="text-destructive focus:text-destructive"
           disabled={scanning}
@@ -864,6 +892,47 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
           {t("sidebar.folders.delete")}
         </ContextMenuItem>
       </ContextMenuContent>
+      <Dialog open={propertiesOpen} onOpenChange={setPropertiesOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("sidebar.folderProperties.title")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+            <span className="text-muted-foreground">
+              {t("sidebar.folderProperties.path")}
+            </span>
+            <span className="truncate select-text" title={folder.path}>
+              {folder.path}
+            </span>
+            <span className="text-muted-foreground">
+              {t("sidebar.folderProperties.imageCount")}
+            </span>
+            <span>
+              {folderStats ? (
+                t("sidebar.folderProperties.imageCountValue", {
+                  count: folderStats.imageCount,
+                })
+              ) : (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
+            </span>
+            <span className="text-muted-foreground">
+              {t("sidebar.folderProperties.folderSize")}
+            </span>
+            <span>
+              {folderSize !== null ? (
+                formatBytes(folderSize)
+              ) : (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
+            </span>
+            <span className="text-muted-foreground">
+              {t("sidebar.folderProperties.createdAt")}
+            </span>
+            <span>{new Date(folder.createdAt).toLocaleDateString()}</span>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ContextMenu>
   );
 });

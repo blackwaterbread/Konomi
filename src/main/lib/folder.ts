@@ -101,3 +101,42 @@ export async function getSubfolderPaths(folderId: number): Promise<string[]> {
 
   return [...subfolderSet].sort();
 }
+
+export type FolderStats = {
+  path: string;
+  imageCount: number;
+  createdAt: Date;
+};
+
+export async function getFolderStats(id: number): Promise<FolderStats | null> {
+  const db = getDB();
+  const folder = await db.folder.findUnique({ where: { id } });
+  if (!folder) return null;
+
+  return {
+    path: folder.path,
+    imageCount: await db.image.count({ where: { folderId: id } }),
+    createdAt: folder.createdAt,
+  };
+}
+
+export async function getFolderSize(id: number): Promise<number> {
+  const db = getDB();
+  const CHUNK = 5000;
+  let totalBytes = 0;
+  let lastId = 0;
+  while (true) {
+    const images = await db.image.findMany({
+      where: { folderId: id, id: { gt: lastId } },
+      select: { id: true, fileSize: true },
+      orderBy: { id: "asc" },
+      take: CHUNK,
+    });
+    if (images.length === 0) break;
+    lastId = images[images.length - 1].id;
+    for (const img of images) {
+      if (img.fileSize) totalBytes += img.fileSize;
+    }
+  }
+  return totalBytes;
+}

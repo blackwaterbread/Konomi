@@ -377,4 +377,6 @@ contextBridge.exposeInMainWorld("folder", {
     folderPath: string,
   ): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke("folder:listSubdirectoriesByPath", folderPath),
+  stats: (id: number) => ipcRenderer.invoke("folder:stats", id),
+  size: (id: number) => ipcRenderer.invoke("folder:size", id),
 });

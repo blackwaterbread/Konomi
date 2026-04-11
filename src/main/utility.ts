@@ -12,6 +12,8 @@ import {
   deleteFolder,
   renameFolder,
   getSubfolderPaths,
+  getFolderStats,
+  getFolderSize,
 } from "./lib/folder";
 import {
   listImagesPage,
@@ -178,6 +180,14 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     case "folder:listSubdirectories": {
       const { id } = payload as { id: number };
       return getSubfolderPaths(id);
+    }
+    case "folder:stats": {
+      const { id } = payload as { id: number };
+      return getFolderStats(id);
+    }
+    case "folder:size": {
+      const { id } = payload as { id: number };
+      return getFolderSize(id);
     }
 
     case "image:getSearchPresetStats":

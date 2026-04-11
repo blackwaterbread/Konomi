@@ -170,6 +170,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("folder:listSubdirectories", (_, id: number) =>
     bridge.request("folder:listSubdirectories", { id }),
   );
+  ipcMain.handle("folder:stats", (_, id: number) =>
+    bridge.request("folder:stats", { id }),
+  );
+  ipcMain.handle("folder:size", (_, id: number) =>
+    bridge.request("folder:size", { id }),
+  );
   // number: 상위 폴더 — DB에서 path 조회 후 열기
   // string: 하위 폴더 — path 직접 전달 (DB에 없으므로)
   // 이거 설계 꼭 이렇게 할 필요가 있었나? 클로드 이새키 진짜 패고싶다.

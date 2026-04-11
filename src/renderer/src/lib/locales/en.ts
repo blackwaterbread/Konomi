@@ -866,6 +866,7 @@ const en = {
       rescan: "Rescan Folder",
       rename: "Rename Folder",
       delete: "Delete Folder",
+      properties: "Folder Properties",
       empty: "No folders added",
       addDisabled:
         "You cannot add folders while similarity analysis is running",
@@ -874,6 +875,14 @@ const en = {
       addOne: "Add Folder",
       addMultiple: "Add Multiple Folders",
       addedMultiple: "{{count}} folders added",
+    },
+    folderProperties: {
+      title: "Folder Properties",
+      path: "Location",
+      imageCount: "Images",
+      imageCountValue: "{{count}}",
+      folderSize: "Image Size",
+      createdAt: "Added On",
     },
     dialog: {
       newCategoryTitle: "New Category",

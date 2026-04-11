@@ -861,6 +861,7 @@ const ko = {
       rescan: "폴더 재스캔",
       rename: "폴더 이름 변경",
       delete: "폴더 삭제",
+      properties: "폴더 속성",
       empty: "추가된 폴더가 없습니다",
       addDisabled: "유사 이미지 분석 중에는 폴더를 추가할 수 없습니다",
       toggleAll: "전체 표시/숨기기",
@@ -868,6 +869,14 @@ const ko = {
       addOne: "폴더 추가",
       addMultiple: "여러 폴더 추가",
       addedMultiple: "{{count}}개 폴더가 추가되었습니다",
+    },
+    folderProperties: {
+      title: "폴더 속성",
+      path: "위치",
+      imageCount: "이미지 수",
+      imageCountValue: "{{count}}개",
+      folderSize: "이미지 용량",
+      createdAt: "추가한 날짜",
     },
     dialog: {
       newCategoryTitle: "새 카테고리",

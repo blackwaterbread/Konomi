@@ -11,6 +11,12 @@ export type Folder = {
   createdAt: Date;
 };
 
+export type FolderStats = {
+  path: string;
+  imageCount: number;
+  createdAt: Date;
+};
+
 export type FolderDuplicateExistingEntry = {
   imageId: number;
   path: string;
@@ -389,6 +395,8 @@ declare global {
       listSubdirectoriesByPath: (
         folderPath: string,
       ) => Promise<{ name: string; path: string }[]>;
+      stats: (id: number) => Promise<FolderStats | null>;
+      size: (id: number) => Promise<number>;
     };
     nai: {
       validateApiKey: (
