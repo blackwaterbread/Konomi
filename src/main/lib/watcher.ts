@@ -85,21 +85,29 @@ class FolderWatcher {
     this.deferredReconcileFolders.clear();
   }
 
-  setScanActive(active: boolean): void {
+  setScanActive(
+    active: boolean,
+    options?: { discardDeferredChanges?: boolean },
+  ): void {
     this.scanActive = active;
     if (!active) {
-      this.flushDeferred();
+      this.flushDeferred(options?.discardDeferredChanges ?? false);
     }
   }
 
-  private flushDeferred(): void {
-    const changes = new Map(this.deferredChanges);
-    this.deferredChanges.clear();
+  private flushDeferred(discardChanges: boolean): void {
+    if (discardChanges) {
+      this.deferredChanges.clear();
+    } else {
+      const changes = new Map(this.deferredChanges);
+      this.deferredChanges.clear();
+      for (const [filePath, folderId] of changes) {
+        this.scheduleProcess(folderId, filePath);
+      }
+    }
+
     const reconcileFolders = new Set(this.deferredReconcileFolders);
     this.deferredReconcileFolders.clear();
-    for (const [filePath, folderId] of changes) {
-      this.scheduleProcess(folderId, filePath);
-    }
     for (const folderId of reconcileFolders) {
       this.scheduleFolderReconcile(folderId);
     }
@@ -357,8 +365,11 @@ export function unwatchFolder(folderId: number): void {
   activeWatcher?.stopFolder(folderId);
 }
 
-export function setWatcherScanActive(active: boolean): void {
-  activeWatcher?.setScanActive(active);
+export function setWatcherScanActive(
+  active: boolean,
+  options?: { discardDeferredChanges?: boolean },
+): void {
+  activeWatcher?.setScanActive(active, options);
 }
 
 export function notifyWatchDuplicateResolved(data: {

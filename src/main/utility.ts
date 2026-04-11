@@ -287,7 +287,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         });
       } finally {
         scanCancelToken = null;
-        setWatcherScanActive(false);
+        setWatcherScanActive(false, { discardDeferredChanges: true });
       }
     }
     case "image:cancelScan":
