@@ -185,15 +185,16 @@ export function useImageActions({
         setSelectedImage(null);
         setIsDetailOpen(false);
       }
-      if (selectedBuiltinCategory === "random") {
-        setImages((prev) =>
-          prev.map((entry) =>
-            entry.id === deleteConfirmId ? { ...entry, deleted: true } : entry,
-          ),
-        );
-      } else {
-        schedulePageRefresh(60);
-      }
+      setImages((prev) =>
+        selectedBuiltinCategory === "random"
+          ? prev.map((entry) =>
+              entry.id === deleteConfirmId
+                ? { ...entry, deleted: true }
+                : entry,
+            )
+          : prev.filter((entry) => entry.id !== deleteConfirmId),
+      );
+      schedulePageRefresh(1500);
     }
     setDeleteConfirmId(null);
   }, [deleteConfirmId, images, schedulePageRefresh, selectedBuiltinCategory, selectedImage?.id, setImages, t]);
@@ -314,15 +315,14 @@ export function useImageActions({
       setSelectedImage(null);
       setIsDetailOpen(false);
     }
-    if (selectedBuiltinCategory === "random") {
-      setImages((prev) =>
-        prev.map((entry) =>
-          idSet.has(entry.id) ? { ...entry, deleted: true } : entry,
-        ),
-      );
-    } else {
-      schedulePageRefresh(60);
-    }
+    setImages((prev) =>
+      selectedBuiltinCategory === "random"
+        ? prev.map((entry) =>
+            idSet.has(entry.id) ? { ...entry, deleted: true } : entry,
+          )
+        : prev.filter((entry) => !idSet.has(entry.id)),
+    );
+    schedulePageRefresh(1500);
   }, [bulkDeleteIds, schedulePageRefresh, selectedBuiltinCategory, selectedImage, setImages, t]);
 
   const handleBulkDeleteDialogOpenChange = useCallback((open: boolean) => {
