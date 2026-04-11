@@ -55,6 +55,7 @@ export interface ImageData {
   varietyPlus: boolean;
   sampler: string;
   steps: number;
+  deleted?: boolean;
 }
 
 interface ImageCardProps {
@@ -257,6 +258,18 @@ export const ImageCard = memo(function ImageCard({
   ) : null;
 
   if (viewMode === "list") {
+    if (image.deleted) {
+      return (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/50 border border-border opacity-60">
+          <div className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+            <Trash2 className="h-5 w-5 text-muted-foreground/60" />
+          </div>
+          <span className="text-xs text-muted-foreground italic">
+            {t("imageCard.deleted")}
+          </span>
+        </div>
+      );
+    }
     return (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
         <ContextMenuTrigger asChild>
@@ -345,6 +358,36 @@ export const ImageCard = memo(function ImageCard({
         : "h-4 w-4";
 
   const favButtonPadding = isMicro ? "p-0.5" : isMinimalOrMicro ? "p-1" : "p-1.5";
+
+  if (image.deleted) {
+    return (
+      <div
+        className={cn(
+          "relative overflow-hidden bg-muted/50 border border-border opacity-60",
+          roundedClass,
+        )}
+      >
+        <div
+          className={cn(
+            aspectClass,
+            "flex flex-col items-center justify-center gap-2 text-muted-foreground/60",
+          )}
+        >
+          <Trash2 className={isDense ? "h-5 w-5" : "h-8 w-8"} />
+          {!isMicro && (
+            <span
+              className={cn(
+                "text-center italic",
+                isDense ? "text-[10px]" : "text-xs",
+              )}
+            >
+              {t("imageCard.deleted")}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>

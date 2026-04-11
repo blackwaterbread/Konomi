@@ -82,6 +82,7 @@ const ko = {
     previewAlt: "이미지 미리보기",
     emptyPreview: "이미지 미리보기",
     missingImage: "이미지를 찾을 수 없음",
+    deleted: "삭제된 이미지",
     menu: {
       addFavorite: "즐겨찾기 추가",
       removeFavorite: "즐겨찾기 해제",

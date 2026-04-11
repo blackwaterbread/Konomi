@@ -185,10 +185,18 @@ export function useImageActions({
         setSelectedImage(null);
         setIsDetailOpen(false);
       }
-      schedulePageRefresh(60);
+      if (selectedBuiltinCategory === "random") {
+        setImages((prev) =>
+          prev.map((entry) =>
+            entry.id === deleteConfirmId ? { ...entry, deleted: true } : entry,
+          ),
+        );
+      } else {
+        schedulePageRefresh(60);
+      }
     }
     setDeleteConfirmId(null);
-  }, [deleteConfirmId, images, schedulePageRefresh, selectedImage?.id, t]);
+  }, [deleteConfirmId, images, schedulePageRefresh, selectedBuiltinCategory, selectedImage?.id, setImages, t]);
 
   const handleSendToGenerator = useCallback(
     (image: ImageData) => {
@@ -306,8 +314,16 @@ export function useImageActions({
       setSelectedImage(null);
       setIsDetailOpen(false);
     }
-    schedulePageRefresh(60);
-  }, [bulkDeleteIds, schedulePageRefresh, selectedImage, t]);
+    if (selectedBuiltinCategory === "random") {
+      setImages((prev) =>
+        prev.map((entry) =>
+          idSet.has(entry.id) ? { ...entry, deleted: true } : entry,
+        ),
+      );
+    } else {
+      schedulePageRefresh(60);
+    }
+  }, [bulkDeleteIds, schedulePageRefresh, selectedBuiltinCategory, selectedImage, setImages, t]);
 
   const handleBulkDeleteDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {

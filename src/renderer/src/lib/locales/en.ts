@@ -81,6 +81,7 @@ const en = {
     previewAlt: "Image preview",
     emptyPreview: "Image Preview",
     missingImage: "Image not found",
+    deleted: "Deleted image",
     menu: {
       addFavorite: "Add to Favorites",
       removeFavorite: "Remove from Favorites",
