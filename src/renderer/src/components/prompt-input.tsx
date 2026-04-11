@@ -254,6 +254,85 @@ function appendPromptChunk(prompt: string, chunk: string): string {
   return cleanPrompt ? `${cleanPrompt}, ${cleanChunk}` : cleanChunk;
 }
 
+const RAW_TAG_SEPARATORS = new Set([",", "\n", "|", "\uff0c", "\uff5c"]);
+
+const TEXTAREA_MIRROR_PROPS = [
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "letterSpacing",
+  "lineHeight",
+  "textTransform",
+  "wordSpacing",
+  "textIndent",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "borderTopWidth",
+  "borderRightWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "boxSizing",
+  "whiteSpace",
+  "wordWrap",
+  "overflowWrap",
+  "tabSize",
+] as const;
+
+function getTextareaCursorXY(
+  textarea: HTMLTextAreaElement,
+  position: number,
+): { x: number; y: number; lineHeight: number } {
+  const style = window.getComputedStyle(textarea);
+  const div = document.createElement("div");
+  for (const prop of TEXTAREA_MIRROR_PROPS) {
+    div.style[prop] = style[prop];
+  }
+  div.style.position = "absolute";
+  div.style.visibility = "hidden";
+  div.style.overflow = "hidden";
+  div.style.width = `${textarea.clientWidth}px`;
+  div.style.height = "auto";
+
+  const text = textarea.value.slice(0, position);
+  div.textContent = text;
+
+  const span = document.createElement("span");
+  span.textContent = textarea.value.slice(position) || ".";
+  div.appendChild(span);
+  document.body.appendChild(div);
+
+  const spanRect = span.getBoundingClientRect();
+  const divRect = div.getBoundingClientRect();
+  const x = spanRect.left - divRect.left;
+  const y = spanRect.top - divRect.top;
+  const lineHeight = parseFloat(style.lineHeight) || spanRect.height;
+
+  document.body.removeChild(div);
+  return { x, y, lineHeight };
+}
+
+function getRawActiveTagPrefix(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+): string {
+  if (selectionStart !== selectionEnd) return "";
+  const cursor = Math.max(0, Math.min(selectionStart, value.length));
+
+  let start = cursor;
+  while (start > 0 && !RAW_TAG_SEPARATORS.has(value[start - 1])) {
+    start -= 1;
+  }
+
+  const raw = value.slice(start, cursor);
+  // Skip if user is typing a group reference (@{...})
+  if (raw.trimStart().startsWith("@{")) return "";
+  return raw.trim();
+}
+
 function getRawGroupAutocompleteContext(
   value: string,
   selectionStart: number,
@@ -417,6 +496,7 @@ export const PromptInput = memo(function PromptInput({
     left: 0,
   });
   const [rawOverlayScrollbarWidth, setRawOverlayScrollbarWidth] = useState(0);
+  const [rawTagPrefix, setRawTagPrefix] = useState("");
   const [rawContextMenu, setRawContextMenu] = useState<{
     x: number;
     y: number;
@@ -485,10 +565,7 @@ export const PromptInput = memo(function PromptInput({
   }, [groups, groupSearch]);
   const showGroupDropdown = groupDropdownOpen && filteredGroups.length > 0;
   const showTagSuggestionDropdown =
-    !isRawMode &&
-    !groupDropdownOpen &&
-    tagSuggestionOpen &&
-    tagSuggestions.length > 0;
+    !groupDropdownOpen && tagSuggestionOpen && tagSuggestions.length > 0;
   const tokenSyntaxIssueByIndex = useMemo(() => {
     if (isRawMode) return new Map<number, PromptEmphasisSyntaxIssueKind>();
     const issues = findPromptEmphasisSyntaxIssues(value);
@@ -551,7 +628,7 @@ export const PromptInput = memo(function PromptInput({
   );
 
   useEffect(() => {
-    if (isRawMode || groupDropdownOpen) {
+    if (groupDropdownOpen) {
       setTagSuggestions([]);
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
       setTagSuggestionOpen(false);
@@ -563,7 +640,7 @@ export const PromptInput = memo(function PromptInput({
       return;
     }
 
-    const prefix = draft.trim();
+    const prefix = isRawMode ? rawTagPrefix : draft.trim();
     if (!prefix) {
       setTagSuggestions([]);
       setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
@@ -617,7 +694,7 @@ export const PromptInput = memo(function PromptInput({
         tagSuggestDebounceRef.current = null;
       }
     };
-  }, [draft, groupDropdownOpen, promptTagExclusions, isRawMode]);
+  }, [draft, rawTagPrefix, groupDropdownOpen, promptTagExclusions, isRawMode]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -808,7 +885,37 @@ export const PromptInput = memo(function PromptInput({
     }
 
     const updateAutocompletePosition = () => {
-      const anchor = isRawMode ? rawInputRef.current : inputAnchorRef.current;
+      if (isRawMode) {
+        const textarea = rawInputRef.current;
+        if (!textarea) return;
+
+        const taRect = textarea.getBoundingClientRect();
+        const cursor = getTextareaCursorXY(
+          textarea,
+          textarea.selectionStart ?? 0,
+        );
+        const viewportWidth = window.innerWidth;
+        const desiredWidth = showGroupDropdown ? 320 : 288;
+        const width = Math.min(desiredWidth, viewportWidth - 16);
+        const cursorTop =
+          taRect.top + cursor.y - textarea.scrollTop + cursor.lineHeight + 4;
+        const cursorLeft = taRect.left + cursor.x - textarea.scrollLeft;
+        const left = Math.max(
+          8,
+          Math.min(cursorLeft, viewportWidth - width - 8),
+        );
+
+        setAutocompleteStyle({
+          position: "fixed",
+          top: cursorTop,
+          left,
+          width,
+          zIndex: 3200,
+        });
+        return;
+      }
+
+      const anchor = inputAnchorRef.current;
       if (!anchor) return;
 
       const rect = anchor.getBoundingClientRect();
@@ -842,6 +949,7 @@ export const PromptInput = memo(function PromptInput({
     showTagSuggestionDropdown,
     shouldWrapInput,
     tokens.length,
+    rawTagPrefix,
   ]);
 
   const emit = (
@@ -982,6 +1090,27 @@ export const PromptInput = memo(function PromptInput({
   };
 
   const applyTagSuggestion = (suggestion: PromptTagSuggestion) => {
+    if (isRawMode) {
+      const snap = rawSnapshotRef.current;
+      const cursor = snap.selectionStart;
+      let start = cursor;
+      while (start > 0 && !RAW_TAG_SEPARATORS.has(snap.value[start - 1])) {
+        start -= 1;
+      }
+      const leadingWs = snap.value.slice(start).match(/^\s*/)?.[0] ?? "";
+      const replacement = leadingWs + suggestion.tag;
+      const nextValue =
+        snap.value.slice(0, start) + replacement + snap.value.slice(cursor);
+      const nextCursor = start + replacement.length;
+      setTagSuggestions([]);
+      setTagSuggestionStats(EMPTY_PROMPT_TAG_SUGGEST_STATS);
+      setTagSuggestionOpen(false);
+      setTagSuggestionIndex(-1);
+      setRawTagPrefix("");
+      commitRawValue(nextValue, { start: nextCursor, end: nextCursor });
+      requestAnimationFrame(() => rawInputRef.current?.focus());
+      return;
+    }
     const nextToken = createEditableTokenFromChunk(suggestion.tag);
     if (!nextToken) return;
     insertTokensAtCursor([nextToken]);
@@ -1596,9 +1725,17 @@ export const PromptInput = memo(function PromptInput({
         setGroupDropdownIndex(0);
       }
       setGroupDropdownOpen(true);
+      setRawTagPrefix("");
     } else {
       setGroupDropdownOpen(false);
       setGroupSearch("");
+      setRawTagPrefix(
+        getRawActiveTagPrefix(
+          selection.currentValue,
+          selection.selectionStart,
+          selection.selectionEnd,
+        ),
+      );
     }
     return nextSnapshot;
   };
@@ -1614,6 +1751,10 @@ export const PromptInput = memo(function PromptInput({
       selection.end,
     );
 
+    const rawPrefix = groupContext
+      ? ""
+      : getRawActiveTagPrefix(nextValue, selection.start, selection.end);
+
     if (nextValue === currentSnapshot.value) {
       rawSnapshotRef.current = {
         value: nextValue,
@@ -1628,6 +1769,7 @@ export const PromptInput = memo(function PromptInput({
         setGroupDropdownOpen(false);
         setGroupSearch("");
       }
+      setRawTagPrefix(rawPrefix);
       queueRawSelection(selection.start, selection.end);
       return;
     }
@@ -1651,6 +1793,7 @@ export const PromptInput = memo(function PromptInput({
       setGroupDropdownOpen(false);
       setGroupSearch("");
     }
+    setRawTagPrefix(rawPrefix);
     onChange(nextValue);
     queueRawSelection(selection.start, selection.end);
   };
@@ -1750,6 +1893,34 @@ export const PromptInput = memo(function PromptInput({
   };
 
   const handleRawKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (tagSuggestionOpen && tagSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setTagSuggestionIndex((i) =>
+          Math.min(i + 1, tagSuggestions.length - 1),
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setTagSuggestionIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (tagSuggestionIndex >= 0) {
+          e.preventDefault();
+          applyTagSuggestion(tagSuggestions[tagSuggestionIndex]);
+          return;
+        }
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setTagSuggestionOpen(false);
+        setTagSuggestionIndex(-1);
+        return;
+      }
+    }
+
     if (groupDropdownOpen && filteredGroups.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
