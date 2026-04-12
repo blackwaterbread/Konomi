@@ -72,6 +72,18 @@ vi.mock("novelai-sdk-unofficial", () => {
 let ctx: IsolatedDbTestContext;
 const fetchMock = vi.fn();
 
+async function createService() {
+  const { getDB } = await import("../../../main/lib/db");
+  const { createPrismaNaiConfigRepo } = await import(
+    "../../../main/lib/repositories/prisma-nai-config-repo"
+  );
+  const { createNaiGenService } = await import(
+    "@core/services/nai-gen-service"
+  );
+  const naiConfigRepo = createPrismaNaiConfigRepo(getDB);
+  return createNaiGenService({ naiConfigRepo });
+}
+
 beforeEach(async () => {
   ctx = await setupIsolatedDbTest();
   sdkState.apiKeys.length = 0;
@@ -89,35 +101,34 @@ afterEach(async () => {
 
 describe("nai-gen", () => {
   it("creates and updates the persisted NovelAI config", async () => {
-    const { getNaiConfig, updateNaiConfig } =
-      await import("../../../main/lib/nai-gen");
+    const service = await createService();
 
-    await expect(getNaiConfig()).resolves.toMatchObject({
+    await expect(service.getConfig()).resolves.toMatchObject({
       id: 1,
       apiKey: "",
     });
 
     await expect(
-      updateNaiConfig({ apiKey: "secret-key" }),
+      service.updateConfig({ apiKey: "secret-key" }),
     ).resolves.toMatchObject({
       id: 1,
       apiKey: "secret-key",
     });
-    await expect(getNaiConfig()).resolves.toMatchObject({
+    await expect(service.getConfig()).resolves.toMatchObject({
       id: 1,
       apiKey: "secret-key",
     });
   });
 
   it("validates API keys and maps subscription tiers", async () => {
-    const { validateApiKey } = await import("../../../main/lib/nai-gen");
+    const service = await createService();
 
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ tier: 2 }),
     });
 
-    await expect(validateApiKey("token-123")).resolves.toEqual({
+    await expect(service.validateApiKey("token-123")).resolves.toEqual({
       valid: true,
       tier: "Scroll",
       anlas: 0,
@@ -131,7 +142,7 @@ describe("nai-gen", () => {
   });
 
   it("throws a detailed error when API key validation fails", async () => {
-    const { validateApiKey } = await import("../../../main/lib/nai-gen");
+    const service = await createService();
 
     fetchMock.mockResolvedValue({
       ok: false,
@@ -139,14 +150,13 @@ describe("nai-gen", () => {
       text: async () => "bad token",
     });
 
-    await expect(validateApiKey("bad-token")).rejects.toThrow(
+    await expect(service.validateApiKey("bad-token")).rejects.toThrow(
       "HTTP 401: bad token",
     );
   });
 
   it("streams previews, saves the final image, and patches V4 requests", async () => {
-    const { generateImage, updateNaiConfig } =
-      await import("../../../main/lib/nai-gen");
+    const service = await createService();
     const outputFolder = path.join(ctx.userDataDir, "generated");
     const previewBytes = Buffer.from("preview-image");
     const finalBytes = Buffer.from("final-image");
@@ -163,9 +173,9 @@ describe("nai-gen", () => {
       },
     );
 
-    await updateNaiConfig({ apiKey: "secret-api-key" });
+    await service.updateConfig({ apiKey: "secret-api-key" });
 
-    const outputPath = await generateImage(
+    const outputPath = await service.generate(
       {
         prompt: "masterpiece, 2girls",
         negativePrompt: "lowres, blurry",

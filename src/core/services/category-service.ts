@@ -1,11 +1,16 @@
-import type { CategoryRepository, CategoryEntity } from "../types/repository";
+import type {
+  CategoryRepository,
+  CategoryEntity,
+  ImageRepository,
+} from "../types/repository";
 
 export type CategoryServiceDeps = {
   categoryRepo: CategoryRepository;
+  imageRepo: ImageRepository;
 };
 
 export function createCategoryService(deps: CategoryServiceDeps) {
-  const { categoryRepo } = deps;
+  const { categoryRepo, imageRepo } = deps;
 
   return {
     async list(): Promise<CategoryEntity[]> {
@@ -47,12 +52,26 @@ export function createCategoryService(deps: CategoryServiceDeps) {
       return categoryRepo.removeImages(imageIds, categoryId);
     },
 
+    async addImagesByPrompt(
+      categoryId: number,
+      query: string,
+    ): Promise<number> {
+      const imageIds = await imageRepo.findIdsByPromptContaining(query);
+      if (imageIds.length === 0) return 0;
+      await categoryRepo.addImages(imageIds, categoryId);
+      return imageIds.length;
+    },
+
     async getImageIds(categoryId: number): Promise<number[]> {
       return categoryRepo.getImageIds(categoryId);
     },
 
     async getCategoriesForImage(imageId: number): Promise<number[]> {
       return categoryRepo.getCategoriesForImage(imageId);
+    },
+
+    async getCommonCategoriesForImages(imageIds: number[]): Promise<number[]> {
+      return categoryRepo.getCommonCategoriesForImages(imageIds);
     },
 
     async seedBuiltins(): Promise<void> {

@@ -274,9 +274,9 @@ class WorkerPool {
   }
 }
 
-const naiPool = new WorkerPool(POOL_SIZE, WORKER_PATH);
+export const naiPool = new WorkerPool(POOL_SIZE, WORKER_PATH);
 
-async function fileHash(filePath: string): Promise<string | null> {
+export async function fileHash(filePath: string): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
     const finalize = (value: string | null) => {

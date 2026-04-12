@@ -1,4 +1,4 @@
-import type { EventSender } from "./lib/watcher";
+import type { EventSender as WatcherEventSender } from "./lib/watcher";
 import {
   startWatching,
   watchNewFolder,
@@ -6,15 +6,6 @@ import {
   notifyWatchDuplicateResolved,
   setWatcherScanActive,
 } from "./lib/watcher";
-import {
-  getFolders,
-  createFolder,
-  deleteFolder,
-  renameFolder,
-  getSubfolderPaths,
-  getFolderStats,
-  getFolderSize,
-} from "./lib/folder";
 import {
   listImagesPage,
   listMatchingImageIds,
@@ -25,30 +16,22 @@ import {
   listImageSearchStatSourcesForFolder,
   decrementImageSearchStatsForRows,
   quickVerifyFolders,
-  syncAllFolders,
   setImageFavorite,
   findFolderDuplicateImages,
   resolveFolderDuplicates,
   listIgnoredDuplicatePaths,
   clearIgnoredDuplicatePaths,
   ensureIgnoredDuplicatePathsLoaded,
+  isIgnoredDuplicatePath,
+  applyImageSearchStatsMutations,
   rescanAllMetadata,
   rescanImageMetadata,
+  fileHash,
+  naiPool,
 } from "./lib/image";
-import {
-  listCategories as listPromptCategories,
-  createCategory as createPromptCategory,
-  renameCategory as renamePromptCategory,
-  deleteCategory as deletePromptCategory,
-  resetCategories as resetPromptCategories,
-  createGroup as createPromptGroup,
-  deleteGroup as deletePromptGroup,
-  renameGroup as renamePromptGroup,
-  createToken,
-  deleteToken,
-  reorderGroups as reorderPromptGroups,
-  reorderTokens,
-} from "./lib/prompt";
+import { createScanService } from "@core/services/scan-service";
+import { createPromptBuilderService } from "@core/services/prompt-builder-service";
+import { createPrismaPromptRepo } from "./lib/repositories/prisma-prompt-repo";
 import {
   computeAllHashes,
   deleteSimilarityCacheForImageIds,
@@ -57,32 +40,16 @@ import {
   getSimilarityReasons,
   resetAllHashes,
 } from "./lib/phash";
-import {
-  listCategories,
-  createCategory,
-  deleteCategory,
-  renameCategory,
-  updateCategoryColor,
-  addImageToCategory,
-  removeImageFromCategory,
-  addImagesToCategory,
-  removeImagesFromCategory,
-  addImagesByPrompt,
-  getCategoryImageIds,
-  getCategoriesForImage,
-  getCommonCategoryIdsForImages,
-  seedBuiltinCategories,
-} from "./lib/category";
-import {
-  getNaiConfig,
-  updateNaiConfig,
-  generateImage,
-  validateApiKey,
-  getSubscriptionInfo,
-} from "./lib/nai-gen";
-import type { NaiConfigPatch, GenerateParams } from "./lib/nai-gen";
+import { createNaiGenService } from "@core/services/nai-gen-service";
+import type { NaiConfigPatch, GenerateParams } from "@core/services/nai-gen-service";
+import { createPrismaNaiConfigRepo } from "./lib/repositories/prisma-nai-config-repo";
 import type { CancelToken } from "@core/lib/scanner";
 import { createLogger } from "@core/lib/logger";
+import { createFolderService } from "@core/services/folder-service";
+import { createCategoryService } from "@core/services/category-service";
+import { createPrismaFolderRepo } from "./lib/repositories/prisma-folder-repo";
+import { createPrismaCategoryRepo } from "./lib/repositories/prisma-category-repo";
+import { createPrismaImageRepo } from "./lib/repositories/prisma-image-repo";
 import { suggestPromptTags, searchPromptTags } from "./lib/prompts-db";
 import { getDB, runMigrations } from "./lib/db";
 
@@ -90,8 +57,38 @@ let scanCancelToken: CancelToken | null = null;
 let computeHashesInFlight: Promise<number> | null = null;
 const log = createLogger("main/utility");
 
+// ── Repository & Service initialization ─────────────────────
+const folderRepo = createPrismaFolderRepo(getDB);
+const categoryRepo = createPrismaCategoryRepo(getDB);
+const imageRepo = createPrismaImageRepo(getDB);
+
+const promptRepo = createPrismaPromptRepo(getDB);
+
+const naiConfigRepo = createPrismaNaiConfigRepo(getDB);
+
+const folderService = createFolderService({ folderRepo, imageRepo });
+const categoryService = createCategoryService({ categoryRepo, imageRepo });
+const promptBuilderService = createPromptBuilderService({ promptRepo });
+const naiGenService = createNaiGenService({ naiConfigRepo });
+const scanService = createScanService({
+  imageRepo,
+  folderRepo,
+  sender: { send(channel: string, data: unknown) { process.parentPort.postMessage({ event: channel, payload: data }); } },
+  readMeta: (filePath) => naiPool.run(filePath),
+  hashFile: fileHash,
+  searchStats: {
+    applyMutations: applyImageSearchStatsMutations,
+  },
+  ignoredDuplicates: {
+    isIgnored: isIgnoredDuplicatePath,
+  },
+  similarityCache: {
+    deleteForImageIds: deleteSimilarityCacheForImageIds,
+  },
+});
+
 // Abstract EventSender wrapping parentPort push messages
-const utilitySender: EventSender = {
+const utilitySender: WatcherEventSender = {
   send(channel: string, data: unknown): void {
     process.parentPort.postMessage({ event: channel, payload: data });
   },
@@ -111,10 +108,10 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       });
       return;
     case "folder:list":
-      return getFolders();
+      return folderService.list();
     case "folder:create": {
       const { name, path } = payload as { name: string; path: string };
-      const folder = await createFolder(name, path);
+      const folder = await folderService.create(name, path);
       watchNewFolder(folder.id, folder.path);
       return folder;
     }
@@ -157,7 +154,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       unwatchFolder(id);
       const folderImageIds = await listImageIdsForFolder(id);
       const folderStatRows = await listImageSearchStatSourcesForFolder(id);
-      await deleteFolder(id);
+      await folderService.delete(id);
       // Defer non-critical cleanup so the UI gets an immediate response
       (async () => {
         await deleteSimilarityCacheForImageIds(folderImageIds);
@@ -175,19 +172,19 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
     case "folder:rename": {
       const { id, name } = payload as { id: number; name: string };
-      return renameFolder(id, name);
+      return folderService.rename(id, name);
     }
     case "folder:listSubdirectories": {
       const { id } = payload as { id: number };
-      return getSubfolderPaths(id);
+      return folderService.getSubfolderPaths(id);
     }
     case "folder:stats": {
       const { id } = payload as { id: number };
-      return getFolderStats(id);
+      return folderService.getStats(id);
     }
     case "folder:size": {
       const { id } = payload as { id: number };
-      return getFolderSize(id);
+      return folderService.getSize(id);
     }
 
     case "image:getSearchPresetStats":
@@ -263,29 +260,19 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       scanCancelToken = { cancelled: false };
       setWatcherScanActive(true);
       try {
-        return await syncAllFolders({
-          onBatch: (batch) => utilitySender.send("image:batch", batch),
-          onProgress: (done, total) =>
-            utilitySender.send("image:scanProgress", { done, total }),
-          onFolderStart: (folderId, folderName) =>
-            utilitySender.send("image:scanFolder", {
-              folderId,
-              folderName,
-              active: true,
-            }),
-          onFolderEnd: (folderId) =>
-            utilitySender.send("image:scanFolder", { folderId, active: false }),
+        return await scanService.scanAll({
           signal: scanCancelToken,
+          folderIds,
+          orderedFolderIds,
+          skipFolderIds,
+          detectDuplicates,
           onDuplicateGroup: detectDuplicates
             ? (group) => utilitySender.send("image:watchDuplicate", group)
             : undefined,
-          folderIds,
-          orderedFolderIds,
-          onSearchStatsProgress: emitSearchStatsProgress,
           onDupCheckProgress: (done, total) =>
             utilitySender.send("image:dupCheckProgress", { done, total }),
+          onSearchStatsProgress: emitSearchStatsProgress,
           onPhase: (phase) => utilitySender.send("image:scanPhase", { phase }),
-          skipFolderIds,
         });
       } finally {
         scanCancelToken = null;
@@ -309,54 +296,54 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return clearIgnoredDuplicatePaths();
 
     case "prompt:listCategories":
-      return listPromptCategories();
+      return promptBuilderService.listCategories();
     case "prompt:createCategory": {
       const { name } = payload as { name: string };
-      return createPromptCategory(name);
+      return promptBuilderService.createCategory(name);
     }
     case "prompt:renameCategory": {
       const { id, name } = payload as { id: number; name: string };
-      return renamePromptCategory(id, name);
+      return promptBuilderService.renameCategory(id, name);
     }
     case "prompt:deleteCategory": {
       const { id } = payload as { id: number };
-      return deletePromptCategory(id);
+      return promptBuilderService.deleteCategory(id);
     }
     case "prompt:resetCategories":
-      return resetPromptCategories();
+      return promptBuilderService.resetCategories();
     case "prompt:createGroup": {
       const { categoryId, name } = payload as {
         categoryId: number;
         name: string;
       };
-      return createPromptGroup(categoryId, name);
+      return promptBuilderService.createGroup(categoryId, name);
     }
     case "prompt:deleteGroup": {
       const { id } = payload as { id: number };
-      return deletePromptGroup(id);
+      return promptBuilderService.deleteGroup(id);
     }
     case "prompt:renameGroup": {
       const { id, name } = payload as { id: number; name: string };
-      return renamePromptGroup(id, name);
+      return promptBuilderService.renameGroup(id, name);
     }
     case "prompt:createToken": {
       const { groupId, label } = payload as { groupId: number; label: string };
-      return createToken(groupId, label);
+      return promptBuilderService.createToken(groupId, label);
     }
     case "prompt:deleteToken": {
       const { id } = payload as { id: number };
-      return deleteToken(id);
+      return promptBuilderService.deleteToken(id);
     }
     case "prompt:reorderGroups": {
       const { categoryId, ids } = payload as {
         categoryId: number;
         ids: number[];
       };
-      return reorderPromptGroups(categoryId, ids);
+      return promptBuilderService.reorderGroups(categoryId, ids);
     }
     case "prompt:reorderTokens": {
       const { groupId, ids } = payload as { groupId: number; ids: number[] };
-      return reorderTokens(groupId, ids);
+      return promptBuilderService.reorderTokens(groupId, ids);
     }
     case "prompt:suggestTags":
       return suggestPromptTags(
@@ -438,83 +425,86 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
 
     case "category:list":
-      return listCategories();
+      return categoryService.list();
     case "category:create": {
       const { name } = payload as { name: string };
-      return createCategory(name);
+      return categoryService.create(name);
     }
     case "category:delete": {
       const { id } = payload as { id: number };
-      return deleteCategory(id);
+      return categoryService.delete(id);
     }
     case "category:rename": {
       const { id, name } = payload as { id: number; name: string };
-      return renameCategory(id, name);
+      return categoryService.rename(id, name);
     }
     case "category:addImage": {
       const { imageId, categoryId } = payload as {
         imageId: number;
         categoryId: number;
       };
-      return addImageToCategory(imageId, categoryId);
+      return categoryService.addImage(imageId, categoryId);
     }
     case "category:removeImage": {
       const { imageId, categoryId } = payload as {
         imageId: number;
         categoryId: number;
       };
-      return removeImageFromCategory(imageId, categoryId);
+      return categoryService.removeImage(imageId, categoryId);
     }
     case "category:addImages": {
       const { imageIds, categoryId } = payload as {
         imageIds: number[];
         categoryId: number;
       };
-      return addImagesToCategory(imageIds, categoryId);
+      return categoryService.addImages(imageIds, categoryId);
     }
     case "category:removeImages": {
       const { imageIds, categoryId } = payload as {
         imageIds: number[];
         categoryId: number;
       };
-      return removeImagesFromCategory(imageIds, categoryId);
+      return categoryService.removeImages(imageIds, categoryId);
     }
     case "category:addByPrompt": {
       const { categoryId, query } = payload as {
         categoryId: number;
         query: string;
       };
-      return addImagesByPrompt(categoryId, query);
+      return categoryService.addImagesByPrompt(categoryId, query);
     }
     case "category:imageIds": {
       const { categoryId } = payload as { categoryId: number };
-      return getCategoryImageIds(categoryId);
+      return categoryService.getImageIds(categoryId);
     }
     case "category:forImage": {
       const { imageId } = payload as { imageId: number };
-      return getCategoriesForImage(imageId);
+      return categoryService.getCategoriesForImage(imageId);
     }
     case "category:commonForImages": {
       const { imageIds } = payload as { imageIds: number[] };
-      return getCommonCategoryIdsForImages(imageIds);
+      return categoryService.getCommonCategoriesForImages(imageIds);
     }
     case "category:setColor": {
       const { id, color } = payload as { id: number; color: string | null };
-      return updateCategoryColor(id, color);
+      return categoryService.updateColor(id, color);
     }
 
     case "nai:validateApiKey":
-      return validateApiKey(payload as string);
+      return naiGenService.validateApiKey(payload as string);
     case "nai:getSubscription":
-      return getSubscriptionInfo();
+      return naiGenService.getSubscriptionInfo();
     case "nai:getConfig":
-      return getNaiConfig();
+      return naiGenService.getConfig();
     case "nai:updateConfig":
-      return updateNaiConfig(payload as NaiConfigPatch);
+      return naiGenService.updateConfig(payload as NaiConfigPatch);
     case "nai:generate":
-      return generateImage(payload as GenerateParams, (dataUrl) => {
-        utilitySender.send("nai:generatePreview", dataUrl);
-      });
+      return naiGenService.generate(
+        payload as GenerateParams,
+        (dataUrl: string) => {
+          utilitySender.send("nai:generatePreview", dataUrl);
+        },
+      );
 
     default:
       throw new Error(`Unknown request type: ${type}`);
@@ -522,7 +512,8 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
 }
 
 // Seed builtins on startup
-seedBuiltinCategories()
+categoryService
+  .seedBuiltins()
   .then(() => log.info("Seeded builtin categories"))
   .catch((error) =>
     log.errorWithStack("Failed to seed builtin categories", error),
