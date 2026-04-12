@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -29,6 +29,7 @@ interface UseAppShellStateResult {
   activePanel: ActivePanel;
   setActivePanel: Dispatch<SetStateAction<ActivePanel>>;
   handlePanelChange: (nextPanel: ActivePanel) => Promise<void>;
+  panelTransitioning: boolean;
   sidebarWidth: number;
   handleResizeStart: (event: ReactMouseEvent) => void;
   tourOpen: boolean;
@@ -56,6 +57,7 @@ export function useAppShellState({
   runAnalysisNow,
 }: UseAppShellStateOptions): UseAppShellStateResult {
   const { t } = useTranslation();
+  const [isPanelTransitioning, startPanelTransition] = useTransition();
   const [activePanel, setActivePanel] = useState<ActivePanel>("gallery");
   const [tourOpen, setTourOpen] = useState(
     () => localStorage.getItem(TOUR_COMPLETED_KEY) !== "true",
@@ -132,7 +134,7 @@ export function useAppShellState({
       const leavingSettings =
         activePanel === "settings" && nextPanel !== "settings";
       if (!leavingSettings || !pendingSimilarityRecalcRef.current) {
-        setActivePanel(nextPanel);
+        startPanelTransition(() => setActivePanel(nextPanel));
         return;
       }
 
@@ -146,7 +148,7 @@ export function useAppShellState({
         analyzeTimerRef.current = null;
       }
 
-      setActivePanel(nextPanel);
+      startPanelTransition(() => setActivePanel(nextPanel));
       await runAnalysisNow();
     },
     [
@@ -155,6 +157,7 @@ export function useAppShellState({
       pendingSimilarityRecalcRef,
       runAnalysisNow,
       scanningRef,
+      startPanelTransition,
       t,
     ],
   );
@@ -186,6 +189,7 @@ export function useAppShellState({
     activePanel,
     setActivePanel,
     handlePanelChange,
+    panelTransitioning: isPanelTransitioning,
     sidebarWidth,
     handleResizeStart,
     tourOpen,

@@ -252,6 +252,7 @@ export default function App({
     activePanel,
     setActivePanel,
     handlePanelChange,
+    panelTransitioning,
     sidebarWidth,
     handleResizeStart,
     initialLanguageScreenOpen,
@@ -577,9 +578,9 @@ export default function App({
       />
 
       <div className="relative flex flex-1 overflow-hidden">
-        {/* GenerationView - 항상 마운트하고 CSS로만 표시 전환 */}
+        {/* GenerationView - 항상 마운트하고 hidden으로 표시 전환 */}
         <div
-          className={`absolute inset-0 flex overflow-hidden${activePanel !== "generator" ? " opacity-0 pointer-events-none" : ""}`}
+          className={`absolute inset-0 flex overflow-hidden${activePanel !== "generator" ? " hidden" : ""}`}
           inert={activePanel !== "generator" ? true : undefined}
         >
           <GenerationView
@@ -591,15 +592,15 @@ export default function App({
           />
         </div>
 
-        {generatorTransitioning && (
+        {(generatorTransitioning || panelTransitioning) && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         )}
 
-        {/* 갤러리 영역 - 항상 마운트하고 CSS로만 표시 전환 */}
+        {/* 갤러리 영역 - 항상 마운트하고 hidden으로 표시 전환 */}
         <div
-          className={`absolute inset-0 flex overflow-hidden${activePanel === "generator" ? " opacity-0 pointer-events-none" : ""}`}
+          className={`absolute inset-0 flex overflow-hidden${activePanel === "generator" ? " hidden" : ""}`}
           inert={activePanel === "generator" ? true : undefined}
         >
           <div
