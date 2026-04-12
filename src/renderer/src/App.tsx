@@ -333,6 +333,7 @@ export default function App({
     scheduleAnalysis,
     schedulePageRefresh,
     incrementPendingNew,
+    effectiveFolderIds,
   });
 
   // Single mount orchestrator — explicit sequential initialization

@@ -70,13 +70,20 @@ export function useImageEventSubscriptions({
   scheduleAnalysis,
   schedulePageRefresh,
   incrementPendingNew,
+  effectiveFolderIds,
 }: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan"> & {
   incrementPendingNew: (count: number) => void;
+  effectiveFolderIds: Set<number>;
 }) {
   const incrementPendingNewRef = useRef(incrementPendingNew);
   useEffect(() => {
     incrementPendingNewRef.current = incrementPendingNew;
   }, [incrementPendingNew]);
+
+  const effectiveFolderIdsRef = useRef(effectiveFolderIds);
+  useEffect(() => {
+    effectiveFolderIdsRef.current = effectiveFolderIds;
+  }, [effectiveFolderIds]);
 
   useEffect(() => {
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
@@ -87,9 +94,14 @@ export function useImageEventSubscriptions({
         // triggers a full schedulePageRefresh(0) anyway. Refreshing mid-scan
         // causes DB reads + image file reads that compete with scan IO.
       } else {
-        // Accumulate count instead of refreshing — gallery shows a banner
-        // so the user can refresh when ready.
-        incrementPendingNewRef.current(rows.length);
+        // Only count images belonging to currently visible folders so the
+        // "new images" banner doesn't appear for non-visible folder additions.
+        const visibleCount = rows.filter((r) =>
+          effectiveFolderIdsRef.current.has(r.folderId),
+        ).length;
+        if (visibleCount > 0) {
+          incrementPendingNewRef.current(visibleCount);
+        }
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
       }
@@ -135,6 +147,7 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     scanningRef,
     scheduleAnalysis,
     incrementPendingNew: () => {},
+    effectiveFolderIds: new Set(),
   });
 
   // Initialization — run once on mount with no quickVerify (fallback path)
