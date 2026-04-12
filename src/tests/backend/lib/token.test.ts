@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePromptTokens } from "../../../main/lib/token";
+import { parsePromptTokens } from "@core/lib/token";
 
 describe("parsePromptTokens", () => {
   it("parses simple comma-separated tokens and normalizes whitespace", () => {

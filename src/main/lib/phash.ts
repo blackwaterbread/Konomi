@@ -2,7 +2,7 @@ import os from "os";
 import path from "path";
 import { Worker } from "worker_threads";
 import { getDB, getRawDB } from "./db";
-import { withConcurrency } from "./scanner";
+import { withConcurrency } from "@core/lib/scanner";
 import { computeAllPairs, type AllPairsInput, type AllPairsResult } from "./konomi-image";
 
 const SIMILARITY_THRESHOLD = 10;

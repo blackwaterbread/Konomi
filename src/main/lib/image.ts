@@ -10,11 +10,11 @@ import {
   walkImageFiles,
   countImageFiles,
   withConcurrency,
-} from "./scanner";
-import type { CancelToken } from "./scanner";
-import { parsePromptTokens } from "./token";
+} from "@core/lib/scanner";
+import type { CancelToken } from "@core/lib/scanner";
+import { parsePromptTokens } from "@core/lib/token";
 import { deleteSimilarityCacheForImageIds } from "./phash";
-import type { ImageMeta } from "@/types/image-meta";
+import type { ImageMeta } from "@core/types/image-meta";
 import type { Prisma } from "../../generated/prisma/client";
 
 export type ImageRow = {

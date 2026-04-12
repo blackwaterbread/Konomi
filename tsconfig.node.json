@@ -6,14 +6,16 @@
     "src/preload/**/*",
     "src/renderer/src/types/**/*",
     "src/generated/prisma/**/*",
-    "src/tests/backend/**/*"
+    "src/tests/backend/**/*",
+    "src/core/**/*"
   ],
   "compilerOptions": {
     "composite": true,
     "types": ["node", "electron-vite/node"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/src/*"]
+      "@/*": ["src/renderer/src/*"],
+      "@core/*": ["src/core/*"]
     }
   }
 }

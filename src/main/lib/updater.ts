@@ -3,7 +3,7 @@ import { app } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync, rmSync, existsSync } from "fs";
 import type { WebContents } from "electron";
-import { createLogger } from "./logger";
+import { createLogger } from "@core/lib/logger";
 
 const log = createLogger("main/updater");
 

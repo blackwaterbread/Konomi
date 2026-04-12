@@ -1,6 +1,6 @@
 import { NovelAI, isV4Model } from "novelai-sdk-unofficial";
 import { getDB } from "./db";
-import { createLogger } from "./logger";
+import { createLogger } from "@core/lib/logger";
 import path from "path";
 import fs from "fs/promises";
 

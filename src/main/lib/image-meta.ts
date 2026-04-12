@@ -1,14 +1,14 @@
 import { readFileSync, openSync, readSync, closeSync } from "fs";
 import { extname } from "path";
-import type { ImageMeta } from "@/types/image-meta";
-import { readComfyuiMetaFromBuffer } from "./comfyui";
-import { readMidjourneyMetaFromBuffer } from "./midjourney";
+import type { ImageMeta } from "@core/types/image-meta";
+import { readComfyuiMetaFromBuffer } from "@core/lib/comfyui";
+import { readMidjourneyMetaFromBuffer } from "@core/lib/midjourney";
 import {
   readNaiMetaFromBuffer,
   readNaiMetaFromPngText,
   readNaiMetaFromWebp,
 } from "./nai";
-import { readWebuiMetaFromBuffer } from "./webui";
+import { readWebuiMetaFromBuffer } from "@core/lib/webui";
 
 function isWebp(buf: Buffer): boolean {
   return (

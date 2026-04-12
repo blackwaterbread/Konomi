@@ -47,6 +47,7 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": resolve("src/renderer/src"),
+        "@core": resolve("src/core"),
       },
     },
     build: {

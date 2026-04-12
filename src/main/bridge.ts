@@ -1,7 +1,7 @@
 import { utilityProcess, app } from "electron";
 import { join } from "path";
 import type { WebContents } from "electron";
-import { createLogger } from "./lib/logger";
+import { createLogger } from "@core/lib/logger";
 
 const NOISY_EVENTS = new Set([
   "image:batch",

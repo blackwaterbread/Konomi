@@ -3,7 +3,7 @@ import path from "path";
 import { getDB } from "./db";
 import { readImageMeta } from "./image-meta";
 import { getFolders } from "./folder";
-import { parsePromptTokens } from "./token";
+import { parsePromptTokens } from "@core/lib/token";
 import {
   applyImageSearchStatsMutation,
   decrementImageSearchStatsForRows,

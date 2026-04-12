@@ -6,7 +6,7 @@ import {
   countImageFiles,
   scanImageFiles,
   withConcurrency,
-} from "../../../main/lib/scanner";
+} from "@core/lib/scanner";
 
 const tempDirs: string[] = [];
 

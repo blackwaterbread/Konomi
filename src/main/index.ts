@@ -6,7 +6,7 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { registerIpcHandlers } from "./ipc";
 import { bridge } from "./bridge";
 import { initAutoUpdater } from "./lib/updater";
-import { createLogger } from "./lib/logger";
+import { createLogger } from "@core/lib/logger";
 import {
   getImageContentType,
   isManagedImagePath,

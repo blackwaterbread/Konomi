@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readComfyuiMetaFromBuffer } from "../../../main/lib/comfyui";
+import { readComfyuiMetaFromBuffer } from "@core/lib/comfyui";
 import { createPngBuffer, createPngTextChunk } from "../fixtures/png-fixture";
 
 function comfyPng(

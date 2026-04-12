@@ -4,7 +4,7 @@ import crypto from "crypto";
 import Database from "better-sqlite3";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../generated/prisma/client";
-import { createLogger } from "./logger";
+import { createLogger } from "@core/lib/logger";
 
 const log = createLogger("main/db");
 

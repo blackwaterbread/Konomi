@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { inflateSync, gunzipSync } from "zlib";
-import type { ImageMeta } from "@/types/image-meta";
-import { readPngTextChunks } from "./png-meta";
+import type { ImageMeta } from "@core/types/image-meta";
+import { readPngTextChunks } from "@core/lib/png-meta";
 import { decodeWebpAlpha } from "./webp-alpha";
 import { extractNaiLsb } from "./konomi-image";
 

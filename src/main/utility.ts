@@ -81,8 +81,8 @@ import {
   getSubscriptionInfo,
 } from "./lib/nai-gen";
 import type { NaiConfigPatch, GenerateParams } from "./lib/nai-gen";
-import type { CancelToken } from "./lib/scanner";
-import { createLogger } from "./lib/logger";
+import type { CancelToken } from "@core/lib/scanner";
+import { createLogger } from "@core/lib/logger";
 import { suggestPromptTags, searchPromptTags } from "./lib/prompts-db";
 import { getDB, runMigrations } from "./lib/db";
 

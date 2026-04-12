@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { bridge } from "../bridge";
-import { createLogger } from "./logger";
+import { createLogger } from "@core/lib/logger";
 
 type FolderRow = {
   id: number;

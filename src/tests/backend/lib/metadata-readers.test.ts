@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readImageMetaFromBuffer } from "../../../main/lib/image-meta";
-import { readMidjourneyMetaFromBuffer } from "../../../main/lib/midjourney";
-import { readWebuiMetaFromBuffer } from "../../../main/lib/webui";
+import { readMidjourneyMetaFromBuffer } from "@core/lib/midjourney";
+import { readWebuiMetaFromBuffer } from "@core/lib/webui";
 import {
   createNaiPngBuffer,
   createPngBuffer,

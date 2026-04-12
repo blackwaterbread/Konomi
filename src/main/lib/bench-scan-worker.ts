@@ -5,7 +5,7 @@
 import { parentPort } from "worker_threads";
 import { statSync } from "fs";
 import { readImageMeta } from "./image-meta";
-import { parsePromptTokens } from "./token";
+import { parsePromptTokens } from "@core/lib/token";
 import { performance } from "perf_hooks";
 
 parentPort!.on(
