@@ -31,16 +31,24 @@ export function runAppInitialization({
   scheduleAnalysis,
   runScan,
   onInitialRefreshDone,
+  setScanning,
+  scanningRef,
 }: {
   loadSearchPresetStats: () => Promise<void>;
   scheduleAnalysis: (delay?: number) => void;
   runScan: UseImageWatchBootstrapOptions["runScan"];
   onInitialRefreshDone?: () => void;
+  setScanning: (v: boolean) => void;
+  scanningRef: MutableRefObject<boolean>;
 }): { cancel: () => void } {
   let cancelled = false;
 
   void (async () => {
     void loadSearchPresetStats();
+
+    // Show scanning state immediately so the UI isn't unresponsive
+    scanningRef.current = true;
+    setScanning(true);
 
     // Quick-verify folders first — skip unchanged ones during scan
     let skipFolderIds: number[] | undefined;
@@ -52,7 +60,6 @@ export function runAppInitialization({
       ) {
         skipFolderIds = result.unchangedFolderIds;
       }
-      // If all folders changed or all unchanged, let syncAllFolders handle normally
     } catch {
       // quickVerify failed — fall through to full scan
     }
@@ -178,8 +185,10 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
       loadSearchPresetStats,
       scheduleAnalysis,
       runScan,
+      setScanning: () => {},
+      scanningRef,
     });
-  }, [loadSearchPresetStats, scheduleAnalysis, runScan]);
+  }, [loadSearchPresetStats, scheduleAnalysis, runScan, scanningRef]);
 
   useEffect(() => {
     const handle = runInit();

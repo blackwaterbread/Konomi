@@ -154,6 +154,7 @@ export function useScanning({
 
   return {
     scanning,
+    setScanning,
     activeScanFolderIds,
     setActiveScanFolderIds,
     rollbackFolderIds,

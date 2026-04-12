@@ -194,6 +194,7 @@ export default function App({
 
   const {
     scanning,
+    setScanning,
     activeScanFolderIds,
     setActiveScanFolderIds,
     setRollbackFolderIds,
@@ -350,6 +351,8 @@ export default function App({
         loadSearchPresetStats,
         scheduleAnalysis,
         runScan,
+        setScanning,
+        scanningRef,
         onInitialRefreshDone: () => setInitialRefreshDone(true),
       });
     })();
