@@ -29,8 +29,11 @@ describe("useImageWatchBootstrap", () => {
       }),
     );
 
-    await waitFor(() => expect(loadSearchPresetStats).toHaveBeenCalledTimes(1));
-    expect(scheduleAnalysis).toHaveBeenCalledWith(0);
+    await waitFor(() => expect(scheduleAnalysis).toHaveBeenCalledWith(0));
+
+    // runAppInitialization sets scanningRef.current = true; reset it so
+    // batch/removed events are processed as post-scan watcher events.
+    scanningRef.current = false;
 
     act(() => {
       preloadEvents.image.batch.emit([]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Dispatch,
   MouseEvent as ReactMouseEvent,
@@ -57,8 +57,8 @@ export function useAppShellState({
   runAnalysisNow,
 }: UseAppShellStateOptions): UseAppShellStateResult {
   const { t } = useTranslation();
-  const [isPanelTransitioning, startPanelTransition] = useTransition();
   const [activePanel, setActivePanel] = useState<ActivePanel>("gallery");
+  const [panelTransitioning, setPanelTransitioning] = useState(false);
   const [tourOpen, setTourOpen] = useState(
     () => localStorage.getItem(TOUR_COMPLETED_KEY) !== "true",
   );
@@ -134,7 +134,11 @@ export function useAppShellState({
       const leavingSettings =
         activePanel === "settings" && nextPanel !== "settings";
       if (!leavingSettings || !pendingSimilarityRecalcRef.current) {
-        startPanelTransition(() => setActivePanel(nextPanel));
+        setPanelTransitioning(true);
+        setActivePanel(nextPanel);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setPanelTransitioning(false));
+        });
         return;
       }
 
@@ -148,7 +152,11 @@ export function useAppShellState({
         analyzeTimerRef.current = null;
       }
 
-      startPanelTransition(() => setActivePanel(nextPanel));
+      setPanelTransitioning(true);
+      setActivePanel(nextPanel);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setPanelTransitioning(false));
+      });
       await runAnalysisNow();
     },
     [
@@ -157,7 +165,6 @@ export function useAppShellState({
       pendingSimilarityRecalcRef,
       runAnalysisNow,
       scanningRef,
-      startPanelTransition,
       t,
     ],
   );
@@ -189,7 +196,7 @@ export function useAppShellState({
     activePanel,
     setActivePanel,
     handlePanelChange,
-    panelTransitioning: isPanelTransitioning,
+    panelTransitioning,
     sidebarWidth,
     handleResizeStart,
     tourOpen,

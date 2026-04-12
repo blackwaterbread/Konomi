@@ -33,6 +33,11 @@ vi.mock("@/hooks/useImageAnalysis", () => ({
   useImageAnalysis: (...args: unknown[]) => useImageAnalysisMock(...args),
 }));
 
+vi.mock("@/hooks/useImageWatchBootstrap", () => ({
+  useImageEventSubscriptions: vi.fn(),
+  runAppInitialization: vi.fn().mockReturnValue({ cancel: vi.fn() }),
+}));
+
 vi.mock("@/lib/i18n", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/i18n")>("@/lib/i18n");
@@ -467,6 +472,7 @@ describe("App", () => {
     useScanningMock.mockReset();
     useScanningMock.mockReturnValue({
       scanning: false,
+      setScanning: vi.fn(),
       activeScanFolderIds: new Set(),
       setActiveScanFolderIds: vi.fn(),
       setRollbackFolderIds: vi.fn(),
@@ -519,10 +525,10 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(screen.getByTestId("settings-view")).toBeInTheDocument();
     expect(screen.getByTestId("header-active-panel")).toHaveTextContent(
       "settings",
     );
-    expect(screen.getByTestId("settings-view")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Close Settings" }));
 
@@ -681,6 +687,7 @@ describe("App", () => {
 
     useScanningMock.mockReturnValue({
       scanning: true,
+      setScanning: vi.fn(),
       activeScanFolderIds: new Set([1]),
       setActiveScanFolderIds: vi.fn(),
       setRollbackFolderIds: vi.fn(),
@@ -991,6 +998,7 @@ describe("App", () => {
     });
     useScanningMock.mockReturnValue({
       scanning: false,
+      setScanning: vi.fn(),
       activeScanFolderIds: new Set(),
       setActiveScanFolderIds: vi.fn(),
       setRollbackFolderIds: vi.fn(),
@@ -1035,6 +1043,7 @@ describe("App", () => {
     });
     useScanningMock.mockReturnValue({
       scanning: true,
+      setScanning: vi.fn(),
       activeScanFolderIds: new Set([1]),
       setActiveScanFolderIds: vi.fn(),
       setRollbackFolderIds: vi.fn(),
@@ -1069,6 +1078,7 @@ describe("App", () => {
 
     useScanningMock.mockReturnValue({
       scanning: true,
+      setScanning: vi.fn(),
       activeScanFolderIds: new Set([1]),
       setActiveScanFolderIds: vi.fn(),
       setRollbackFolderIds: vi.fn(),
