@@ -1,6 +1,6 @@
 {
   "name": "konomi",
-  "version": "0.13.2",
+  "version": "0.13.3",
   "packageManager": "bun@1.2.20",
   "description": "AI image gallery with metadata parsing, search, and generation support",
   "main": "./out/main/index.js",
