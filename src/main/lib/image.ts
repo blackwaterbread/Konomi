@@ -169,6 +169,8 @@ const HASH_SCAN_CONCURRENCY = Math.min(
 const SYNC_SCAN_CONCURRENCY = Math.min(24, Math.max(8, CPU_COUNT * 2));
 const STAT_CONCURRENCY = Math.min(128, Math.max(32, CPU_COUNT * 4));
 
+const IDLE_TIMEOUT_MS = 10_000;
+
 class WorkerPool {
   private idle: Worker[] = [];
   private queue: Array<{
@@ -178,16 +180,28 @@ class WorkerPool {
   private callbacks = new Map<number, (r: ImageMeta | null) => void>();
   private workerTask = new Map<Worker, number>();
   private seq = 0;
+  private readonly maxSize: number;
+  private readonly workerPath: string;
+  private activeCount = 0;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(size: number, workerPath: string) {
-    for (let i = 0; i < size; i++) this.addWorker(workerPath);
+    this.maxSize = size;
+    this.workerPath = workerPath;
   }
 
-  private addWorker(workerPath: string): void {
-    const w = new Worker(workerPath);
+  private ensureWorkers(): void {
+    const total = this.idle.length + this.activeCount;
+    const needed = Math.min(this.maxSize, this.queue.length) - total;
+    for (let i = 0; i < needed; i++) this.addWorker();
+  }
+
+  private addWorker(): void {
+    const w = new Worker(this.workerPath);
     w.on(
       "message",
       ({ id, result }: { id: number; result: ImageMeta | null }) => {
+        this.activeCount--;
         this.workerTask.delete(w);
         this.callbacks.get(id)?.(result);
         this.callbacks.delete(id);
@@ -195,6 +209,7 @@ class WorkerPool {
       },
     );
     w.on("error", () => {
+      this.activeCount--;
       const id = this.workerTask.get(w);
       this.workerTask.delete(w);
       if (id !== undefined) {
@@ -202,8 +217,10 @@ class WorkerPool {
         this.callbacks.delete(id);
       }
       w.terminate().catch(() => {});
-      this.addWorker(workerPath);
-      this.flush();
+      if (this.queue.length > 0) {
+        this.addWorker();
+        this.flush();
+      }
     });
     this.idle.push(w);
     this.flush();
@@ -213,11 +230,14 @@ class WorkerPool {
     const next = this.queue.shift();
     if (!next) {
       this.idle.push(w);
+      this.scheduleIdleShutdown();
       return;
     }
+    this.cancelIdleShutdown();
     const id = this.seq++;
     this.callbacks.set(id, next.resolve);
     this.workerTask.set(w, id);
+    this.activeCount++;
     w.postMessage({ id, filePath: next.filePath });
   }
 
@@ -227,9 +247,28 @@ class WorkerPool {
     }
   }
 
+  private scheduleIdleShutdown(): void {
+    if (this.activeCount > 0 || this.idleTimer) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.activeCount > 0) return;
+      for (const w of this.idle) w.terminate().catch(() => {});
+      this.idle.length = 0;
+    }, IDLE_TIMEOUT_MS);
+  }
+
+  private cancelIdleShutdown(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
   run(filePath: string): Promise<ImageMeta | null> {
     return new Promise((resolve) => {
       this.queue.push({ filePath, resolve });
+      this.cancelIdleShutdown();
+      this.ensureWorkers();
       this.flush();
     });
   }
