@@ -459,14 +459,14 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
         </DialogHeader>
         <div className="space-y-3">
           {entries.length > 0 && (
-            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+            <div className="space-y-1.5 max-h-56 overflow-y-auto px-1 border rounded-md py-1.5">
               {entries.map((entry) => {
                 const error = submitErrors.find((e) => e.path === entry.path);
                 return (
                   <div
                     key={entry.path}
                     className={cn(
-                      "flex items-center gap-2 rounded-md border px-3 py-2",
+                      "flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2",
                       error && "border-destructive/40 bg-destructive/5",
                     )}
                   >
