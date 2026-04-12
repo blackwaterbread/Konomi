@@ -69,6 +69,11 @@ export type FolderDuplicateGroupResolution = {
 
 type ProgressCallback = (done: number, total: number) => void;
 
+export type QuickVerifyResult = {
+  changedFolderIds: number[];
+  unchangedFolderIds: number[];
+};
+
 // ── Adapter interfaces ─────────────────────────────────────────
 // Infrastructure-specific operations that consumers must implement.
 
@@ -762,6 +767,85 @@ export function createScanService(deps: ScanServiceDeps) {
       } finally {
         sender.send("image:scanFolder", { folderId, active: false });
       }
+    },
+
+    async quickVerify(
+      signal?: CancelToken,
+      onProgress?: ProgressCallback,
+    ): Promise<QuickVerifyResult> {
+      const folders = await folderRepo.findAll();
+
+      // Count total files across all folders for progress
+      let total = 0;
+      for (const folder of folders) {
+        if (signal?.cancelled) break;
+        try {
+          await fs.promises.access(folder.path);
+          total += await countImageFiles(folder.path, signal);
+        } catch {
+          // inaccessible
+        }
+      }
+
+      let done = 0;
+      let lastProgressAt = 0;
+      const changedFolderIds: number[] = [];
+      const unchangedFolderIds: number[] = [];
+
+      for (const folder of folders) {
+        if (signal?.cancelled) break;
+        try {
+          await fs.promises.access(folder.path);
+        } catch {
+          unchangedFolderIds.push(folder.id);
+          continue;
+        }
+
+        const existing = await imageRepo.findSyncRowsByFolderId(folder.id);
+        const existingMap = new Map(
+          existing.map(
+            (e) => [e.path, { fileModifiedAt: e.fileModifiedAt, source: e.source }] as const,
+          ),
+        );
+
+        const result = await classifyFolderFiles(
+          folder.path,
+          existingMap,
+          signal,
+          () => {
+            done++;
+            const now = Date.now();
+            if (now - lastProgressAt >= 100) {
+              lastProgressAt = now;
+              onProgress?.(done, total);
+            }
+          },
+        );
+
+        done += result.newFiles.length + result.changedFiles.length;
+        onProgress?.(done, total);
+
+        const hasStaleRows = existing.some(
+          (row) => !result.discoveredPaths.has(row.path),
+        );
+        const hasChanges =
+          result.newFiles.length > 0 ||
+          result.changedFiles.length > 0 ||
+          hasStaleRows;
+
+        if (hasChanges) {
+          changedFolderIds.push(folder.id);
+        } else {
+          unchangedFolderIds.push(folder.id);
+        }
+      }
+
+      onProgress?.(done, total);
+      log.info(
+        `quickVerify: total=${folders.length} changed=${changedFolderIds.length} unchanged=${unchangedFolderIds.length}`,
+      );
+
+      return { changedFolderIds, unchangedFolderIds };
     },
   };
 }

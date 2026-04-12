@@ -61,6 +61,7 @@ export type {
   ScanOptions,
   ScanPhase,
   ClassifyResult,
+  QuickVerifyResult,
   FolderDuplicateExistingEntry,
   FolderDuplicateIncomingEntry,
   FolderDuplicateGroup,

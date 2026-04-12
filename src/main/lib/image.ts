@@ -4,7 +4,6 @@ import crypto from "crypto";
 import os from "os";
 import { Worker } from "worker_threads";
 import { getDB, getRawDB } from "./db";
-import { getFolders } from "./folder";
 import {
   scanImageFiles,
   walkImageFiles,
@@ -2204,7 +2203,7 @@ export async function quickVerifyFolders(
   onProgress?: (done: number, total: number) => void,
 ): Promise<QuickVerifyResult> {
   const db = getDB();
-  const folders = await getFolders();
+  const folders = await db.folder.findMany({ orderBy: { createdAt: "asc" } });
 
   // Count total files across all folders for progress
   let total = 0;
@@ -2344,7 +2343,7 @@ export async function syncAllFolders(
   try {
     // -- Folder resolution --
     onPhase?.("loadingLibrary");
-    const rawFolders = await getFolders();
+    const rawFolders = await getDB().folder.findMany({ orderBy: { createdAt: "asc" } });
     const requestedFolderIds =
       folderIds && folderIds.length > 0 ? new Set(folderIds) : null;
     const candidateFolders = requestedFolderIds

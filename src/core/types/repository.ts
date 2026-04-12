@@ -108,6 +108,9 @@ export interface ImageRepository {
 
   deleteByIds(ids: number[]): Promise<void>;
   deleteByPath(path: string): Promise<void>;
+
+  /** Set isFavorite flag on a single image */
+  setFavorite(id: number, isFavorite: boolean): Promise<void>;
   countByFolderId(folderId: number): Promise<number>;
   existsByPath(path: string): Promise<boolean>;
 

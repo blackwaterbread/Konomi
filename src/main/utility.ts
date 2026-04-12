@@ -15,8 +15,6 @@ import {
   suggestImageSearchTags,
   listImageSearchStatSourcesForFolder,
   decrementImageSearchStatsForRows,
-  quickVerifyFolders,
-  setImageFavorite,
   findFolderDuplicateImages,
   resolveFolderDuplicates,
   listIgnoredDuplicatePaths,
@@ -240,9 +238,12 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return listImagesByIds(ids);
     }
     case "image:quickVerify":
-      return quickVerifyFolders(undefined, (done, total) => {
-        utilitySender.send("image:quickVerifyProgress", { done, total });
-      });
+      return scanService.quickVerify(
+        undefined,
+        (done: number, total: number) => {
+          utilitySender.send("image:quickVerifyProgress", { done, total });
+        },
+      );
     case "image:scan": {
       const {
         detectDuplicates = false,
@@ -284,7 +285,8 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return null;
     case "image:setFavorite": {
       const { id, isFavorite } = payload as { id: number; isFavorite: boolean };
-      return setImageFavorite(id, isFavorite);
+      await imageRepo.setFavorite(id, isFavorite);
+      return null;
     }
     case "image:watch":
       // No-op if watcher was already started at boot (paused mode).

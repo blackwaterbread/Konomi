@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { getDB } from "./db";
 import { readImageMeta } from "./image-meta";
-import { getFolders } from "./folder";
 import { parsePromptTokens } from "@core/lib/token";
 import {
   applyImageSearchStatsMutation,
@@ -353,7 +352,7 @@ export async function startWatching(
   const watcher = new FolderWatcher(sender);
   if (options?.paused) watcher.setScanActive(true);
   activeWatcher = watcher;
-  const folders = await getFolders();
+  const folders = await getDB().folder.findMany({ orderBy: { createdAt: "asc" } });
   folders.forEach((f) => watcher.watchFolder(f.id, f.path));
 }
 

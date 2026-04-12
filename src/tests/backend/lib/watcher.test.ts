@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => {
     },
     folder: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
   };
 
   return {
     db,
-    getFolders: vi.fn(),
     readImageMeta: vi.fn(),
     applyImageSearchStatsMutation: vi.fn(),
     decrementImageSearchStatsForRows: vi.fn(),
@@ -33,10 +33,6 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("../../../main/lib/db", () => ({
   getDB: () => mocks.db,
-}));
-
-vi.mock("../../../main/lib/folder", () => ({
-  getFolders: mocks.getFolders,
 }));
 
 vi.mock("../../../main/lib/image-meta", () => ({
@@ -121,7 +117,7 @@ async function loadWatcher() {
 beforeEach(() => {
   vi.useFakeTimers();
 
-  mocks.getFolders.mockReset();
+  mocks.db.folder.findMany.mockReset();
   mocks.readImageMeta.mockReset();
   mocks.applyImageSearchStatsMutation.mockReset();
   mocks.decrementImageSearchStatsForRows.mockReset();
@@ -136,8 +132,9 @@ beforeEach(() => {
   mocks.db.image.delete.mockReset();
   mocks.db.image.upsert.mockReset();
   mocks.db.folder.findUnique.mockReset();
+  mocks.db.folder.findMany.mockReset();
 
-  mocks.getFolders.mockResolvedValue([]);
+  mocks.db.folder.findMany.mockResolvedValue([]);
   mocks.readImageMeta.mockReturnValue(null);
   mocks.applyImageSearchStatsMutation.mockResolvedValue(undefined);
   mocks.decrementImageSearchStatsForRows.mockResolvedValue(undefined);
@@ -174,7 +171,7 @@ describe("watcher", () => {
     const folderA = createTempDir();
     const folderB = createTempDir();
     const folderC = createTempDir();
-    mocks.getFolders
+    mocks.db.folder.findMany
       .mockResolvedValueOnce([
         { id: 1, name: "A", path: folderA },
         { id: 2, name: "B", path: folderB },
@@ -215,7 +212,7 @@ describe("watcher", () => {
       fileModifiedAt: new Date("2026-03-20T00:00:00.000Z"),
     };
 
-    mocks.getFolders.mockResolvedValue([
+    mocks.db.folder.findMany.mockResolvedValue([
       { id: 7, name: "watched", path: folderPath },
     ]);
     mocks.db.image.findUnique.mockResolvedValue(existingRow);
@@ -285,7 +282,7 @@ describe("watcher", () => {
       createdAt: new Date("2026-03-20T00:00:00.000Z"),
     };
 
-    mocks.getFolders.mockResolvedValue([
+    mocks.db.folder.findMany.mockResolvedValue([
       { id: 9, name: "incoming", path: folderPath },
     ]);
     mocks.findDuplicateGroupForIncomingPath
@@ -360,7 +357,7 @@ describe("watcher", () => {
       characterPromptTokens: "[]",
     };
 
-    mocks.getFolders.mockResolvedValue([
+    mocks.db.folder.findMany.mockResolvedValue([
       { id: 12, name: "reconcile", path: folderPath },
     ]);
     mocks.db.folder.findUnique.mockResolvedValue({ path: folderPath });

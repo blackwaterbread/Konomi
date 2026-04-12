@@ -56,6 +56,10 @@ export function createPrismaImageRepo(
       await getDb().image.deleteMany({ where: { path } });
     },
 
+    async setFavorite(id: number, isFavorite: boolean): Promise<void> {
+      await getDb().image.update({ where: { id }, data: { isFavorite } });
+    },
+
     async countByFolderId(folderId: number): Promise<number> {
       return getDb().image.count({ where: { folderId } });
     },
