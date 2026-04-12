@@ -72,12 +72,16 @@ export function useGalleryImages(
         page: galleryPage,
       });
       if (requestId !== listRequestSeqRef.current) return;
+      // isLoading and hasLoadedOnce are urgent — they gate the gallery overlay
+      // spinner.  Keeping them inside startTransition lets scan-progress events
+      // (frequent urgent updates) continuously defer the transition render,
+      // which leaves isLoading=true indefinitely and causes an infinite spinner.
+      setIsLoading(false);
+      setHasLoadedOnce(true);
       startTransition(() => {
         setImages(result.rows.map((row) => rowToImageData(row)));
         setTotalImageCount(result.totalCount);
         setGalleryTotalPages(result.totalPages);
-        setIsLoading(false);
-        setHasLoadedOnce(true);
       });
       if (galleryPage > result.totalPages) {
         setGalleryPage(result.totalPages);
