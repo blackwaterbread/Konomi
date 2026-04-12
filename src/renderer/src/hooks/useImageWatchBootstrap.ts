@@ -19,10 +19,12 @@ interface UseImageWatchBootstrapOptions {
 }
 
 /**
- * Runs the app initialization sequence: full scan → analysis.
- * The watcher is started automatically in the utility process at boot in
- * paused mode (scanActive=true), so file changes during scan are queued
- * and flushed when the scan finishes.
+ * Runs the app initialization sequence:
+ * quickVerify → scan (changed folders only) → analysis.
+ *
+ * quickVerify classifies every folder as changed/unchanged via stat + mtime.
+ * Unchanged folders are passed as skipFolderIds so syncAllFolders skips them
+ * entirely, avoiding redundant DB queries and stale-row checks.
  */
 export function runAppInitialization({
   loadSearchPresetStats,
@@ -39,11 +41,28 @@ export function runAppInitialization({
 
   void (async () => {
     void loadSearchPresetStats();
+
+    // Quick-verify folders first — skip unchanged ones during scan
+    let skipFolderIds: number[] | undefined;
+    try {
+      const result = await window.image.quickVerify();
+      if (
+        result.unchangedFolderIds.length > 0 &&
+        result.changedFolderIds.length > 0
+      ) {
+        skipFolderIds = result.unchangedFolderIds;
+      }
+      // If all folders changed or all unchanged, let syncAllFolders handle normally
+    } catch {
+      // quickVerify failed — fall through to full scan
+    }
+
     // Skip duplicate detection on boot — it requires hashing candidate files
     // which adds significant IO. The watcher catches duplicates in real-time
     // for new files, and folder-add scans run with detectDuplicates=true.
     await runScan({
       detectDuplicates: false,
+      skipFolderIds,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
