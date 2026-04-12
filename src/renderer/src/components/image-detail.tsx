@@ -814,7 +814,7 @@ const TheaterView = memo(function TheaterView({
     <div className="fixed inset-0 z-60 flex flex-col bg-black select-none">
       {/* Header hover trigger zone + header bar */}
       <div
-        className="absolute top-0 left-0 right-0 z-10"
+        className="absolute top-0 left-0 right-0 z-10 pb-12"
         onMouseEnter={pinBars ? undefined : handleHeaderEnter}
         onMouseLeave={pinBars ? undefined : handleHeaderLeave}
       >
@@ -845,25 +845,31 @@ const TheaterView = memo(function TheaterView({
               {t("imageDetail.theater.slideshow")}
             </Button>
 
-            {/* Interval selector */}
-            <div className="flex items-center gap-1">
-              {SLIDESHOW_INTERVALS.map((n) => (
-                <button
-                  key={n}
-                  className={cn(
-                    "rounded px-2 py-0.5 text-xs transition-colors",
-                    slideshowInterval === n
-                      ? "bg-white/20 text-white"
-                      : "text-white/50 hover:text-white/80 hover:bg-white/10",
-                  )}
-                  onClick={() => setSlideshowInterval(n)}
-                >
-                  {t("imageDetail.theater.seconds", { n })}
-                </button>
-              ))}
-            </div>
+            {/* Interval selector — only visible when slideshow is active */}
+            {slideshowActive && (
+              <>
+                <div className="flex items-center gap-1">
+                  {SLIDESHOW_INTERVALS.map((n) => (
+                    <button
+                      key={n}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-xs transition-colors",
+                        slideshowInterval === n
+                          ? "bg-white/20 text-white"
+                          : "text-white/50 hover:text-white/80 hover:bg-white/10",
+                      )}
+                      onClick={() => setSlideshowInterval(n)}
+                    >
+                      {t("imageDetail.theater.seconds", { n })}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="mx-2 h-4 w-px bg-white/20" />
+                <div className="mx-2 h-4 w-px bg-white/20" />
+              </>
+            )}
+
+            {!slideshowActive && <div className="mx-2 h-4 w-px bg-white/20" />}
 
             {/* Fit mode selector */}
             <div className="flex items-center gap-1">
