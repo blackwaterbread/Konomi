@@ -5,7 +5,12 @@ import os from "os";
 import { Worker } from "worker_threads";
 import { getDB, getRawDB } from "./db";
 import { getFolders } from "./folder";
-import { scanImageFiles, walkImageFiles, countImageFiles, verifyImageFolder, withConcurrency } from "./scanner";
+import {
+  scanImageFiles,
+  walkImageFiles,
+  countImageFiles,
+  withConcurrency,
+} from "./scanner";
 import type { CancelToken } from "./scanner";
 import { parsePromptTokens } from "./token";
 import { deleteSimilarityCacheForImageIds } from "./phash";
@@ -2091,70 +2096,145 @@ export type ScanPhase =
   | "checkingDuplicates"
   | "syncing";
 
+export type ClassifyResult = {
+  newFiles: string[];
+  changedFiles: string[];
+  discoveredPaths: Set<string>;
+  unchangedCount: number;
+};
+
+/**
+ * Walk a single folder and classify every file as new / changed / unchanged
+ * by comparing mtime against DB rows. source === "unknown" always counts as
+ * changed (metadata retry). Pure I/O — no metadata parsing, no DB writes.
+ */
+export async function classifyFolderFiles(
+  folderPath: string,
+  existingMap: Map<string, { fileModifiedAt: Date; source: string }>,
+  signal?: CancelToken,
+  onUnchanged?: () => void,
+): Promise<ClassifyResult> {
+  const newFiles: string[] = [];
+  const changedFiles: string[] = [];
+  const discoveredPaths = new Set<string>();
+
+  await withConcurrency(
+    walkImageFiles(folderPath, signal),
+    STAT_CONCURRENCY,
+    async (filePath) => {
+      discoveredPaths.add(filePath);
+      const existingRow = existingMap.get(filePath);
+      if (!existingRow) {
+        newFiles.push(filePath);
+      } else if (existingRow.source === "unknown") {
+        changedFiles.push(filePath);
+      } else {
+        const mtime = await fs.promises
+          .stat(filePath)
+          .then((s) => s.mtime.getTime())
+          .catch(() => existingRow.fileModifiedAt.getTime());
+        if (existingRow.fileModifiedAt.getTime() !== mtime) {
+          changedFiles.push(filePath);
+        } else {
+          onUnchanged?.();
+        }
+      }
+    },
+    signal,
+  );
+
+  return {
+    newFiles,
+    changedFiles,
+    discoveredPaths,
+    unchangedCount: discoveredPaths.size - newFiles.length - changedFiles.length,
+  };
+}
+
 export type QuickVerifyResult = {
   changedFolderIds: number[];
   unchangedFolderIds: number[];
 };
 
-// NOTE: Not used — file count + directory mtime comparison cannot reliably
-// detect all change types (e.g. in-place file overwrites don't update parent
-// directory mtime). Kept for potential future use if a more accurate
-// fingerprinting strategy is implemented.
+/**
+ * Quickly check all folders for changes using stat + mtime comparison.
+ * Same classification logic as syncAllFolders Phase 1, but no DB writes.
+ */
 export async function quickVerifyFolders(
   signal?: CancelToken,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<QuickVerifyResult> {
   const db = getDB();
-  const folders = await db.folder.findMany({
-    select: {
-      id: true,
-      path: true,
-      lastScanFileCount: true,
-      lastScanFinishedAt: true,
-    },
-  });
+  const folders = await getFolders();
 
-  const results = await Promise.all(
-    folders.map(async (folder) => {
-      try {
-        await fs.promises.access(folder.path);
-      } catch {
-        // folder inaccessible (NAS offline, deleted, permissions, etc.)
-        // → skip to avoid purging DB rows for temporarily unreachable folders
-        return { id: folder.id, changed: false };
-      }
-      try {
-        const { fileCount, maxDirMtimeMs } = await verifyImageFolder(
-          folder.path,
-          signal,
-        );
-        if (
-          folder.lastScanFileCount === null ||
-          folder.lastScanFileCount !== fileCount
-        ) {
-          return { id: folder.id, changed: true };
-        }
-        // Directory mtime changes when direct children are added/deleted.
-        // Walking every directory in the tree covers all depths.
-        if (
-          folder.lastScanFinishedAt !== null &&
-          maxDirMtimeMs > folder.lastScanFinishedAt.getTime()
-        ) {
-          return { id: folder.id, changed: true };
-        }
-        return { id: folder.id, changed: false };
-      } catch {
-        return { id: folder.id, changed: false };
-      }
-    }),
-  );
-
-  const changedFolderIds: number[] = [];
-  const unchangedFolderIds: number[] = [];
-  for (const r of results) {
-    if (r.changed) changedFolderIds.push(r.id);
-    else unchangedFolderIds.push(r.id);
+  // Count total files across all folders for progress
+  let total = 0;
+  for (const folder of folders) {
+    if (signal?.cancelled) break;
+    try {
+      await fs.promises.access(folder.path);
+      total += await countImageFiles(folder.path, signal);
+    } catch {
+      // inaccessible
+    }
   }
 
+  let done = 0;
+  let lastProgressAt = 0;
+  const changedFolderIds: number[] = [];
+  const unchangedFolderIds: number[] = [];
+
+  for (const folder of folders) {
+    if (signal?.cancelled) break;
+    try {
+      await fs.promises.access(folder.path);
+    } catch {
+      // Inaccessible (NAS offline, etc.) — treat as unchanged to avoid
+      // purging DB rows for temporarily unreachable folders
+      unchangedFolderIds.push(folder.id);
+      continue;
+    }
+
+    const existing = await db.image.findMany({
+      where: { folderId: folder.id },
+      select: { path: true, fileModifiedAt: true, source: true },
+    });
+    const existingMap = new Map(existing.map((e) => [e.path, e] as const));
+
+    const result = await classifyFolderFiles(
+      folder.path,
+      existingMap,
+      signal,
+      () => {
+        done++;
+        const now = Date.now();
+        if (now - lastProgressAt >= 100) {
+          lastProgressAt = now;
+          onProgress?.(done, total);
+        }
+      },
+    );
+
+    // new/changed files also count toward progress
+    done += result.newFiles.length + result.changedFiles.length;
+    onProgress?.(done, total);
+
+    const hasStaleRows = existing.some(
+      (row) => !result.discoveredPaths.has(row.path),
+    );
+    const hasChanges =
+      result.newFiles.length > 0 ||
+      result.changedFiles.length > 0 ||
+      hasStaleRows;
+
+    if (hasChanges) {
+      changedFolderIds.push(folder.id);
+    } else {
+      unchangedFolderIds.push(folder.id);
+    }
+  }
+
+  onProgress?.(done, total);
   console.info(
     `[image.quickVerifyFolders] total=${folders.length} changed=${changedFolderIds.length} unchanged=${unchangedFolderIds.length}`,
   );
@@ -2177,6 +2257,21 @@ export type SyncAllFoldersOptions = {
   skipFolderIds?: number[];
 };
 
+/**
+ * Sync all registered folders against the DB.
+ *
+ * 1. Resolve folder list (folderIds → orderedFolderIds → skipFolderIds)
+ * 2. Duplicate pre-scan — size-bucket + SHA-1 matching before any upserts
+ *    (only when onDuplicateGroup is provided)
+ * 3. Per-folder sync, three phases per folder:
+ *      Phase 1: stat-only pass — classify files as new / changed / unchanged
+ *               (source === "unknown" always counts as changed for retry)
+ *      Phase 2: metadata extraction + batch upsert for new + changed only
+ *      Phase 3: delete stale DB rows (file gone from disk)
+ * 4. Invalidate similarity cache for deleted images
+ *
+ * signal.cancelled is checked between steps; bails out without data corruption.
+ */
 export async function syncAllFolders(
   options: SyncAllFoldersOptions,
 ): Promise<void> {
@@ -2208,6 +2303,7 @@ export async function syncAllFolders(
   );
 
   try {
+    // -- Folder resolution --
     onPhase?.("loadingLibrary");
     const rawFolders = await getFolders();
     const requestedFolderIds =
@@ -2215,6 +2311,7 @@ export async function syncAllFolders(
     const candidateFolders = requestedFolderIds
       ? rawFolders.filter((folder) => requestedFolderIds.has(folder.id))
       : rawFolders;
+    // Honour renderer drag order; unordered folders go at the end
     const folders =
       orderedFolderIds && orderedFolderIds.length > 0
         ? (() => {
@@ -2245,6 +2342,9 @@ export async function syncAllFolders(
     }
     const db = getDB();
 
+    // -- Duplicate pre-scan (when onDuplicateGroup is provided) --
+    // Walk all folders first, find new files, match by size bucket + SHA-1
+    // against existing DB rows. Matched paths are excluded from sync.
     const preScannedTotals = detectDuplicates;
     const duplicateIncomingPathSet = new Set<string>();
 
@@ -2346,9 +2446,10 @@ export async function syncAllFolders(
       }
     }
 
+    // -- Per-folder sync --
     onPhase?.("syncing");
 
-    // total이 미확정일 때(수동 재스캔 등) 빠른 카운트 패스로 확정
+    // No pre-scan → total unknown; do a fast count-only walk for progress bar
     if (!preScannedTotals && !signal?.cancelled) {
       for (const folder of foldersToScan) {
         if (signal?.cancelled) break;
@@ -2382,7 +2483,7 @@ export async function syncAllFolders(
           },
         });
         const existingMap = new Map(existing.map((e) => [e.path, e] as const));
-        // 스트리밍 중 발견된 경로를 기록 → 완료 후 stale row 감지에 사용
+        // Paths seen on disk — anything in DB but not here gets pruned in Phase 3
         const discoveredPathSet = new Set<string>();
 
         type DataEntry = {
@@ -2498,41 +2599,19 @@ export async function syncAllFolders(
           }
         };
 
-        // Phase 1: stat 전용 고병렬 패스 — 파일 분류만 수행
-        // stat()은 순수 I/O이므로 높은 동시성으로 실행하여 콜드 캐시에서도 빠르게 분류
-        const newFiles: string[] = [];
-        const changedFiles: string[] = [];
-        await withConcurrency(
-          walkImageFiles(folder.path, signal),
-          STAT_CONCURRENCY,
-          async (filePath) => {
-            discoveredPathSet.add(filePath);
-            const existingRow = existingMap.get(filePath);
-            if (!existingRow) {
-              newFiles.push(filePath);
-            } else if (existingRow.source === "unknown") {
-              changedFiles.push(filePath);
-            } else {
-              const mtime = await fs.promises
-                .stat(filePath)
-                .then((s) => s.mtime.getTime())
-                .catch(() => existingRow.fileModifiedAt.getTime());
-              if (existingRow.fileModifiedAt.getTime() !== mtime) {
-                changedFiles.push(filePath);
-              } else {
-                done++;
-                const progressNow = Date.now();
-                if (progressNow - lastProgressAt >= 100) {
-                  lastProgressAt = progressNow;
-                  onProgress?.(done, total);
-                }
-              }
+        // Phase 1: stat-only — classify as new / changed / unchanged
+        const { newFiles, changedFiles, discoveredPaths } =
+          await classifyFolderFiles(folder.path, existingMap, signal, () => {
+            done++;
+            const progressNow = Date.now();
+            if (progressNow - lastProgressAt >= 100) {
+              lastProgressAt = progressNow;
+              onProgress?.(done, total);
             }
-          },
-          signal,
-        );
+          });
+        for (const p of discoveredPaths) discoveredPathSet.add(p);
 
-        // Phase 2: 신규 + 변경 파일만 메타데이터 추출
+        // Phase 2: metadata extraction for new + changed files
         if (!signal?.cancelled && newFiles.length + changedFiles.length > 0) {
           await withConcurrency(
             [...newFiles, ...changedFiles],
@@ -2544,7 +2623,7 @@ export async function syncAllFolders(
 
         await flushBatch();
 
-        // Phase 3: 디스크에서 사라진 stale row 정리
+        // Phase 3: prune DB rows whose files are gone from disk
         const staleRows = existing.filter(
           (row) => !discoveredPathSet.has(row.path),
         );
@@ -2567,7 +2646,7 @@ export async function syncAllFolders(
           }
         }
 
-        // Apply all deferred search stat mutations at once per folder
+        // Flush deferred search-stat mutations once per folder
         if (deferredStatMutations.length > 0) {
           await applyImageSearchStatsMutations(
             deferredStatMutations,
@@ -2589,6 +2668,7 @@ export async function syncAllFolders(
 
     if (signal?.cancelled) return;
 
+    // Clean up similarity cache for all deleted images
     if (deletedSimilarityIds.size > 0) {
       await deleteSimilarityCacheForImageIds([...deletedSimilarityIds]);
     }

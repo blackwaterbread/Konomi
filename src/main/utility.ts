@@ -243,7 +243,9 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return listImagesByIds(ids);
     }
     case "image:quickVerify":
-      return quickVerifyFolders();
+      return quickVerifyFolders(undefined, (done, total) => {
+        utilitySender.send("image:quickVerifyProgress", { done, total });
+      });
     case "image:scan": {
       const {
         detectDuplicates = false,

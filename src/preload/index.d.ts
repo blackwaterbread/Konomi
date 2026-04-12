@@ -303,6 +303,9 @@ declare global {
         changedFolderIds: number[];
         unchangedFolderIds: number[];
       }>;
+      onQuickVerifyProgress: (
+        cb: (data: { done: number; total: number }) => void,
+      ) => () => void;
       scan: (options?: {
         detectDuplicates?: boolean;
         folderIds?: number[];

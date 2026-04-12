@@ -199,6 +199,7 @@ export const preloadMocks = {
       changedFolderIds: [],
       unchangedFolderIds: [],
     }),
+    onQuickVerifyProgress: vi.fn().mockReturnValue(() => {}),
     rescanMetadata: vi.fn().mockResolvedValue(0),
     rescanImageMetadata: vi.fn().mockResolvedValue(0),
   },
