@@ -1,0 +1,10 @@
+{
+  "name": "@konomi/server",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@konomi/core": "workspace:*",
+    "fastify": "^5.8.5",
+    "@fastify/websocket": "^11.2.0"
+  }
+}

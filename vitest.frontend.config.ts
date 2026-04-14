@@ -9,17 +9,17 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src/renderer/src"),
-      "@preload": resolve(__dirname, "src/preload"),
+      "@": resolve(__dirname, "src/web/src"),
+      "@preload": resolve(__dirname, "src/app/preload"),
     },
   },
   test: {
     name: "frontend",
     environment: "jsdom",
-    setupFiles: ["src/tests/frontend/setup.ts"],
+    setupFiles: ["tests/frontend/setup.ts"],
     include: [
-      "src/tests/frontend/**/*.test.ts",
-      "src/tests/frontend/**/*.test.tsx",
+      "tests/frontend/**/*.test.ts",
+      "tests/frontend/**/*.test.tsx",
     ],
     clearMocks: true,
     restoreMocks: true,

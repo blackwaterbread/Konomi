@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/renderer/src/**/*.{ts,tsx}"],
+    files: ["src/web/src/**/*.{ts,tsx}"],
     plugins: {
       react,
       "react-hooks": reactHooks,

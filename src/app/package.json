@@ -1,0 +1,9 @@
+{
+  "name": "@konomi/app",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@konomi/core": "workspace:*",
+    "electron-updater": "^6.8.3"
+  }
+}

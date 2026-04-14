@@ -4,14 +4,15 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src/renderer/src"),
-      "@preload": resolve(__dirname, "src/preload"),
+      "@": resolve(__dirname, "src/web/src"),
+      "@preload": resolve(__dirname, "src/app/preload"),
+      "@core": resolve(__dirname, "src/core"),
     },
   },
   test: {
     name: "backend",
     environment: "node",
-    include: ["src/tests/backend/**/*.test.ts"],
+    include: ["tests/backend/**/*.test.ts"],
     fileParallelism: false,
     clearMocks: true,
     restoreMocks: true,

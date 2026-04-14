@@ -1,16 +1,18 @@
 {
   "extends": "./node_modules/@electron-toolkit/tsconfig/tsconfig.json",
   "include": [
-    "src/renderer/src/**/*",
-    "src/preload/index.d.ts",
-    "src/tests/frontend/**/*"
+    "src/web/src/**/*",
+    "src/app/renderer/src/**/*",
+    "src/app/preload/index.d.ts",
+    "tests/frontend/**/*"
   ],
   "compilerOptions": {
     "composite": true,
-    "baseUrl": ".",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "paths": {
-      "@/*": ["src/renderer/src/*"],
-      "@preload/*": ["src/preload/*"]
+      "@/*": ["./src/web/src/*"],
+      "@preload/*": ["./src/app/preload/*"]
     }
   }
 }

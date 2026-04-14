@@ -46,7 +46,8 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        "@": resolve("src/renderer/src"),
+        "@": resolve("src/web/src"),
+        "@core": resolve("src/core"),
       },
     },
     build: {
@@ -60,24 +61,31 @@ export default defineConfig({
           );
         },
         input: {
-          index: resolve("src/main/index.ts"),
-          "nai.worker": resolve("src/main/lib/nai.worker.ts"),
-          "phash.worker": resolve("src/main/lib/phash.worker.ts"),
-          "bench-scan-worker": resolve("src/main/lib/bench-scan-worker.ts"),
-          utility: resolve("src/main/utility.ts"),
+          index: resolve("src/app/main/index.ts"),
+          "nai.worker": resolve("src/core/lib/nai.worker.ts"),
+          "phash.worker": resolve("src/core/lib/phash.worker.ts"),
+          "bench-scan-worker": resolve("src/app/main/lib/bench-scan-worker.ts"),
+          utility: resolve("src/app/main/utility.ts"),
         },
       },
     },
   },
-  preload: {},
+  preload: {
+    build: {
+      rollupOptions: {
+        input: resolve("src/app/preload/index.ts"),
+      },
+    },
+  },
   renderer: {
+    root: "src/app/renderer",
     define: {
       __APP_VERSION__: appVersion,
     },
     resolve: {
       alias: {
-        "@": resolve("src/renderer/src"),
-        "@preload": resolve("src/preload"),
+        "@": resolve("src/web/src"),
+        "@preload": resolve("src/app/preload"),
       },
     },
     plugins: [tailwindcss(), standaloneReactDevToolsPlugin(), react()],

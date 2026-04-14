@@ -1,5 +1,6 @@
 {
   "name": "konomi",
+  "workspaces": ["src/core", "src/app", "src/web", "src/server"],
   "version": "0.13.4",
   "packageManager": "bun@1.2.20",
   "description": "AI image gallery with metadata parsing, search, and generation support",
@@ -20,7 +21,11 @@
     "test:frontend:watch": "vitest --config vitest.frontend.config.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
+    "dev:server": "bun --watch src/server/index.ts",
+    "dev:web": "vite --config src/web/vite.config.ts",
+    "dev:web:all": "concurrently -k -n server,web \"bun run dev:server\" \"bun run dev:web\"",
     "build": "bun run typecheck && electron-vite build",
+    "build:web": "vite build --config src/web/vite.config.ts",
     "verify:prompts-db": "node ./scripts/run-electron-node.mjs ./scripts/verify-prompts-db.mjs",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "bun run build && bun run verify:prompts-db && electron-builder --dir",
@@ -36,10 +41,10 @@
     "prebuild:native": "node scripts/build-native.mjs"
   },
   "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^7.4.2",
-    "@prisma/client": "^7.4.2",
-    "better-sqlite3": "^12.6.2",
-    "electron-updater": "^6.8.3"
+    "@konomi/core": "workspace:*",
+    "@konomi/app": "workspace:*",
+    "@konomi/web": "workspace:*",
+    "@konomi/server": "workspace:*"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -68,6 +73,7 @@
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

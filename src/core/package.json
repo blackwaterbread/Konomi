@@ -1,0 +1,10 @@
+{
+  "name": "@konomi/core",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@prisma/client": "^7.4.2",
+    "@prisma/adapter-better-sqlite3": "^7.4.2",
+    "better-sqlite3": "^12.6.2"
+  }
+}
