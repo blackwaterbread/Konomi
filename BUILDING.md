@@ -26,13 +26,13 @@ bun install
 ## 2. Build the Native Addons
 
 Konomi uses two C++ native addons. Prebuilt binaries are committed to the
-repository under `prebuilds/`, so this step is only needed when building from
+repository under `konomi-native/prebuilds/`, so this step is only needed when building from
 source for the first time, or after modifying addon sources.
 
 | Addon | Source | Purpose |
 |-------|--------|---------|
-| `webp-alpha` | `src/native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
-| `konomi-image` | `src/native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
+| `webp-alpha` | `konomi-native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
+| `konomi-image` | `konomi-native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
 
 ### Windows
 
@@ -77,7 +77,7 @@ bun run prebuild:native
 The script outputs built binaries to:
 
 ```
-prebuilds/
+konomi-native/prebuilds/
   win32-x64/
     webp-alpha.node
     konomi-image.node
@@ -127,18 +127,13 @@ bun run build:linux  # Linux AppImage / deb
 ## Project Structure
 
 ```
-src/native/webp-alpha/     C++ native addon — WebP alpha decode (libwebp)
-src/native/konomi-image/   C++ native addon — PNG pHash + NAI LSB (libpng)
-prebuilds/             Prebuilt .node binaries (committed to git)
+konomi-core/           Platform-agnostic business logic
+konomi-app/            Electron desktop app (main, preload, renderer)
+konomi-web/            Shared React UI + web client
+konomi-server/         Fastify web backend
+konomi-native/         C++ native addons + prebuilt binaries
 prisma/                Prisma schema + migrations
-resources/             Bundled assets (prompts.db, icons)
 scripts/               Build and utility scripts
-src/
-  main/                Electron main process
-  main/lib/            Core logic (DB, scanning, metadata parsing)
-  main/utility.ts      Utility process entry (DB/scanning worker)
-  preload/             contextBridge IPC bridge
-  renderer/src/        React UI
 ```
 
 ## Key Commands

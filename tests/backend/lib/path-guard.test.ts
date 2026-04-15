@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const tempDirs: string[] = [];
 const requestMock = vi.fn();
 
-vi.mock("../../../src/app/main/bridge", () => ({
+vi.mock("../../../konomi-app/main/bridge", () => ({
   bridge: {
     request: requestMock,
   },
@@ -20,7 +20,7 @@ function createTempDir(): string {
 
 async function loadPathGuard() {
   vi.resetModules();
-  return import("../../../src/app/main/lib/path-guard");
+  return import("../../../konomi-app/main/lib/path-guard");
 }
 
 beforeEach(() => {

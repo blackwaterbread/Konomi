@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createPromptTagService,
   normalizePromptTerm,
-} from "../../../src/core/services/prompt-tag-service";
+} from "../../../konomi-core/services/prompt-tag-service";
 
 const tempDirs: string[] = [];
 

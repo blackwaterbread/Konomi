@@ -2,21 +2,21 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import pkg from "../../package.json";
+import pkg from "../package.json";
 
 const root = resolve(__dirname);
-const repoRoot = resolve(__dirname, "../..");
+const repoRoot = resolve(__dirname, "..");
 
 export default defineConfig({
   root,
-  publicDir: resolve(repoRoot, "src/app/renderer/public"),
+  publicDir: resolve(repoRoot, "konomi-app/renderer/public"),
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   resolve: {
     alias: {
-      "@": resolve(repoRoot, "src/web/src"),
-      "@preload": resolve(repoRoot, "src/app/preload"),
+      "@": resolve(repoRoot, "konomi-web/src"),
+      "@preload": resolve(repoRoot, "konomi-app/preload"),
     },
   },
   plugins: [tailwindcss(), react()],

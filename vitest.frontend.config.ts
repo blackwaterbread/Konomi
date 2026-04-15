@@ -9,18 +9,15 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src/web/src"),
-      "@preload": resolve(__dirname, "src/app/preload"),
+      "@": resolve(__dirname, "konomi-web/src"),
+      "@preload": resolve(__dirname, "konomi-app/preload"),
     },
   },
   test: {
     name: "frontend",
     environment: "jsdom",
     setupFiles: ["tests/frontend/setup.ts"],
-    include: [
-      "tests/frontend/**/*.test.ts",
-      "tests/frontend/**/*.test.tsx",
-    ],
+    include: ["tests/frontend/**/*.test.ts", "tests/frontend/**/*.test.tsx"],
     clearMocks: true,
     restoreMocks: true,
   },

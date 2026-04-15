@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("electron-updater", () => ({ autoUpdater: mocks.autoUpdater }));
 vi.mock("electron", () => ({ app: mocks.app }));
-vi.mock("../../../src/app/main/lib/logger", () => ({
+vi.mock("../../../konomi-app/main/lib/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -70,7 +70,7 @@ describe("initAutoUpdater — Windows", () => {
 
   it("sends updateAvailable without releaseUrl", async () => {
     const wc = makeWebContents();
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(wc as never);
 
     emit("update-available", { version: "1.2.0" });
@@ -83,7 +83,7 @@ describe("initAutoUpdater — Windows", () => {
 
   it("sends updateDownloaded with version", async () => {
     const wc = makeWebContents();
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(wc as never);
 
     emit("update-downloaded", { version: "1.2.0" });
@@ -95,7 +95,7 @@ describe("initAutoUpdater — Windows", () => {
 
   it("sends rounded download progress", async () => {
     const wc = makeWebContents();
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(wc as never);
 
     emit("download-progress", { percent: 45.6, bytesPerSecond: 512000 });
@@ -123,7 +123,7 @@ describe("initAutoUpdater — macOS", () => {
   });
 
   it("disables autoDownload and autoInstallOnAppQuit", async () => {
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(makeWebContents() as never);
 
     expect(mocks.autoUpdater.autoDownload).toBe(false);
@@ -132,7 +132,7 @@ describe("initAutoUpdater — macOS", () => {
 
   it("sends updateAvailable with releaseUrl", async () => {
     const wc = makeWebContents();
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(wc as never);
 
     emit("update-available", { version: "1.2.0" });
@@ -149,7 +149,7 @@ describe("initAutoUpdater — checkForUpdates scheduling", () => {
     vi.useFakeTimers();
     mocks.app.isPackaged = true;
 
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(makeWebContents() as never);
 
     expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
@@ -163,7 +163,7 @@ describe("initAutoUpdater — checkForUpdates scheduling", () => {
     vi.useFakeTimers();
     mocks.app.isPackaged = false;
 
-    const { initAutoUpdater } = await import("../../../src/app/main/lib/updater");
+    const { initAutoUpdater } = await import("../../../konomi-app/main/lib/updater");
     initAutoUpdater(makeWebContents() as never);
 
     vi.advanceTimersByTime(10_000);

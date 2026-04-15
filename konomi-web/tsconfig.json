@@ -1,0 +1,18 @@
+{
+  "extends": "../node_modules/@electron-toolkit/tsconfig/tsconfig.json",
+  "include": [
+    "src/**/*",
+    "../konomi-app/renderer/src/**/*",
+    "../konomi-app/preload/index.d.ts",
+    "../tests/frontend/**/*"
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@preload/*": ["../konomi-app/preload/*"]
+    }
+  }
+}

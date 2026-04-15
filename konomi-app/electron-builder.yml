@@ -7,7 +7,11 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!**/.git/*'
-  - '!src/*'
+  - '!konomi-core/**'
+  - '!konomi-app/**'
+  - '!konomi-web/**'
+  - '!konomi-server/**'
+  - '!konomi-native/**'
   - '!dist/**'
   - '!dist-*/**'
   - '!tmp/**'
@@ -15,7 +19,7 @@ files:
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,README.dev.md,README.dev.ko.md,README.ko.md,CLAUDE.md,debug.ts}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!tsconfig.json'
   - '!{docs/**,examples/**,example_datas/**,.claude/**,scripts/**}'
   - '!**/*.tsbuildinfo'
   - '!prisma.config.ts'
@@ -97,7 +101,7 @@ linux:
   category: Utility
 
 asarUnpack:
-  - "prebuilds/**"
+  - "konomi-native/prebuilds/**"
 
 npmRebuild: false
 electronLanguages:

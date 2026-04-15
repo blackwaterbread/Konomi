@@ -11,7 +11,7 @@ export default tseslint.config(
       "out/**",
       "build/**",
       "node_modules/**",
-      "src/generated/**",
+      "generated/**",
     ],
   },
   ...tseslint.configs.recommended,
@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/web/src/**/*.{ts,tsx}"],
+    files: ["konomi-web/src/**/*.{ts,tsx}"],
     plugins: {
       react,
       "react-hooks": reactHooks,

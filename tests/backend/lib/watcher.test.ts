@@ -2,11 +2,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWatchService } from "../../../src/core/services/watch-service";
-import type { SearchStatSource } from "../../../src/core/types/repository";
+import { createWatchService } from "../../../konomi-core/services/watch-service";
+import type { SearchStatSource } from "../../../konomi-core/types/repository";
 import type { ImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import type { FolderRepo } from "@core/lib/repositories/prisma-folder-repo";
-import type { FolderDuplicateGroup } from "../../../src/core/services/duplicate-service";
+import type { FolderDuplicateGroup } from "../../../konomi-core/services/duplicate-service";
 
 type WatchCallback = (
   eventType: string,

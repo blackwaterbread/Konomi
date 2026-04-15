@@ -4,9 +4,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@": resolve(__dirname, "src/web/src"),
-      "@preload": resolve(__dirname, "src/app/preload"),
-      "@core": resolve(__dirname, "src/core"),
+      "@": resolve(__dirname, "konomi-web/src"),
+      "@preload": resolve(__dirname, "konomi-app/preload"),
+      "@core": resolve(__dirname, "konomi-core"),
     },
   },
   test: {
