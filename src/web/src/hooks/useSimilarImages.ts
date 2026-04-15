@@ -58,15 +58,16 @@ export function useSimilarImages({
       return;
     }
 
-    const cacheKey = `${anchorId}:${analysisReady}`;
-    if (fetchedAnchorRef.current === cacheKey) return;
+    // Already fetched for this anchor — skip re-analysis cycles triggered by
+    // watcher batch events so the panel doesn't flash loading or get stuck.
+    if (fetchedAnchorRef.current === anchorId) return;
 
     if (!analysisReady) {
       setSimilarImagesLoading(true);
       return;
     }
 
-    fetchedAnchorRef.current = cacheKey;
+    fetchedAnchorRef.current = anchorId;
 
     const requestId = ++requestSeqRef.current;
     setSimilarImages([]);
