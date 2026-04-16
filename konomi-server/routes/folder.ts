@@ -1,15 +1,24 @@
 import type { FastifyInstance } from "fastify";
 import type { Services } from "../services";
+import { listAvailableDirectories, isUnderDataRoot } from "../lib/data-root";
 
 export function registerFolderRoutes(app: FastifyInstance, services: Services) {
   const { folderService, watchService, duplicateService, imageService, sender } = services;
+
+  // List detected directories under DATA_ROOT (Docker volume mounts)
+  app.get("/api/folders/available", async () => {
+    return listAvailableDirectories();
+  });
 
   app.get("/api/folders", async () => {
     return folderService.list();
   });
 
-  app.post<{ Body: { name: string; path: string } }>("/api/folders", async (req) => {
+  app.post<{ Body: { name: string; path: string } }>("/api/folders", async (req, reply) => {
     const { name, path } = req.body;
+    if (!isUnderDataRoot(path)) {
+      return reply.code(403).send({ error: "Path is not under data root" });
+    }
     const folder = await folderService.create(name, path);
     watchService.watchFolder(folder.id, folder.path);
     return folder;

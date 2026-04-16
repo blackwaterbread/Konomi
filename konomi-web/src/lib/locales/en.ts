@@ -47,6 +47,15 @@ const en = {
     loading: "Loading...",
     none: "None",
   },
+  availableFolders: {
+    title: "Add Folders",
+    description: "Select folders to add from mounted volumes.",
+    empty: "No directories found",
+    emptyHint: "Mount a volume to /images in your Docker configuration.",
+    selectAll: "Select all",
+    deselectAll: "Deselect all",
+    add: "Add {{count}} folder(s)",
+  },
   header: {
     searchPlaceholder: "Search images by prompt...",
     tooltip: {

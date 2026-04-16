@@ -84,6 +84,7 @@ export interface FolderApi {
   listSubdirectoriesByPath(folderPath: string): Promise<{ name: string; path: string }[]>;
   stats(id: number): Promise<FolderStats | null>;
   size(id: number): Promise<number>;
+  availableDirectories(): Promise<{ name: string; path: string }[]>;
 }
 
 // ── Image API ──────────────────────────────────────────────────

@@ -29,7 +29,6 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { useFolderDialog } from "@/hooks/useFolderDialog";
 import {
   useDuplicateResolutionDialog,
   type PendingFolder,
@@ -49,12 +48,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -67,6 +60,7 @@ import { cn } from "@/lib/utils";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import type { Subfolder } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
+import { AvailableFoldersDialog } from "@/components/available-folders-dialog";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -267,271 +261,6 @@ const SidebarAddByPromptDialog = memo(function SidebarAddByPromptDialog({
           </DialogClose>
           <Button onClick={handleSubmit} disabled={!query.trim()}>
             {t("sidebar.dialog.add")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-});
-
-interface SidebarNewFolderDialogProps {
-  openRequest: number;
-  closeRequest: number;
-  onSubmit: (name: string, path: string) => Promise<void>;
-}
-
-const SidebarNewFolderDialog = memo(function SidebarNewFolderDialog({
-  openRequest,
-  closeRequest,
-  onSubmit,
-}: SidebarNewFolderDialogProps) {
-  const { t } = useTranslation();
-  const {
-    open,
-    name,
-    path,
-    canSubmit,
-    setName,
-    handleBrowse,
-    handleSubmit,
-    handleOpenChange,
-  } = useFolderDialog(onSubmit);
-  const lastOpenRequestRef = useRef(0);
-  const lastCloseRequestRef = useRef(0);
-
-  useEffect(() => {
-    if (openRequest === 0 || openRequest === lastOpenRequestRef.current) {
-      return;
-    }
-
-    lastOpenRequestRef.current = openRequest;
-    handleOpenChange(true);
-  }, [handleOpenChange, openRequest]);
-
-  useEffect(() => {
-    if (closeRequest === 0 || closeRequest === lastCloseRequestRef.current) {
-      return;
-    }
-
-    lastCloseRequestRef.current = closeRequest;
-    handleOpenChange(false);
-  }, [closeRequest, handleOpenChange]);
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("sidebar.dialog.newFolderTitle")}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm text-muted-foreground">
-              {t("sidebar.dialog.name")}
-            </label>
-            <Input
-              placeholder={t("sidebar.dialog.namePlaceholder")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm text-muted-foreground">
-              {t("sidebar.dialog.path")}
-            </label>
-            <div className="flex gap-2">
-              <Input
-                placeholder={t("sidebar.dialog.pathPlaceholder")}
-                value={path}
-                className="flex-1 font-mono text-xs"
-                readOnly
-              />
-              <Button variant="outline" onClick={handleBrowse}>
-                {t("sidebar.dialog.browse")}
-              </Button>
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="ghost">{t("common.cancel")}</Button>
-          </DialogClose>
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {t("sidebar.dialog.add")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-});
-
-interface MultiFolderEntry {
-  path: string;
-  name: string;
-}
-
-function pathToName(folderPath: string): string {
-  return (
-    folderPath.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ||
-    folderPath
-  );
-}
-
-interface SidebarMultiFolderDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (
-    paths: string[],
-  ) => Promise<{ errors: { path: string; message: string }[] }>;
-}
-
-const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
-  open,
-  onOpenChange,
-  onSubmit,
-}: SidebarMultiFolderDialogProps) {
-  const { t } = useTranslation();
-  const [entries, setEntries] = useState<MultiFolderEntry[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitErrors, setSubmitErrors] = useState<
-    { path: string; message: string }[]
-  >([]);
-
-  const reset = useCallback(() => {
-    setEntries([]);
-    setSubmitErrors([]);
-    setIsSubmitting(false);
-  }, []);
-
-  const handleOpenChange = useCallback(
-    (next: boolean) => {
-      if (!next && isSubmitting) return;
-      if (!next) reset();
-      onOpenChange(next);
-    },
-    [isSubmitting, onOpenChange, reset],
-  );
-
-  const handleBrowse = useCallback(async () => {
-    if (isSubmitting) return;
-    try {
-      const paths = await window.dialog.selectDirectories();
-      if (!paths || paths.length === 0) return;
-      setEntries((prev) => {
-        const existing = new Set(prev.map((e) => e.path));
-        const newEntries = paths
-          .filter((p) => !existing.has(p))
-          .map((p) => ({ path: p, name: pathToName(p) }));
-        return [...prev, ...newEntries];
-      });
-    } catch {
-      // dialog cancelled
-    }
-  }, [isSubmitting]);
-
-  const handleRemove = useCallback((path: string) => {
-    setEntries((prev) => prev.filter((e) => e.path !== path));
-    setSubmitErrors((prev) => prev.filter((e) => e.path !== path));
-  }, []);
-
-  const handleSubmit = useCallback(async () => {
-    setIsSubmitting(true);
-    setSubmitErrors([]);
-    const paths = entries.map((e) => e.path);
-    const { errors } = await onSubmit(paths);
-    setIsSubmitting(false);
-    if (errors.length > 0) {
-      setSubmitErrors(errors);
-      setEntries((prev) =>
-        prev.filter((e) => errors.some((err) => err.path === e.path)),
-      );
-    } else {
-      reset();
-      onOpenChange(false);
-    }
-  }, [entries, onOpenChange, onSubmit, reset]);
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent closeDisabled={isSubmitting}>
-        <DialogHeader>
-          <DialogTitle>{t("sidebar.dialog.multiFolderTitle")}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          {entries.length > 0 && (
-            <div className="space-y-1.5 max-h-56 overflow-y-auto px-1 border rounded-md py-1.5">
-              {entries.map((entry) => {
-                const error = submitErrors.find((e) => e.path === entry.path);
-                return (
-                  <div
-                    key={entry.path}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2",
-                      error && "border-destructive/40 bg-destructive/5",
-                    )}
-                  >
-                    <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {entry.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono truncate">
-                        {entry.path}
-                      </p>
-                      {error && (
-                        <p className="text-xs text-destructive mt-0.5">
-                          {error.message}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => handleRemove(entry.path)}
-                      disabled={isSubmitting}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {entries.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <FolderPlus className="h-8 w-8 mb-2 opacity-50" />
-              <p className="text-sm">{t("sidebar.dialog.multiFolderEmpty")}</p>
-            </div>
-          )}
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={handleBrowse}
-            disabled={isSubmitting}
-          >
-            <FolderPlus className="h-4 w-4 mr-2" />
-            {t("sidebar.dialog.multiFolderBrowse")}
-          </Button>
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="ghost" disabled={isSubmitting}>
-              {t("common.cancel")}
-            </Button>
-          </DialogClose>
-          <Button
-            onClick={handleSubmit}
-            disabled={entries.length === 0 || isSubmitting}
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-            ) : null}
-            {isSubmitting
-              ? t("sidebar.dialog.loadingFiles")
-              : t("sidebar.dialog.addCount", {
-                  count: entries.length,
-                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1343,8 +1072,7 @@ interface SidebarFoldersSectionProps {
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
-  onOpenNewFolder: () => void;
-  onAddMultipleFolders: () => void;
+  onOpenAddFolders: () => void;
   onToggle?: (id: number) => void;
   onToggleCollapse?: (id: number) => void;
   onRename: (id: number, name: string) => Promise<void>;
@@ -1375,8 +1103,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isSubfolderVisible,
   isRootVisible,
   isFolderPartial,
-  onOpenNewFolder,
-  onAddMultipleFolders,
+  onOpenAddFolders,
   onToggle,
   onToggleCollapse,
   onRename,
@@ -1411,28 +1138,14 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
             <Loader2 className="h-4 w-4 animate-spin" />
           </Button>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onCloseAutoFocus={(e) => e.preventDefault()}
-            >
-              <DropdownMenuItem onSelect={onOpenNewFolder}>
-                {t("sidebar.folders.addOne")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onAddMultipleFolders}>
-                {t("sidebar.folders.addMultiple")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={onOpenAddFolders}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         )}
       </div>
       {folders.length === 0 && !pendingFolder ? (
@@ -1706,7 +1419,6 @@ export const Sidebar = memo(
     const [addByPromptCategoryId, setAddByPromptCategoryId] = useState<
       number | null
     >(null);
-    const [folderOpenRequest, setFolderOpenRequest] = useState(0);
     const processedRollbackRequestIdRef = useRef<number | null>(null);
     const [deleteFolderTarget, setDeleteFolderTarget] = useState<{
       id: number;
@@ -1731,10 +1443,8 @@ export const Sidebar = memo(
 
     const {
       dialog: duplicateResolutionDialog,
-      folderAddResolvedSeq,
       checkingDuplicates,
       pendingFolder,
-      handleFolderAddWithDuplicateCheck,
       handleFolderRescanWithDuplicateCheck,
     } = useDuplicateResolutionDialog({
       addFolder: createFolder,
@@ -1833,18 +1543,19 @@ export const Sidebar = memo(
       })();
     }, [handleCancelFolder, rollbackRequest]);
 
-    const handleOpenFolderDialog = useCallback(() => {
-      setFolderOpenRequest((current) => current + 1);
+    const [availableFoldersOpen, setAvailableFoldersOpen] = useState(false);
+    const registeredPaths = useMemo(
+      () => new Set(folders.map((f) => f.path)),
+      [folders],
+    );
+
+    const handleOpenAvailableFolders = useCallback(() => {
+      setAvailableFoldersOpen(true);
     }, []);
 
-    const [multiFolderOpen, setMultiFolderOpen] = useState(false);
-
-    const handleAddMultipleFolders = useCallback(() => {
-      setMultiFolderOpen(true);
-    }, []);
-
-    const handleMultiFolderSubmit = useCallback(
-      async (paths: string[]) => {
+    const handleAvailableFoldersAdd = useCallback(
+      async (dirs: { name: string; path: string }[]) => {
+        const paths = dirs.map((d) => d.path);
         const { added, errors } = await addFolders(paths);
         if (added.length > 0) {
           const addedIds = added.map((f) => f.id);
@@ -1859,7 +1570,11 @@ export const Sidebar = memo(
             t("sidebar.folders.addedMultiple", { count: added.length }),
           );
         }
-        return { errors };
+        if (errors.length > 0) {
+          for (const err of errors) {
+            toast.error(err.message);
+          }
+        }
       },
       [addFolders, onFolderAdded, onFoldersAdded, t],
     );
@@ -1867,9 +1582,9 @@ export const Sidebar = memo(
     useImperativeHandle(
       ref,
       () => ({
-        openFolderDialog: handleOpenFolderDialog,
+        openFolderDialog: handleOpenAvailableFolders,
       }),
-      [handleOpenFolderDialog],
+      [handleOpenAvailableFolders],
     );
 
     const handleCloseNewCategoryDialog = useCallback(() => {
@@ -2130,8 +1845,7 @@ export const Sidebar = memo(
                 isSubfolderVisible={isSubfolderVisible}
                 isRootVisible={isRootVisible}
                 isFolderPartial={isFolderPartial}
-                onOpenNewFolder={handleOpenFolderDialog}
-                onAddMultipleFolders={handleAddMultipleFolders}
+                onOpenAddFolders={handleOpenAvailableFolders}
                 onToggle={onFolderToggle}
                 onToggleCollapse={onFolderToggleCollapse}
                 onRename={handleFolderRename}
@@ -2217,15 +1931,11 @@ export const Sidebar = memo(
           </DialogContent>
         </Dialog>
 
-        <SidebarNewFolderDialog
-          openRequest={folderOpenRequest}
-          closeRequest={folderAddResolvedSeq}
-          onSubmit={handleFolderAddWithDuplicateCheck}
-        />
-        <SidebarMultiFolderDialog
-          open={multiFolderOpen}
-          onOpenChange={setMultiFolderOpen}
-          onSubmit={handleMultiFolderSubmit}
+        <AvailableFoldersDialog
+          open={availableFoldersOpen}
+          onOpenChange={setAvailableFoldersOpen}
+          registeredPaths={registeredPaths}
+          onAdd={handleAvailableFoldersAdd}
         />
       </>
     );

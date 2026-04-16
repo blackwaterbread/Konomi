@@ -10,7 +10,10 @@ export function createElectronApi(): KonomiApi {
     appInfo: window.appInfo,
     db: window.db,
     dialog: window.dialog,
-    folder: window.folder,
+    folder: {
+      ...window.folder,
+      availableDirectories: async () => [],
+    },
     image: window.image,
     category: window.category,
     nai: window.nai,

@@ -126,6 +126,7 @@ export function createBrowserApi(): KonomiApi {
       listSubdirectoriesByPath: async () => [],
       stats: (id) => rpc(`/api/folders/${id}/stats`),
       size: (id) => rpc(`/api/folders/${id}/size`),
+      availableDirectories: () => rpc("/api/folders/available"),
     },
 
     image: {

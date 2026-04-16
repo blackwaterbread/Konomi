@@ -48,6 +48,15 @@ const ko = {
     loading: "로딩 중...",
     none: "없음",
   },
+  availableFolders: {
+    title: "폴더 추가",
+    description: "마운트된 볼륨에서 추가할 폴더를 선택하세요.",
+    empty: "사용 가능한 디렉토리 없음",
+    emptyHint: "Docker 설정에서 /images에 볼륨을 마운트하세요.",
+    selectAll: "전체 선택",
+    deselectAll: "전체 해제",
+    add: "{{count}}개 폴더 추가",
+  },
   header: {
     searchPlaceholder: "프롬프트로 이미지 검색...",
     tooltip: {
