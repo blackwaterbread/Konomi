@@ -45,6 +45,12 @@ async function main() {
   const sender = createWebSocketSender(() => clients);
   const services = createServices(sender);
 
+  // ── Error logging ────────────────────────
+  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
+    log.errorWithStack(`${_request.method} ${_request.url} failed`, error);
+    reply.status(error.statusCode ?? 500).send({ error: error.message });
+  });
+
   // ── Routes ───────────────────────────────
   registerFolderRoutes(app, services);
   registerImageRoutes(app, services);
