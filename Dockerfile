@@ -45,21 +45,22 @@ RUN bun run db:generate:server
 # 5) Build web frontend (Vite SPA)
 RUN bun run build:web
 
-# 6) Production-only node_modules
-RUN rm -rf node_modules && bun install --frozen-lockfile --production --ignore-scripts
+# 6) Production-only node_modules, pruned
+RUN rm -rf node_modules && bun install --frozen-lockfile --production --ignore-scripts \
+  && rm -rf node_modules/prisma \
+             node_modules/@prisma/engines \
+             node_modules/@prisma/studio-core \
+             node_modules/@prisma/fetch-engine \
+             node_modules/@prisma/dev \
+             node_modules/@prisma/get-platform
 
 # ── Stage 2: Runtime ────────────────────────────────────────
-FROM node:22-alpine AS runtime
+FROM oven/bun:1-alpine AS runtime
 
 RUN apk add --no-cache \
     libpng libwebp \
-    gosu tini
-
-# Install bun
-RUN apk add --no-cache bash curl && \
-    curl -fsSL https://bun.sh/install | bash && \
-    apk del bash curl
-ENV PATH="/root/.bun/bin:$PATH"
+    gosu tini \
+    mariadb mariadb-client
 
 WORKDIR /app
 
@@ -70,13 +71,14 @@ COPY --from=builder /build/konomi-server/ ./konomi-server/
 COPY --from=builder /build/out/web/ ./konomi-web/dist/
 COPY --from=builder /build/konomi-web/package.json ./konomi-web/
 COPY --from=builder /build/konomi-app/package.json ./konomi-app/
-COPY --from=builder /build/konomi-native/prebuilds/ ./konomi-native/prebuilds/
+COPY --from=builder /build/konomi-native/prebuilds/linux-x64/ ./konomi-native/prebuilds/linux-x64/
 COPY --from=builder /build/generated/ ./generated/
 COPY --from=builder /build/node_modules/ ./node_modules/
 COPY --from=builder /build/prisma/ ./prisma/
 
-# Entrypoint script
+# Entrypoint + init SQL
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/init.sql /app/docker/init.sql
 RUN chmod +x /entrypoint.sh
 
 # Default environment
@@ -84,9 +86,9 @@ ENV KONOMI_PORT=3000
 ENV KONOMI_HOST=0.0.0.0
 ENV KONOMI_DATA_ROOT=/images
 ENV KONOMI_USER_DATA=/config
-ENV DATABASE_URL=mysql://konomi:konomi@db:3306/konomi
-ENV PUID=1000
-ENV PGID=1000
+ENV DATABASE_URL=mysql://konomi:konomi@127.0.0.1:3306/konomi
+ENV PUID=911
+ENV PGID=911
 ENV TZ=Asia/Seoul
 
 # Create default data root

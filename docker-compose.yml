@@ -7,38 +7,16 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=mysql://konomi:konomi@db:3306/konomi
       - KONOMI_DATA_ROOT=/images
-      - PUID=1000
-      - PGID=1000
+      - PUID=911
+      - PGID=911
       - TZ=Asia/Seoul
     volumes:
       # Mount host image directories into /images
       # Each subdirectory becomes a selectable folder in the UI
       - /path/to/your/images:/images:ro
-      # Persistent config/data
-      - konomi_config:/config
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    image: mariadb:11
-    container_name: konomi-db
-    restart: unless-stopped
-    environment:
-      - MARIADB_ROOT_PASSWORD=rootpw
-      - MARIADB_DATABASE=konomi
-      - MARIADB_USER=konomi
-      - MARIADB_PASSWORD=konomi
-    volumes:
-      - konomi_db:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      # Persistent config + MariaDB data
+      - konomi_data:/config
 
 volumes:
-  konomi_config:
-  konomi_db:
+  konomi_data:
