@@ -1,19 +1,13 @@
 # ============================================================
-# Konomi Web — Multi-stage Docker build
-# ============================================================
-# Stage 1: builder  — install deps, compile native addons,
-#                      generate Prisma client, build web SPA
-# Stage 2: runtime  — slim image with only production deps
+# Konomi Web — Multi-stage Docker build (all-in-one)
 # ============================================================
 
 # ── Stage 1: Build ──────────────────────────────────────────
 FROM node:22-bookworm AS builder
 
-# Install bun
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
-# Native addon build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     libpng-dev libwebp-dev zlib1g-dev \
@@ -21,51 +15,111 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# 1) Copy dependency manifests first (layer cache)
 COPY package.json bun.lock ./
 COPY konomi-core/package.json konomi-core/
 COPY konomi-server/package.json konomi-server/
 COPY konomi-web/package.json konomi-web/
-# App workspace listed in root workspaces — need a stub so bun resolves it
 COPY konomi-app/package.json konomi-app/
 
 RUN npm install -g node-gyp && bun install --frozen-lockfile
 
-# 2) Copy source
 COPY . .
 
-# 3) Build native addons (konomi-image + webp-alpha)
+# Build native addons
 ENV LIBPNG_ROOT=/usr
 ENV LIBWEBP_ROOT=/usr
 RUN node scripts/build-native.mjs
 
-# 4) Generate Prisma client (MySQL/MariaDB)
+# Generate Prisma client (MariaDB)
 RUN bun run db:generate:server
 
-# 5) Build web frontend (Vite SPA)
+# Build web frontend
 RUN bun run build:web
 
-# 6) Production-only node_modules, pruned
+# Production deps + aggressive pruning
 RUN rm -rf node_modules && bun install --frozen-lockfile --production --ignore-scripts \
+  # ── Prisma: mysql WASM only ──
   && rm -rf node_modules/prisma \
-             node_modules/@prisma/engines \
-             node_modules/@prisma/studio-core \
-             node_modules/@prisma/fetch-engine \
-             node_modules/@prisma/dev \
-             node_modules/@prisma/get-platform
+            node_modules/@prisma/engines \
+            node_modules/@prisma/studio-core \
+            node_modules/@prisma/fetch-engine \
+            node_modules/@prisma/dev \
+            node_modules/@prisma/get-platform \
+            node_modules/@prisma/adapter-better-sqlite3 \
+  && find node_modules/@prisma/client/runtime -name "*.map" -delete \
+  && find node_modules/@prisma/client/runtime -name "*sqlserver*" -delete \
+  && find node_modules/@prisma/client/runtime -name "*postgresql*" -delete \
+  && find node_modules/@prisma/client/runtime -name "*cockroachdb*" -delete \
+  && find node_modules/@prisma/client/runtime -name "*sqlite*" -delete \
+  && find node_modules/@prisma/client/runtime -name "*wasm-compiler*" -delete \
+  && find node_modules/@prisma/client/runtime -name "*index-browser*" -delete \
+  && rm -rf node_modules/@prisma/client/generator-build \
+  # ── Remove packages not needed at runtime ──
+  && rm -rf node_modules/typescript \
+            node_modules/better-sqlite3 \
+            node_modules/effect \
+            node_modules/@electric-sql \
+            node_modules/fast-check \
+            node_modules/chevrotain \
+            node_modules/hono \
+            node_modules/remeda \
+            node_modules/lodash \
+            node_modules/@types \
+            node_modules/valibot \
+            node_modules/jiti \
+            node_modules/sharp \
+            node_modules/@img \
+  # ── Strip junk from all remaining modules ──
+  && find node_modules -name "*.d.ts" -delete \
+  && find node_modules -name "*.d.mts" -delete \
+  && find node_modules -name "*.map" -delete \
+  && find node_modules \( -name "README*" -o -name "CHANGELOG*" -o -name "LICENSE*" \) -delete \
+  && find node_modules \( -name "test" -o -name "tests" -o -name "docs" -o -name ".github" \) -type d -exec rm -rf {} + 2>/dev/null \
+  ; \
+  # ── Stubs for packages imported by konomi-core but unused at runtime ──
+  mkdir -p node_modules/better-sqlite3 && \
+  printf '{"name":"better-sqlite3","main":"index.js"}' > node_modules/better-sqlite3/package.json && \
+  printf 'module.exports=function(){throw new Error("stub")}' > node_modules/better-sqlite3/index.js && \
+  mkdir -p node_modules/@prisma/adapter-better-sqlite3 && \
+  printf '{"name":"@prisma/adapter-better-sqlite3","main":"index.js"}' > node_modules/@prisma/adapter-better-sqlite3/package.json && \
+  printf 'module.exports.PrismaBetterSqlite3=function(){throw new Error("stub")}' > node_modules/@prisma/adapter-better-sqlite3/index.js && \
+  echo "Pruning complete"
 
-# ── Stage 2: Runtime ────────────────────────────────────────
+# ── Stage 2: Extract minimal MariaDB from Alpine ───────────
+FROM alpine:3.22 AS mariadb-extract
+
+RUN apk add --no-cache mariadb mariadb-client
+
+# ── Stage 3: Runtime ────────────────────────────────────────
 FROM oven/bun:1-alpine AS runtime
 
-RUN apk add --no-cache \
-    libpng libwebp \
-    gosu tini \
-    mariadb mariadb-client
+# Minimal runtime libs (no full MariaDB apk)
+RUN apk add --no-cache libpng libwebp gosu tini \
+    # Shared libs needed by MariaDB binaries
+    libaio ncurses-libs pcre2 zstd-libs
+
+# Cherry-pick only essential MariaDB files (~47MB instead of ~210MB)
+COPY --from=mariadb-extract /usr/bin/mariadbd /usr/bin/
+COPY --from=mariadb-extract /usr/bin/mariadb /usr/bin/
+COPY --from=mariadb-extract /usr/bin/mariadb-admin /usr/bin/
+COPY --from=mariadb-extract /usr/bin/mariadb-install-db /usr/bin/
+COPY --from=mariadb-extract /usr/bin/mariadbd-safe /usr/bin/
+COPY --from=mariadb-extract /usr/bin/my_print_defaults /usr/bin/
+COPY --from=mariadb-extract /usr/bin/resolveip /usr/bin/
+COPY --from=mariadb-extract /usr/bin/aria_chk /usr/bin/
+COPY --from=mariadb-extract /usr/share/mariadb/ /usr/share/mariadb/
+COPY --from=mariadb-extract /usr/lib/mariadb/ /usr/lib/mariadb/
+# mysql symlinks used by mariadb-install-db
+RUN ln -sf mariadbd /usr/bin/mysqld && \
+    ln -sf mariadb-install-db /usr/bin/mysql_install_db && \
+    ln -sf mariadb-admin /usr/bin/mysqladmin && \
+    ln -sf mariadb /usr/bin/mysql && \
+    # mysql user needed by MariaDB
+    addgroup -S mysql && adduser -S -G mysql -H -D mysql
 
 WORKDIR /app
 
-# Copy only what's needed at runtime
-COPY --from=builder /build/package.json /build/bun.lock ./
+COPY --from=builder /build/package.json ./
 COPY --from=builder /build/konomi-core/ ./konomi-core/
 COPY --from=builder /build/konomi-server/ ./konomi-server/
 COPY --from=builder /build/out/web/ ./konomi-web/dist/
@@ -76,12 +130,10 @@ COPY --from=builder /build/generated/ ./generated/
 COPY --from=builder /build/node_modules/ ./node_modules/
 COPY --from=builder /build/prisma/ ./prisma/
 
-# Entrypoint + init SQL
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/init.sql /app/docker/init.sql
 RUN chmod +x /entrypoint.sh
 
-# Default environment
 ENV KONOMI_PORT=3000
 ENV KONOMI_HOST=0.0.0.0
 ENV KONOMI_DATA_ROOT=/images
@@ -91,11 +143,9 @@ ENV PUID=911
 ENV PGID=911
 ENV TZ=Asia/Seoul
 
-# Create default data root
 RUN mkdir -p /images /config
 
 EXPOSE 3000
-
 VOLUME ["/images", "/config"]
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]

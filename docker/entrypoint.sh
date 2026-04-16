@@ -22,7 +22,6 @@ init_mariadb() {
   mariadbd --user=mysql --datadir="$KONOMI_DB_DATA" \
     --skip-networking=0 --bind-address=127.0.0.1 --port=3306 \
     --socket="$SOCKET" &
-  MARIADB_PID=$!
 
   # Wait for MariaDB to be ready
   for i in $(seq 1 30); do
@@ -48,14 +47,13 @@ FLUSH PRIVILEGES;
 EOSQL
   fi
 
-  # Run schema init SQL (idempotent — uses CREATE IF NOT EXISTS)
+  # Run schema init SQL (idempotent)
   mariadb --socket="$SOCKET" < /app/docker/init.sql
   echo "MariaDB ready."
 }
 
 # ── Main ──────────────────────────────────────────────────────
 if [ "$(id -u)" = "0" ]; then
-  # Create group/user if needed
   if ! getent group konomi > /dev/null 2>&1; then
     addgroup -g "$PGID" konomi
   fi
@@ -63,18 +61,15 @@ if [ "$(id -u)" = "0" ]; then
     adduser -u "$PUID" -G konomi -D -H konomi
   fi
 
-  # Ensure data directories are accessible
   mkdir -p /config "$KONOMI_DB_DATA"
   chown -R mysql:mysql "$KONOMI_DB_DATA"
   chown konomi:konomi /images /config 2>/dev/null || true
 
-  # Start MariaDB (runs as mysql user internally)
   init_mariadb
 
   echo "Starting Konomi as uid=$PUID gid=$PGID"
   exec gosu konomi:konomi "$@"
 else
-  # Rootless: still need MariaDB
   mkdir -p "$KONOMI_DB_DATA"
   init_mariadb
   exec "$@"
