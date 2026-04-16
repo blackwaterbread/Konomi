@@ -9,6 +9,11 @@ const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 // ── HTTP helpers ───────────────────────────────────────────────
 
+async function parseBody<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 async function rpc<T = unknown>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, {
     method: body !== undefined ? "POST" : "GET",
@@ -16,7 +21,7 @@ async function rpc<T = unknown>(url: string, body?: unknown): Promise<T> {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`API ${url}: ${res.status}`);
-  return res.json();
+  return parseBody(res);
 }
 
 async function rpcPatch<T = unknown>(url: string, body: unknown): Promise<T> {
@@ -26,13 +31,13 @@ async function rpcPatch<T = unknown>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`API ${url}: ${res.status}`);
-  return res.json();
+  return parseBody(res);
 }
 
 async function rpcDelete<T = unknown>(url: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`API ${url}: ${res.status}`);
-  return res.json();
+  return parseBody(res);
 }
 
 // ── WebSocket event bus ────────────────────────────────────────
