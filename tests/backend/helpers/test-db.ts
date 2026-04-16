@@ -14,7 +14,7 @@ export async function setupIsolatedDbTest(): Promise<IsolatedDbTestContext> {
   process.env.KONOMI_USER_DATA = userDataDir;
   process.env.KONOMI_MIGRATIONS_PATH = path.resolve(
     process.cwd(),
-    "prisma/migrations",
+    "prisma/migrations/sqlite",
   );
   vi.resetModules();
 

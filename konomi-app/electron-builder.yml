@@ -23,7 +23,7 @@ files:
   - '!{docs/**,examples/**,example_datas/**,.claude/**,scripts/**}'
   - '!**/*.tsbuildinfo'
   - '!prisma.config.ts'
-  - '!prisma/schema.prisma'
+  - '!prisma/schema/sqlite.prisma'
   - '!out/*.db'
   - '!resources/**'
   - '!node_modules/better-sqlite3/deps/**'
