@@ -28,7 +28,7 @@ function parseParameters(
     negativePrompt = negLines.join("\n").trim();
   }
 
-  let seed = 0,
+  let seed = "",
     sampler = "",
     steps = 0,
     cfgScale = 0,
@@ -42,7 +42,7 @@ function parseParameters(
       const m = paramsText.match(new RegExp(`${key}:\\s*([^,]+)`));
       return m ? m[1].trim() : "";
     };
-    seed = parseInt(kv("Seed")) || 0;
+    seed = kv("Seed");
     sampler = kv("Sampler");
     steps = parseInt(kv("Steps")) || 0;
     cfgScale = parseFloat(kv("CFG scale")) || 0;

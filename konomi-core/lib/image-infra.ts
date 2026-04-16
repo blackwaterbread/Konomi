@@ -19,7 +19,7 @@ export type ImageRow = {
   characterPromptTokens?: string;
   source: string;
   model: string;
-  seed: number;
+  seed: string;
   width: number;
   height: number;
   sampler: string;

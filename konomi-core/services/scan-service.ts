@@ -145,7 +145,7 @@ function buildUpsertData(
     ),
     source: meta?.source ?? "unknown",
     model: meta?.model ?? "",
-    seed: Number.isFinite(meta?.seed) ? meta!.seed : 0,
+    seed: meta?.seed || "",
     width: meta?.width ?? 0,
     height: meta?.height ?? 0,
     sampler: meta?.sampler ?? "",

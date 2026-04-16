@@ -5,7 +5,7 @@ export interface ImageMeta {
   characterPrompts: string[];
   characterNegativePrompts: string[];
   characterPositions: string[];
-  seed: number;
+  seed: string;
   model: string;
   sampler: string;
   steps: number;

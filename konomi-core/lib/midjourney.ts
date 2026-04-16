@@ -9,7 +9,7 @@ type MidjourneyParsedDescription = {
   aspectRatio: string;
   version: string;
   nijiVersion: string;
-  seed: number;
+  seed: string;
 };
 
 function parseMidjourneyDescription(
@@ -49,7 +49,7 @@ function parseMidjourneyDescription(
     aspectRatio: extractParam("ar"),
     version: extractParam("v(?:ersion)?"),
     nijiVersion: extractParam("niji"),
-    seed: Number.parseInt(extractParam("seed"), 10) || 0,
+    seed: extractParam("seed"),
   };
 }
 

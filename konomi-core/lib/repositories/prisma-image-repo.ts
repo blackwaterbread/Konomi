@@ -64,7 +64,7 @@ type NormalizedQuery = {
   randomSeed: number;
   resolutionFilters: ImageQueryResolutionFilter[];
   modelFilters: string[];
-  seedFilters: number[];
+  seedFilters: string[];
   excludeTags: string[];
   subfolderFilters: SubfolderFilter[];
 };
@@ -107,16 +107,16 @@ function normalizeResolutionFilters(
   return normalized;
 }
 
-function normalizeSeedFilters(values: number[] | undefined): number[] {
+function normalizeSeedFilters(values: string[] | undefined): string[] {
   if (!Array.isArray(values)) return [];
-  const seen = new Set<number>();
-  const normalized: number[] = [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
   for (const value of values) {
-    const n = Math.floor(value ?? NaN);
-    if (!Number.isFinite(n)) continue;
-    if (seen.has(n)) continue;
-    seen.add(n);
-    normalized.push(n);
+    const v = String(value ?? "").trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    normalized.push(v);
   }
   return normalized;
 }
@@ -481,12 +481,26 @@ type RawImageRow = Omit<ImageEntity, "isFavorite" | "varietyPlus"> & {
   varietyPlus: number;
 };
 
+/** Coerce seed to string — SQLite may still return a number before migration. */
+function normalizeSeed(seed: unknown): string {
+  if (seed == null || seed === 0) return "";
+  return String(seed);
+}
+
 function normalizeRawImageRow(raw: RawImageRow): ImageEntity {
   return {
     ...raw,
+    seed: normalizeSeed(raw.seed),
     isFavorite: Boolean(raw.isFavorite),
     varietyPlus: Boolean(raw.varietyPlus),
   };
+}
+
+function normalizeImageEntity(row: ImageEntity): ImageEntity {
+  if (typeof row.seed !== "string") {
+    return { ...row, seed: normalizeSeed(row.seed) };
+  }
+  return row;
 }
 
 export type ImageRepo = ReturnType<typeof createPrismaImageRepo>;
@@ -494,11 +508,13 @@ export type ImageRepo = ReturnType<typeof createPrismaImageRepo>;
 export function createPrismaImageRepo(getDb: () => PrismaClient) {
   const repo = {
     async findById(id: number): Promise<ImageEntity | null> {
-      return getDb().image.findUnique({ where: { id } }) as Promise<ImageEntity | null>;
+      const row = await getDb().image.findUnique({ where: { id } }) as ImageEntity | null;
+      return row ? normalizeImageEntity(row) : null;
     },
 
     async findByPath(path: string): Promise<ImageEntity | null> {
-      return getDb().image.findUnique({ where: { path } }) as Promise<ImageEntity | null>;
+      const row = await getDb().image.findUnique({ where: { path } }) as ImageEntity | null;
+      return row ? normalizeImageEntity(row) : null;
     },
 
     async findSyncRowsByFolderId(folderId: number): Promise<ImageSyncRow[]> {
@@ -510,7 +526,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
 
     async upsertBatch(rows: ImageUpsertData[]): Promise<ImageEntity[]> {
       const db = getDb();
-      return db.$transaction(
+      const results = await db.$transaction(
         rows.map((data) =>
           db.image.upsert({
             where: { path: data.path },
@@ -518,15 +534,17 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
             create: data,
           }),
         ),
-      ) as Promise<ImageEntity[]>;
+      ) as unknown as ImageEntity[];
+      return results.map(normalizeImageEntity);
     },
 
     async upsertByPath(data: ImageUpsertData): Promise<ImageEntity> {
-      return getDb().image.upsert({
+      const row = await getDb().image.upsert({
         where: { path: data.path },
         update: data,
         create: data,
-      }) as Promise<ImageEntity>;
+      }) as unknown as ImageEntity;
+      return normalizeImageEntity(row);
     },
 
     async deleteByIds(ids: number[]): Promise<void> {
@@ -713,13 +731,13 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
 
       const where = buildImageWhereInput(normalized);
       const totalCount = await db.image.count({ where });
-      const rows = (await db.image.findMany({
+      const rows = ((await db.image.findMany({
         where,
         select: IMAGE_LIST_PAGE_SELECT,
         orderBy: buildImageOrderBy(normalized.sortBy),
         skip: offset,
         take: normalized.pageSize,
-      })) as unknown as ImageEntity[];
+      })) as unknown as ImageEntity[]).map(normalizeImageEntity);
       return {
         rows,
         totalCount,
@@ -748,9 +766,9 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     async listByIds(ids: number[]): Promise<ImageEntity[]> {
       const cleanIds = normalizeIntegerArray(ids);
       if (cleanIds.length === 0) return [];
-      const rows = (await getDb().image.findMany({
+      const rows = ((await getDb().image.findMany({
         where: { id: { in: cleanIds } },
-      })) as unknown as ImageEntity[];
+      })) as unknown as ImageEntity[]).map(normalizeImageEntity);
       const rowMap = new Map(rows.map((row) => [row.id, row]));
       return cleanIds
         .map((id) => rowMap.get(id))
@@ -781,7 +799,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
           db.image.update({ where: { path: data.path }, data }),
         ),
       );
-      return results as unknown as ImageEntity[];
+      return (results as unknown as ImageEntity[]).map(normalizeImageEntity);
     },
 
     async findByFileSizeExcludingPath(

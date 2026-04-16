@@ -214,7 +214,7 @@ export interface WorkflowMeta {
   model: string;
   width: number;
   height: number;
-  seed: number;
+  seed: string;
   sampler: string;
   steps: number;
   cfgScale: number;
@@ -227,7 +227,7 @@ interface ComfyWorkflowViewerProps {
 }
 
 function MetaOverlay({ meta }: { meta: WorkflowMeta }) {
-  const hasSeed = Number.isFinite(meta.seed) && meta.seed !== 0;
+  const hasSeed = !!meta.seed;
   return (
     <div className="absolute bottom-3 left-3 bg-[#1a1a2e]/90 border border-[#3a3a5c] rounded-lg px-3 py-2 z-10 max-w-xs select-none">
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px]">

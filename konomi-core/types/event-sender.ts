@@ -33,7 +33,7 @@ export type ImageBatchEvent = {
     negativePrompt: string;
     source: string;
     model: string;
-    seed: number;
+    seed: string;
     width: number;
     height: number;
     isFavorite: boolean;

@@ -69,9 +69,9 @@ export function AdvancedSearchModal({
   };
 
   const addManualSeed = () => {
-    const n = parseInt(manualSeed);
-    if (!Number.isFinite(n)) return;
-    const f: AdvancedFilter = { type: "seed", value: n };
+    const v = manualSeed.trim();
+    if (!v) return;
+    const f: AdvancedFilter = { type: "seed", value: v };
     if (!isActive(f)) onFiltersChange([...activeFilters, f]);
     setManualSeed("");
   };

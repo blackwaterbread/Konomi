@@ -46,7 +46,7 @@ export interface ImageData {
   source: string;
   folderId: number;
   model: string;
-  seed: number;
+  seed: string;
   width: number;
   height: number;
   cfgScale: number;

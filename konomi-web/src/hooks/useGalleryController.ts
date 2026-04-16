@@ -20,7 +20,7 @@ interface UseGalleryControllerOptions {
   queryFragment: GalleryQueryFragment;
   resolutionFilters: Array<{ width: number; height: number }>;
   modelFilters: string[];
-  seedFilters: number[];
+  seedFilters: string[];
   excludeTags: string[];
   folderCount: number | null;
   subfolderFilters?: ImageListQuery["subfolderFilters"];

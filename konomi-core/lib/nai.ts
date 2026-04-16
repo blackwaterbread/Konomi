@@ -228,7 +228,7 @@ function parseNaiComment(raw: Record<string, unknown>): ImageMeta | null {
     characterPrompts,
     characterNegativePrompts,
     characterPositions,
-    seed: Number(comment["seed"] ?? 0),
+    seed: String(comment["seed"] ?? ""),
     model,
     sampler: String(comment["sampler"] ?? ""),
     steps: Number(comment["steps"] ?? 0),

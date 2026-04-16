@@ -110,7 +110,7 @@ model Image {
   prompt         String   @default("") @db.Text
   negativePrompt String   @default("") @db.Text
   model          String   @default("")
-  seed           Int      @default(0)
+  seed           String   @default("")
   width          Int      @default(0)
   height         Int      @default(0)
   sampler        String   @default("")

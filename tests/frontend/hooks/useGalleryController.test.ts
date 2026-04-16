@@ -230,7 +230,7 @@ describe("useGalleryController", () => {
     } as const;
     const resolutionFilters: Array<{ width: number; height: number }> = [];
     const modelFilters: string[] = [];
-    const seedFilters: number[] = [];
+    const seedFilters: string[] = [];
     const excludeTags: string[] = [];
 
     const { result } = renderHook(() =>

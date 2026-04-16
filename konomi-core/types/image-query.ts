@@ -30,7 +30,7 @@ export type ImageListQuery = {
   randomSeed?: number;
   resolutionFilters?: ImageQueryResolutionFilter[];
   modelFilters?: string[];
-  seedFilters?: number[];
+  seedFilters?: string[];
   excludeTags?: string[];
   subfolderFilters?: Array<{
     folderId: number;

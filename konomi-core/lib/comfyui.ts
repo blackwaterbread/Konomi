@@ -121,7 +121,7 @@ function resolveModelFromNode(
 interface ComfyParams {
   positive: string;
   negative: string;
-  seed: number;
+  seed: string;
   steps: number;
   cfg: number;
   samplerName: string;
@@ -162,7 +162,7 @@ function extractFromStandardSampler(
   return {
     positive: posText,
     negative: negText,
-    seed: resolveNumber(graph, node, "seed") || resolveNumber(graph, node, "noise_seed") || 0,
+    seed: String(resolveNumber(graph, node, "seed") || resolveNumber(graph, node, "noise_seed") || ""),
     steps: Number(node.inputs["steps"] ?? 0),
     cfg: Number(node.inputs["cfg"] ?? 0),
     samplerName: String(node.inputs["sampler_name"] ?? ""),
@@ -205,7 +205,7 @@ function extractFromContextSampler(
   return {
     positive,
     negative,
-    seed: resolveNumber(graph, samplerNode, "seed") || resolveNumber(graph, src, "seed") || 0,
+    seed: String(resolveNumber(graph, samplerNode, "seed") || resolveNumber(graph, src, "seed") || ""),
     steps: Number(samplerNode.inputs["steps"] ?? 0),
     cfg: Number(src.inputs["cfg"] ?? 0),
     samplerName: String(src.inputs["sampler_name"] ?? ""),
@@ -271,7 +271,7 @@ function extractFromWorkflow(
 
   let positive = "";
   let negative = "";
-  let seed = 0;
+  let seed = "";
   let steps = 0;
   let cfg = 0;
   let samplerName = "";
@@ -300,7 +300,7 @@ function extractFromWorkflow(
   );
   if (effSampler?.widgets_values) {
     const v = effSampler.widgets_values;
-    seed = seed || wfNum(v[1]);
+    seed = seed || String(wfNum(v[1]) || "");
     steps = steps || wfNum(v[3]);
     // Only use sampler params if not "from context"
     if (v[0] !== "from context") {
@@ -316,7 +316,7 @@ function extractFromWorkflow(
     const stdSampler = findWorkflowNode(wf, (t) => /KSampler/i.test(t));
     if (stdSampler?.widgets_values) {
       const v = stdSampler.widgets_values;
-      seed = seed || wfNum(v[0]);
+      seed = seed || String(wfNum(v[0]) || "");
       steps = steps || wfNum(v[2]);
       cfg = cfg || wfNum(v[3]);
       samplerName = samplerName || wfStr(v[4]);

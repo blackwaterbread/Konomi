@@ -28,7 +28,7 @@ function createImage(
     source: "nai",
     folderId: 1,
     model: "nai-diffusion-4-5-full",
-    seed: 123,
+    seed: "123",
     width: 832,
     height: 1216,
     cfgScale: 5,

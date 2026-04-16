@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import { Folder, FolderPlus, Loader2, Check } from "lucide-react";
+import { FolderPlus, Loader2, Check, CheckIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -92,7 +92,7 @@ export const AvailableFoldersDialog = memo(function AvailableFoldersDialog({
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-1.5">
               <p className="text-xs text-muted-foreground">
                 {t("availableFolders.description")}
               </p>
@@ -109,8 +109,8 @@ export const AvailableFoldersDialog = memo(function AvailableFoldersDialog({
                 </Button>
               )}
             </div>
-            <ScrollArea className="max-h-64 border rounded-md">
-              <div className="p-1 space-y-0.5">
+            <ScrollArea className="h-64 border rounded-md bg-muted/40">
+              <div className="p-1.5 space-y-0.5">
                 {directories.map((dir) => {
                   const isRegistered = registeredPaths.has(dir.path);
                   const isSelected = selected.has(dir.path);
@@ -123,21 +123,32 @@ export const AvailableFoldersDialog = memo(function AvailableFoldersDialog({
                         "w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm transition-colors",
                         isRegistered
                           ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-accent cursor-pointer",
-                        isSelected && !isRegistered && "bg-accent ring-1 ring-primary/30",
+                          : isSelected
+                            ? "bg-primary/15 ring-1 ring-primary/50 hover:bg-primary/25 cursor-pointer"
+                            : "hover:bg-muted-foreground/10 cursor-pointer",
                       )}
                       onClick={() => !isRegistered && handleToggle(dir.path)}
                     >
-                      <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      {isRegistered ? (
+                        <Check className="h-4 w-4 text-muted-foreground shrink-0" />
+                      ) : (
+                        <div
+                          className={cn(
+                            "size-4 shrink-0 rounded-sm border transition-colors flex items-center justify-center",
+                            isSelected
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-muted-foreground/40",
+                          )}
+                        >
+                          {isSelected && <CheckIcon className="size-3.5" />}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{dir.name}</p>
                         <p className="text-xs text-muted-foreground font-mono truncate">
                           {dir.path}
                         </p>
                       </div>
-                      {isRegistered && (
-                        <Check className="h-4 w-4 text-muted-foreground shrink-0" />
-                      )}
                     </button>
                   );
                 })}

@@ -3,7 +3,7 @@ import i18n from "@/lib/i18n";
 export type AdvancedFilter =
   | { type: "resolution"; width: number; height: number }
   | { type: "model"; value: string }
-  | { type: "seed"; value: number }
+  | { type: "seed"; value: string }
   | { type: "excludeTag"; value: string };
 
 export function filterLabel(filter: AdvancedFilter): string {
@@ -11,7 +11,7 @@ export function filterLabel(filter: AdvancedFilter): string {
     return `${filter.width}x${filter.height}`;
   }
   if (filter.type === "seed") {
-    return String(filter.value);
+    return filter.value;
   }
   if (filter.type === "excludeTag") {
     return `-${filter.value}`;

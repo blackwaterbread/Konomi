@@ -13,7 +13,7 @@ export function createImageRow(overrides?: Partial<ImageRow>): ImageRow {
     characterPromptTokens: overrides?.characterPromptTokens ?? "[]",
     source: overrides?.source ?? "webui",
     model: overrides?.model ?? "model-a",
-    seed: overrides?.seed ?? 123,
+    seed: overrides?.seed ?? "123",
     width: overrides?.width ?? 832,
     height: overrides?.height ?? 1216,
     sampler: overrides?.sampler ?? "Euler a",

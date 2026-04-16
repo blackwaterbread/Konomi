@@ -292,7 +292,7 @@ const InfoPanel = memo(function InfoPanel({
 }) {
   const { t } = useTranslation();
   const { formatDate } = useLocaleFormatters();
-  const hasSeed = Number.isFinite(image.seed);
+  const hasSeed = !!image.seed;
   const [tagFilterInput, setTagFilterInput] = useState("");
   const [tagFilter, setTagFilter] = useState("");
 

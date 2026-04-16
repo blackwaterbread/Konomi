@@ -60,7 +60,7 @@ export type ImageRow = {
   characterPromptTokens?: string;
   source: string;
   model: string;
-  seed: number;
+  seed: string;
   width: number;
   height: number;
   sampler: string;
@@ -91,7 +91,7 @@ export type ImageListQuery = {
   randomSeed?: number;
   resolutionFilters?: Array<{ width: number; height: number }>;
   modelFilters?: string[];
-  seedFilters?: number[];
+  seedFilters?: string[];
   excludeTags?: string[];
   subfolderFilters?: Array<{
     folderId: number;
