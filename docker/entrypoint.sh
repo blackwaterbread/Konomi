@@ -23,7 +23,7 @@ if [ "$(id -u)" = "0" ]; then
   chown konomi:konomi /images /config 2>/dev/null || true
 
   echo "Starting Konomi as uid=$PUID gid=$PGID"
-  exec su-exec konomi:konomi "$@"
+  exec gosu konomi:konomi "$@"
 else
   # Already non-root (e.g. rootless Docker)
   exec "$@"

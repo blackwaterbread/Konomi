@@ -29,7 +29,7 @@ COPY konomi-web/package.json konomi-web/
 # App workspace listed in root workspaces — need a stub so bun resolves it
 COPY konomi-app/package.json konomi-app/
 
-RUN bun install --frozen-lockfile
+RUN npm install -g node-gyp && bun install --frozen-lockfile
 
 # 2) Copy source
 COPY . .
@@ -53,8 +53,8 @@ ENV PATH="/root/.bun/bin:$PATH"
 
 # Runtime native libs (shared versions — addons link dynamically on Linux)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpng16-16t64 libwebp7 \
-    su-exec \
+    libpng16-16 libwebp7 \
+    gosu \
     tini \
   && rm -rf /var/lib/apt/lists/*
 
@@ -64,7 +64,7 @@ WORKDIR /app
 COPY --from=builder /build/package.json /build/bun.lock ./
 COPY --from=builder /build/konomi-core/ ./konomi-core/
 COPY --from=builder /build/konomi-server/ ./konomi-server/
-COPY --from=builder /build/konomi-web/dist/ ./konomi-web/dist/
+COPY --from=builder /build/out/web/ ./konomi-web/dist/
 COPY --from=builder /build/konomi-web/package.json ./konomi-web/
 COPY --from=builder /build/konomi-app/package.json ./konomi-app/
 COPY --from=builder /build/konomi-native/prebuilds/ ./konomi-native/prebuilds/
