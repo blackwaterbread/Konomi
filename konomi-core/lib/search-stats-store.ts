@@ -1,4 +1,4 @@
-import { getDB } from "./db";
+import { getDB, getDialect } from "./db";
 import type { Prisma } from "../../generated/prisma/client";
 import type { SearchStatSource } from "@core/types/repository";
 import {
@@ -100,6 +100,7 @@ async function applySearchStatDeltasInTx(
   let lastProgressAt = 0;
   onProgress?.(done, total);
 
+  const mysql = getDialect() === "mysql";
   const positives = deltas.filter((d) => d.delta > 0);
   for (let i = 0; i < positives.length; i += STAT_DELTA_BATCH_SIZE) {
     const chunk = positives.slice(i, i + STAT_DELTA_BATCH_SIZE);
@@ -117,10 +118,22 @@ async function applySearchStatDeltasInTx(
         delta.delta,
       );
     }
-    await tx.$executeRawUnsafe(
-      `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+    const upsertSql = mysql
+      ? `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
          VALUES ${placeholders}
-         ON CONFLICT(kind, key) DO UPDATE SET
+         ON DUPLICATE KEY UPDATE
+           count = ImageSearchStat.count + VALUES(count),
+           width = COALESCE(ImageSearchStat.width, VALUES(width)),
+           height = COALESCE(ImageSearchStat.height, VALUES(height)),
+           model = CASE
+             WHEN ImageSearchStat.kind = 'tag'
+               THEN COALESCE(NULLIF(ImageSearchStat.model, ''), VALUES(model))
+             ELSE VALUES(model)
+           END,
+           updatedAt = CURRENT_TIMESTAMP`
+      : `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
+         VALUES ${placeholders}
+         ON CONFLICT(kind, \`key\`) DO UPDATE SET
            count = ImageSearchStat.count + excluded.count,
            width = COALESCE(ImageSearchStat.width, excluded.width),
            height = COALESCE(ImageSearchStat.height, excluded.height),
@@ -129,9 +142,8 @@ async function applySearchStatDeltasInTx(
                THEN COALESCE(NULLIF(ImageSearchStat.model, ''), excluded.model)
              ELSE excluded.model
            END,
-           updatedAt = CURRENT_TIMESTAMP`,
-      ...params,
-    );
+           updatedAt = CURRENT_TIMESTAMP`;
+    await tx.$executeRawUnsafe(upsertSql, ...params);
     done += chunk.length;
     const now = Date.now();
     if (done === total || now - lastProgressAt >= 100) {
@@ -144,9 +156,9 @@ async function applySearchStatDeltasInTx(
   for (let i = 0; i < negatives.length; i += STAT_DELTA_BATCH_SIZE) {
     const chunk = negatives.slice(i, i + STAT_DELTA_BATCH_SIZE);
     const whenClauses = chunk
-      .map(() => "WHEN kind = ? AND key = ? THEN count + ?")
+      .map(() => "WHEN kind = ? AND `key` = ? THEN count + ?")
       .join(" ");
-    const whereClauses = chunk.map(() => "(kind = ? AND key = ?)").join(" OR ");
+    const whereClauses = chunk.map(() => "(kind = ? AND `key` = ?)").join(" OR ");
     const updateParams: unknown[] = [];
     for (const delta of chunk) {
       updateParams.push(delta.kind, delta.key, delta.delta);
@@ -252,7 +264,7 @@ async function readImageSearchPresetStatsFromTable(): Promise<ImageSearchPresetS
     `SELECT model, count
      FROM ImageSearchStat
      WHERE kind = 'model'
-     ORDER BY count DESC, key ASC`,
+     ORDER BY count DESC, \`key\` ASC`,
   )) as SearchStatModelRow[];
   return {
     availableResolutions: resolutionRows
@@ -352,7 +364,7 @@ export async function rebuildImageSearchPresetStats(
     }
     if (placeholders.length > 0) {
       await db.$executeRawUnsafe(
-        `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+        `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
          VALUES ${placeholders.join(", ")}`,
         ...params,
       );
@@ -375,7 +387,7 @@ export async function rebuildImageSearchPresetStats(
     }
     if (placeholders.length > 0) {
       await db.$executeRawUnsafe(
-        `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+        `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
          VALUES ${placeholders.join(", ")}`,
         ...params,
       );
@@ -398,7 +410,7 @@ export async function rebuildImageSearchPresetStats(
     }
     if (placeholders.length > 0) {
       await db.$executeRawUnsafe(
-        `INSERT INTO ImageSearchStat (kind, key, width, height, model, count, updatedAt)
+        `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
          VALUES ${placeholders.join(", ")}`,
         ...params,
       );
@@ -459,7 +471,7 @@ export async function suggestImageSearchTags(
   const excluded = normalizeExcludedTagKeys(query?.exclude);
   const excludedSet = new Set(excluded);
   const normalizedKeySql =
-    "LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(key, '_', ' '), '[', ''), ']', ''), '{', ''), '}', ''))";
+    "LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(`key`, '_', ' '), '[', ''), ']', ''), '{', ''), '}', ''))";
   const excludedClause =
     excluded.length > 0
       ? ` AND ${normalizedKeySql} NOT IN (${excluded.map(() => "?").join(", ")})`
@@ -469,12 +481,12 @@ export async function suggestImageSearchTags(
     ? `CASE WHEN ${normalizedKeySql} = ? THEN 0 WHEN ${normalizedKeySql} LIKE ? THEN 1 ELSE 2 END`
     : `CASE WHEN ${normalizedKeySql} = ? THEN 0 ELSE 1 END`;
   const rows = (await db.$queryRawUnsafe(
-    `SELECT key, model, count
+    `SELECT \`key\`, model, count
      FROM ImageSearchStat
      WHERE kind = 'tag'
        AND ${normalizedKeySql} LIKE ?
        ${excludedClause}
-     ORDER BY ${orderRankSql}, count DESC, key ASC
+     ORDER BY ${orderRankSql}, count DESC, \`key\` ASC
      LIMIT ?`,
     keyFilterValue,
     ...excluded,

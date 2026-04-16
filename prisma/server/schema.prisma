@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated/prisma-server"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Folder {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  path               String    @unique
+  createdAt          DateTime  @default(now())
+  lastScanFileCount  Int?
+  lastScanFinishedAt DateTime?
+  images             Image[]
+}
+
+model PromptCategory {
+  id        Int           @id @default(autoincrement())
+  name      String
+  isBuiltin Boolean       @default(false)
+  order     Int
+  groups    PromptGroup[]
+}
+
+model PromptGroup {
+  id         Int             @id @default(autoincrement())
+  name       String
+  categoryId Int
+  order      Int
+  tokens     PromptToken[]
+  category   PromptCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model PromptToken {
+  id      Int         @id @default(autoincrement())
+  label   String
+  order   Int
+  groupId Int
+  group   PromptGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id        Int             @id @default(autoincrement())
+  name      String
+  isBuiltin Boolean         @default(false)
+  order     Int             @default(0)
+  color     String?
+  images    ImageCategory[]
+}
+
+model ImageCategory {
+  imageId    Int
+  categoryId Int
+  image      Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([imageId, categoryId])
+}
+
+model NaiConfig {
+  id     Int    @id @default(1)
+  apiKey String @default("")
+}
+
+model IgnoredDuplicatePath {
+  path      String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model ImageSearchStat {
+  kind      String
+  key       String
+  width     Int?
+  height    Int?
+  model     String?
+  count     Int      @default(0)
+  updatedAt DateTime @default(now())
+
+  @@id([kind, key])
+}
+
+model ImageSimilarityCache {
+  imageAId      Int
+  imageBId      Int
+  phashDistance Int?
+  textScore     Float    @default(0)
+  updatedAt     DateTime @default(now())
+
+  @@id([imageAId, imageBId])
+  @@index([imageAId])
+  @@index([imageBId])
+  @@index([phashDistance])
+  @@index([textScore])
+}
+
+model ImageSimilarityCacheMeta {
+  id       Int      @id
+  primedAt DateTime?
+}
+
+model Image {
+  id             Int      @id @default(autoincrement())
+  path           String   @unique
+  folderId       Int
+  prompt         String   @default("") @db.Text
+  negativePrompt String   @default("") @db.Text
+  model          String   @default("")
+  seed           Int      @default(0)
+  width          Int      @default(0)
+  height         Int      @default(0)
+  sampler        String   @default("")
+  steps          Int      @default(0)
+  cfgScale       Float    @default(0)
+  cfgRescale     Float    @default(0)
+  noiseSchedule  String   @default("")
+  varietyPlus    Boolean  @default(false)
+  characterPrompts String   @default("[]") @db.Text
+  source         String   @default("unknown")
+  isFavorite     Boolean  @default(false)
+  pHash                 String   @default("")
+  promptTokens          String   @default("[]") @db.Text
+  negativePromptTokens  String   @default("[]") @db.Text
+  characterPromptTokens String   @default("[]") @db.Text
+  fileSize       Int      @default(0)
+  fileModifiedAt DateTime
+  createdAt      DateTime @default(now())
+  folder         Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  categories     ImageCategory[]
+
+  @@index([folderId, fileModifiedAt, id])
+  @@index([folderId, isFavorite, fileModifiedAt, id])
+  @@index([folderId, path, id])
+}

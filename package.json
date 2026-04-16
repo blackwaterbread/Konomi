@@ -37,14 +37,19 @@
     "db:migrate": "bun run db:prepare-dir && cross-env DATABASE_URL=file:./database/konomi.db bunx --bun prisma migrate dev",
     "db:init": "node ./scripts/reset-dev-user-data.mjs",
     "db:init:prisma": "bun run db:prepare-dir && cross-env DATABASE_URL=file:./database/konomi.db bunx --bun prisma migrate reset --force",
+    "db:generate:server": "bunx --bun prisma generate --config prisma.server.config.ts",
+    "db:push:server": "bunx --bun prisma db push --config prisma.server.config.ts",
+    "db:migrate:server": "bunx --bun prisma migrate dev --config prisma.server.config.ts",
     "db:prompts": "node ./scripts/run-electron-node.mjs ./scripts/build-prompts-db.mjs",
     "prebuild:native": "node scripts/build-native.mjs"
   },
   "dependencies": {
-    "@konomi/core": "workspace:*",
     "@konomi/app": "workspace:*",
+    "@konomi/core": "workspace:*",
+    "@konomi/server": "workspace:*",
     "@konomi/web": "workspace:*",
-    "@konomi/server": "workspace:*"
+    "@prisma/adapter-mariadb": "^7.7.0",
+    "mariadb": "^3.5.2"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",

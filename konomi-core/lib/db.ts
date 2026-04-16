@@ -12,6 +12,24 @@ let client: PrismaClient | null = null;
 let rawDb: Database.Database | null = null;
 let migrationsDone = false;
 
+// External DB provider override (used by konomi-server for MySQL)
+let externalGetDB: (() => PrismaClient) | null = null;
+let dialect: "sqlite" | "mysql" = "sqlite";
+
+export function setDBProvider(provider: () => PrismaClient, dbDialect: "sqlite" | "mysql" = "sqlite"): void {
+  externalGetDB = provider;
+  dialect = dbDialect;
+}
+
+export function getDialect(): "sqlite" | "mysql" {
+  return dialect;
+}
+
+/** Returns dialect-appropriate INSERT-ignore syntax prefix */
+export function insertIgnore(): string {
+  return dialect === "mysql" ? "INSERT IGNORE INTO" : "INSERT OR IGNORE INTO";
+}
+
 export interface MigrationProgress {
   done: number;
   total: number;
@@ -137,6 +155,7 @@ export function runMigrations(
  *   (image files are untouched; only user metadata like favorites/categories is lost)
  */
 export function getDB(): PrismaClient {
+  if (externalGetDB) return externalGetDB();
   if (!client) {
     runMigrations();
     const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");

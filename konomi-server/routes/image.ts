@@ -63,7 +63,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     scanCancelToken = { cancelled: false };
     watchService.setScanActive(true);
     try {
-      return await scanService.scanAll({
+      return scanService.scanAll({
         signal: scanCancelToken,
         folderIds,
         orderedFolderIds,

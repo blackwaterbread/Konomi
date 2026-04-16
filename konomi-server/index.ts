@@ -12,12 +12,17 @@ import { registerPromptRoutes } from "./routes/prompt";
 import { registerNaiRoutes } from "./routes/nai";
 import { registerImageFileRoutes } from "./routes/image-file";
 import { createLogger } from "@core/lib/logger";
+import { setDBProvider } from "@core/lib/db";
+import { getDB } from "./db";
 
 // Dev defaults — Electron app sets these via bridge env vars
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 process.env.KONOMI_USER_DATA ??= path.join(repoRoot, "database");
 process.env.KONOMI_MIGRATIONS_PATH ??= path.join(repoRoot, "prisma", "migrations");
+
+// Inject MySQL PrismaClient into core modules
+setDBProvider(getDB as any, "mysql");
 
 const log = createLogger("web/server");
 const PORT = Number(process.env.KONOMI_PORT) || 3000;

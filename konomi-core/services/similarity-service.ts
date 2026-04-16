@@ -34,14 +34,14 @@ export interface SimilarityServiceDeps {
   /** Ensure the similarity cache is fully primed (tables exist, all pairs computed) */
   ensureCachePrimed(onProgress?: ProgressCallback): Promise<void>;
 
-  /** Return all image IDs (synchronous, cursor-based) */
-  getAllImageIds(): number[];
+  /** Return all image IDs */
+  getAllImageIds(): number[] | Promise<number[]>;
 
-  /** Iterate cache rows passing the pre-filter (phashDistance <= max OR textScore >= min) */
+  /** Iterate/query cache rows passing the pre-filter (phashDistance <= max OR textScore >= min) */
   iterateFilteredCachePairs(
     maxPhashDist: number,
     minTextScore: number,
-  ): Iterable<SimilarityCacheRow>;
+  ): Iterable<SimilarityCacheRow> | Promise<SimilarityCacheRow[]>;
 
   /**
    * Query cache rows involving a specific image and a set of candidate IDs.
@@ -219,14 +219,14 @@ export function createSimilarityService(
     ): Promise<SimilarGroup[]> {
       await deps.ensureCachePrimed(onProgress);
 
-      const imageIds = deps.getAllImageIds();
+      const imageIds = await deps.getAllImageIds();
       if (imageIds.length < 2) return [];
 
       const config = resolveThresholdConfig(threshold, jaccardThreshold);
       const maxPhashDist = computeMaxPhashDistForHybrid(config);
       const minTextScore = config.textLinkThreshold;
 
-      const pairs = deps.iterateFilteredCachePairs(maxPhashDist, minTextScore);
+      const pairs = await deps.iterateFilteredCachePairs(maxPhashDist, minTextScore);
       const groups = buildGroupsFromUnionFind(imageIds, pairs, threshold, config);
 
       // Populate group cache

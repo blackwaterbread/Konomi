@@ -1,6 +1,6 @@
 import os from "os";
 import path from "path";
-import { getDB, getRawDB } from "./db";
+import { getDB, getRawDB, getDialect, insertIgnore } from "./db";
 import { withConcurrency } from "@core/lib/scanner";
 import { WorkerPool } from "@core/lib/worker-pool";
 import { computeAllPairs, type AllPairsInput, type AllPairsResult } from "@core/lib/konomi-image";
@@ -97,14 +97,14 @@ async function ensureSimilarityCacheTables(): Promise<void> {
     )
   `);
   await db.$executeRawUnsafe(
-    `INSERT OR IGNORE INTO ${SIMILARITY_CACHE_META_TABLE}(id, primedAt) VALUES (1, NULL)`,
+    `${insertIgnore()} ${SIMILARITY_CACHE_META_TABLE}(id, primedAt) VALUES (1, NULL)`,
   );
 }
 
 async function markSimilarityCachePrimed(): Promise<void> {
   const db = getDB();
   await db.$executeRawUnsafe(
-    `UPDATE ${SIMILARITY_CACHE_META_TABLE} SET primedAt = datetime('now') WHERE id = 1`,
+    `UPDATE ${SIMILARITY_CACHE_META_TABLE} SET primedAt = ${getDialect() === "mysql" ? "NOW()" : "datetime('now')"} WHERE id = 1`,
   );
 }
 
@@ -131,9 +131,9 @@ async function clearSimilarityCache(): Promise<void> {
 }
 
 const SIMILARITY_SOURCE_SQL =
-  'SELECT id, pHash, promptTokens, negativePromptTokens, characterPromptTokens FROM "Image"';
+  "SELECT id, pHash, promptTokens, negativePromptTokens, characterPromptTokens FROM `Image`";
 
-function buildIdfMapFromCursor(): {
+function buildIdfMapFromCursorSqlite(): {
   idfMap: Map<string, number>;
   imageCount: number;
   imageIdSet: Set<number>;
@@ -168,12 +168,47 @@ function buildIdfMapFromCursor(): {
   return { idfMap, imageCount, imageIdSet };
 }
 
-function encodeSourceRowsFromCursor(
-  idfMap: Map<string, number>,
-): AllPairsInput {
-  const rawDb = getRawDB();
-  const stmt = rawDb.prepare(SIMILARITY_SOURCE_SQL);
+async function buildIdfMapFromPrisma(): Promise<{
+  idfMap: Map<string, number>;
+  imageCount: number;
+  imageIdSet: Set<number>;
+}> {
+  const rows = await getDB().$queryRawUnsafe<SimilaritySourceRow[]>(SIMILARITY_SOURCE_SQL);
+  const docFrequency = new Map<string, number>();
+  const seen = new Set<string>();
+  const imageIdSet = new Set<number>();
 
+  for (const row of rows) {
+    imageIdSet.add(row.id);
+    seen.clear();
+    for (const t of parseTokenSet(row.promptTokens)) seen.add(t);
+    for (const t of parseTokenSet(row.characterPromptTokens)) seen.add(t);
+    for (const t of parseTokenSet(row.negativePromptTokens)) seen.add(t);
+    for (const token of seen) {
+      docFrequency.set(token, (docFrequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  const totalDocs = Math.max(rows.length, 1);
+  const idfMap = new Map<string, number>();
+  for (const [token, df] of docFrequency) {
+    idfMap.set(token, Math.log((totalDocs + 1) / (df + 1)) + 1);
+  }
+  return { idfMap, imageCount: rows.length, imageIdSet };
+}
+
+async function buildIdfMap(): Promise<{
+  idfMap: Map<string, number>;
+  imageCount: number;
+  imageIdSet: Set<number>;
+}> {
+  return getDialect() === "mysql" ? buildIdfMapFromPrisma() : buildIdfMapFromCursorSqlite();
+}
+
+function encodeSourceRows(
+  idfMap: Map<string, number>,
+  rows: SimilaritySourceRow[],
+): AllPairsInput {
   const vocab = new Map<string, number>();
   for (const token of idfMap.keys()) vocab.set(token, vocab.size);
 
@@ -195,9 +230,8 @@ function encodeSourceRowsFromCursor(
   const negOffsetsList: number[] = [0];
   const posOffsetsList: number[] = [0];
 
-  for (const row of stmt.iterate()) {
-    const { id, pHash, promptTokens, negativePromptTokens, characterPromptTokens } =
-      row as SimilaritySourceRow;
+  for (const row of rows) {
+    const { id, pHash, promptTokens, negativePromptTokens, characterPromptTokens } = row;
 
     const prompt = parseTokenSet(promptTokens);
     const character = parseTokenSet(characterPromptTokens);
@@ -259,16 +293,14 @@ function encodeSourceRowsFromCursor(
   };
 }
 
-function buildSimilarityImagesFromCursor(
+function buildSimilarityImages(
   idfMap: Map<string, number>,
+  rows: SimilaritySourceRow[],
 ): SimilarityImage[] {
-  const rawDb = getRawDB();
-  const stmt = rawDb.prepare(SIMILARITY_SOURCE_SQL);
   const images: SimilarityImage[] = [];
 
-  for (const row of stmt.iterate()) {
-    const { id, pHash, promptTokens, negativePromptTokens, characterPromptTokens } =
-      row as SimilaritySourceRow;
+  for (const row of rows) {
+    const { id, pHash, promptTokens, negativePromptTokens, characterPromptTokens } = row;
 
     const prompt = parseTokenSet(promptTokens);
     const character = parseTokenSet(characterPromptTokens);
@@ -299,25 +331,32 @@ async function upsertSimilarityCacheRows(
   if (rows.length === 0) return;
   const db = getDB();
 
+  const mysql = getDialect() === "mysql";
+  const nowFn = mysql ? "NOW()" : "datetime('now')";
   const ROWS_PER_STMT = 2000;
   for (let i = 0; i < rows.length; i += ROWS_PER_STMT) {
     const chunk = rows.slice(i, i + ROWS_PER_STMT);
     const placeholders = chunk
-      .map(() => `(?, ?, ?, ?, datetime('now'))`)
+      .map(() => `(?, ?, ?, ?, ${nowFn})`)
       .join(",");
     const params: unknown[] = [];
     for (const row of chunk) {
       params.push(row.imageAId, row.imageBId, row.phashDistance, row.textScore);
     }
-    await db.$executeRawUnsafe(
-      `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
-       VALUES ${placeholders}
-       ON CONFLICT(imageAId, imageBId) DO UPDATE SET
-         phashDistance = excluded.phashDistance,
-         textScore = excluded.textScore,
-         updatedAt = excluded.updatedAt`,
-      ...params,
-    );
+    const sql = mysql
+      ? `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+         VALUES ${placeholders}
+         ON DUPLICATE KEY UPDATE
+           phashDistance = VALUES(phashDistance),
+           textScore = VALUES(textScore),
+           updatedAt = VALUES(updatedAt)`
+      : `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+         VALUES ${placeholders}
+         ON CONFLICT(imageAId, imageBId) DO UPDATE SET
+           phashDistance = excluded.phashDistance,
+           textScore = excluded.textScore,
+           updatedAt = excluded.updatedAt`;
+    await db.$executeRawUnsafe(sql, ...params);
     onProgress?.(Math.min(i + ROWS_PER_STMT, rows.length), rows.length);
     await yieldToEventLoop();
   }
@@ -330,6 +369,8 @@ async function upsertSimilarityCacheFromArrays(
   const count = result.imageAIds.length;
   if (count === 0) return;
   const db = getDB();
+  const mysql = getDialect() === "mysql";
+  const nowFn = mysql ? "NOW()" : "datetime('now')";
 
   const ROWS_PER_STMT = 2000;
   for (let i = 0; i < count; i += ROWS_PER_STMT) {
@@ -337,7 +378,7 @@ async function upsertSimilarityCacheFromArrays(
     const chunkSize = end - i;
     const placeholders = Array.from(
       { length: chunkSize },
-      () => `(?, ?, ?, ?, datetime('now'))`,
+      () => `(?, ?, ?, ?, ${nowFn})`,
     ).join(",");
     const params: unknown[] = [];
     for (let j = i; j < end; j++) {
@@ -348,15 +389,20 @@ async function upsertSimilarityCacheFromArrays(
         result.textScores[j],
       );
     }
-    await db.$executeRawUnsafe(
-      `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
-       VALUES ${placeholders}
-       ON CONFLICT(imageAId, imageBId) DO UPDATE SET
-         phashDistance = excluded.phashDistance,
-         textScore = excluded.textScore,
-         updatedAt = excluded.updatedAt`,
-      ...params,
-    );
+    const sql = mysql
+      ? `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+         VALUES ${placeholders}
+         ON DUPLICATE KEY UPDATE
+           phashDistance = VALUES(phashDistance),
+           textScore = VALUES(textScore),
+           updatedAt = VALUES(updatedAt)`
+      : `INSERT INTO ${SIMILARITY_CACHE_TABLE} (imageAId, imageBId, phashDistance, textScore, updatedAt)
+         VALUES ${placeholders}
+         ON CONFLICT(imageAId, imageBId) DO UPDATE SET
+           phashDistance = excluded.phashDistance,
+           textScore = excluded.textScore,
+           updatedAt = excluded.updatedAt`;
+    await db.$executeRawUnsafe(sql, ...params);
     onProgress?.(Math.min(i + ROWS_PER_STMT, count), count);
     await yieldToEventLoop();
   }
@@ -418,17 +464,22 @@ export async function refreshSimilarityCacheForImageIds(
     await deleteSimilarityCacheForImageIds(targetIds);
   }
 
-  // Pass 1 (cursor): build IDF map + collect image IDs — no source row array
-  const { idfMap, imageCount, imageIdSet } = buildIdfMapFromCursor();
+  // Pass 1: build IDF map + collect image IDs
+  const { idfMap, imageCount, imageIdSet } = await buildIdfMap();
   if (imageCount < 2) return;
 
   const existingTargetIds = targetIds.filter((id) => imageIdSet.has(id));
   if (existingTargetIds.length === 0) return;
   const isFullCoverage = existingTargetIds.length === imageCount;
 
+  // Fetch source rows (Prisma for MySQL, cursor for SQLite)
+  const sourceRows = getDialect() === "mysql"
+    ? await getDB().$queryRawUnsafe<SimilaritySourceRow[]>(SIMILARITY_SOURCE_SQL)
+    : (() => { const rawDb = getRawDB(); return [...rawDb.prepare(SIMILARITY_SOURCE_SQL).iterate()] as SimilaritySourceRow[]; })();
+
   // ── Native fast path ─────────────────────────────────────────────────────
   {
-    const nativeInput = encodeSourceRowsFromCursor(idfMap);
+    const nativeInput = encodeSourceRows(idfMap, sourceRows);
     if (!isFullCoverage) {
       const targetIdSet = new Set(existingTargetIds);
       const indices: number[] = [];
@@ -447,7 +498,7 @@ export async function refreshSimilarityCacheForImageIds(
 
   // ── JS fallback (cursor-based — only when native addon unavailable) ─────
 
-  const fallbackImages = buildSimilarityImagesFromCursor(idfMap);
+  const fallbackImages = buildSimilarityImages(idfMap, sourceRows);
   const imageById = new Map(fallbackImages.map((img) => [img.id, img]));
 
   const targetIdSet = new Set(existingTargetIds);
@@ -611,7 +662,11 @@ export async function computeAllHashes(
 const similarityServiceDeps: SimilarityServiceDeps = {
   ensureCachePrimed: ensureSimilarityCachePrimed,
 
-  getAllImageIds(): number[] {
+  getAllImageIds(): number[] | Promise<number[]> {
+    if (getDialect() === "mysql") {
+      return getDB().$queryRawUnsafe<Array<{ id: number }>>("SELECT id FROM `Image`")
+        .then((rows) => rows.map((r) => r.id));
+    }
     const rawDb = getRawDB();
     return rawDb
       .prepare('SELECT id FROM "Image"')
@@ -622,7 +677,14 @@ const similarityServiceDeps: SimilarityServiceDeps = {
   iterateFilteredCachePairs(
     maxPhashDist: number,
     minTextScore: number,
-  ): Iterable<SimilarityCacheRow> {
+  ): Iterable<SimilarityCacheRow> | Promise<SimilarityCacheRow[]> {
+    if (getDialect() === "mysql") {
+      return getDB().$queryRawUnsafe<SimilarityCacheRow[]>(
+        `SELECT imageAId, imageBId, phashDistance, textScore FROM ${SIMILARITY_CACHE_TABLE} WHERE phashDistance <= ? OR textScore >= ?`,
+        maxPhashDist,
+        minTextScore,
+      );
+    }
     const rawDb = getRawDB();
     const stmt = rawDb.prepare(
       `SELECT imageAId, imageBId, phashDistance, textScore FROM ${SIMILARITY_CACHE_TABLE} WHERE phashDistance <= ? OR textScore >= ?`,

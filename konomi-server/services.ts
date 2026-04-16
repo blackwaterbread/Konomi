@@ -1,5 +1,5 @@
 import type { EventSender } from "@core/types/event-sender";
-import { getDB, runMigrations } from "@core/lib/db";
+import { getDB } from "./db";
 import { createPrismaFolderRepo } from "@core/lib/repositories/prisma-folder-repo";
 import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import { createPrismaCategoryRepo } from "@core/lib/repositories/prisma-category-repo";
@@ -41,11 +41,11 @@ const log = createLogger("web/services");
 
 export function createServices(sender: EventSender) {
   // ── Repositories ─────────────────────────
-  const folderRepo = createPrismaFolderRepo(getDB);
-  const categoryRepo = createPrismaCategoryRepo(getDB);
-  const imageRepo = createPrismaImageRepo(getDB);
-  const promptRepo = createPrismaPromptRepo(getDB);
-  const naiConfigRepo = createPrismaNaiConfigRepo(getDB);
+  const folderRepo = createPrismaFolderRepo(getDB as any);
+  const categoryRepo = createPrismaCategoryRepo(getDB as any);
+  const imageRepo = createPrismaImageRepo(getDB as any);
+  const promptRepo = createPrismaPromptRepo(getDB as any);
+  const naiConfigRepo = createPrismaNaiConfigRepo(getDB as any);
 
   // ── Adapters ─────────────────────────────
   const searchStatsAdapter = {
@@ -135,10 +135,6 @@ export function createServices(sender: EventSender) {
 export type Services = ReturnType<typeof createServices>;
 
 export async function bootstrap(services: Services): Promise<void> {
-  runMigrations((progress) => {
-    services.sender.send("db:migrationProgress", progress);
-  });
-
   await services.categoryService.seedBuiltins();
   log.info("Seeded builtin categories");
 
