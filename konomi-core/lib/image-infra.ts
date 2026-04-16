@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { getDB } from "./db";
+import { getDB, insertIgnore } from "./db";
 import { WorkerPool } from "@core/lib/worker-pool";
 import type { ImageMeta } from "@core/types/image-meta";
 
@@ -117,7 +117,7 @@ export async function registerIgnoredDuplicatePaths(
     const batch = newPaths.slice(i, i + BATCH_SIZE);
     const placeholders = batch.map(() => "(?)").join(", ");
     await db.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO IgnoredDuplicatePath (path) VALUES ${placeholders}`,
+      `${insertIgnore()} IgnoredDuplicatePath (path) VALUES ${placeholders}`,
       ...batch,
     );
   }
