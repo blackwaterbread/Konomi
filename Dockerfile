@@ -3,7 +3,7 @@
 # ============================================================
 # Stage 1: builder  — install deps, compile native addons,
 #                      generate Prisma client, build web SPA
-# Stage 2: runtime  — slim image with only runtime artifacts
+# Stage 2: runtime  — slim image with only production deps
 # ============================================================
 
 # ── Stage 1: Build ──────────────────────────────────────────
@@ -45,22 +45,25 @@ RUN bun run db:generate:server
 # 5) Build web frontend (Vite SPA)
 RUN bun run build:web
 
+# 6) Production-only node_modules
+RUN rm -rf node_modules && bun install --frozen-lockfile --production
+
 # ── Stage 2: Runtime ────────────────────────────────────────
-FROM node:22-bookworm-slim AS runtime
+FROM node:22-alpine AS runtime
 
-RUN curl -fsSL https://bun.sh/install | bash
+RUN apk add --no-cache \
+    libpng libwebp \
+    gosu tini
+
+# Install bun
+RUN apk add --no-cache bash curl && \
+    curl -fsSL https://bun.sh/install | bash && \
+    apk del bash curl
 ENV PATH="/root/.bun/bin:$PATH"
-
-# Runtime native libs (shared versions — addons link dynamically on Linux)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpng16-16 libwebp7 \
-    gosu \
-    tini \
-  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy built artifacts from builder
+# Copy only what's needed at runtime
 COPY --from=builder /build/package.json /build/bun.lock ./
 COPY --from=builder /build/konomi-core/ ./konomi-core/
 COPY --from=builder /build/konomi-server/ ./konomi-server/

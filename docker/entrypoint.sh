@@ -11,12 +11,12 @@ PGID=${PGID:-1000}
 if [ "$(id -u)" = "0" ]; then
   # Create group if it doesn't exist
   if ! getent group konomi > /dev/null 2>&1; then
-    addgroup --gid "$PGID" konomi
+    addgroup -g "$PGID" konomi
   fi
 
   # Create user if it doesn't exist
   if ! getent passwd konomi > /dev/null 2>&1; then
-    adduser --uid "$PUID" --ingroup konomi --disabled-password --gecos "" --no-create-home konomi
+    adduser -u "$PUID" -G konomi -D -H konomi
   fi
 
   # Ensure data directories are accessible
