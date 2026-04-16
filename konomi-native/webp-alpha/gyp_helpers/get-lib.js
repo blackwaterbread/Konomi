@@ -5,8 +5,13 @@ if (!root) {
   process.stderr.write("LIBWEBP_ROOT is not set\n");
   process.exit(1);
 }
-const lib =
-  process.platform === "win32"
-    ? path.join(root, "lib", "libwebp.lib").replace(/\\/g, "/")
-    : path.join(root, "lib", "libwebp.a");
-process.stdout.write(lib);
+if (process.platform === "win32") {
+  process.stdout.write(
+    path.join(root, "lib", "libwebp.lib").replace(/\\/g, "/"),
+  );
+} else if (process.platform === "darwin") {
+  process.stdout.write(path.join(root, "lib", "libwebp.a"));
+} else {
+  // Linux: link shared library via -lwebp flag
+  process.stdout.write("-lwebp");
+}

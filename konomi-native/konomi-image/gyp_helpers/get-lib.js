@@ -35,8 +35,11 @@ if (process.platform === "win32") {
   ]);
   // node-gyp <!@(...) splits on whitespace — two paths → two library entries
   process.stdout.write(`${pngLib} ${zlibLib}`);
-} else {
-  // macOS / Linux: static libpng; zlib is a system library (linked automatically)
+} else if (process.platform === "darwin") {
+  // macOS: static libpng; zlib is a system library (linked automatically)
   const pngLib = findLib(libDir, ["libpng.a", "libpng16.a"]);
   process.stdout.write(pngLib);
+} else {
+  // Linux: link shared libraries via flags
+  process.stdout.write("-lpng -lz");
 }
