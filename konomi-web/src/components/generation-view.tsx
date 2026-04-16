@@ -4136,7 +4136,7 @@ export const GenerationView = memo(
       [],
     );
     const createPathDropItem = useCallback((path: string): DropItem => {
-      const previewUrl = `konomi://local/${encodeURIComponent(path.replace(/\\/g, "/"))}`;
+      const previewUrl = `/api/files/image?path=${encodeURIComponent(path)}`;
       return {
         kind: "path",
         path,
@@ -4603,7 +4603,7 @@ export const GenerationView = memo(
             }),
           };
           const filePath = await window.nai.generate(params);
-          const src = `konomi://local/${encodeURIComponent(filePath.replace(/\\/g, "/"))}`;
+          const src = `/api/files/image?path=${encodeURIComponent(filePath)}`;
           const shouldShowNewResult =
             pendingResultSelectedRef.current || !resultSrcRef.current;
           if (shouldShowNewResult) {
@@ -4744,7 +4744,7 @@ export const GenerationView = memo(
             }),
           };
           const filePath = await window.nai.generate(params);
-          const src = `konomi://local/${encodeURIComponent(filePath.replace(/\\/g, "/"))}`;
+          const src = `/api/files/image?path=${encodeURIComponent(filePath)}`;
           const shouldShowNewResult =
             pendingResultSelectedRef.current || !resultSrcRef.current;
           if (shouldShowNewResult) {

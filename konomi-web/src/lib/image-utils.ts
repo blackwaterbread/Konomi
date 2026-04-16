@@ -14,15 +14,17 @@ export function parseTokens(json: string | undefined): PromptToken[] {
   }
 }
 
-/** Max width for gallery thumbnails (px). Covers 2x DPI on typical grid columns. */
-export const GALLERY_THUMB_WIDTH = 600;
+/** Build an image URL that goes through the server file API. */
+export function imageUrl(filePath: string): string {
+  return `/api/files/image?path=${encodeURIComponent(filePath)}`;
+}
 
 export function rowToImageData(row: ImageRow): ImageData {
-  const base = `konomi://local/${encodeURIComponent(row.path.replace(/\\/g, "/"))}`;
+  const base = imageUrl(row.path);
   return {
     id: String(row.id),
     path: row.path,
-    src: `${base}?w=${GALLERY_THUMB_WIDTH}`,
+    src: base,
     fullSrc: base,
     prompt: row.prompt,
     negativePrompt: row.negativePrompt,

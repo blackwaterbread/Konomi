@@ -74,7 +74,7 @@ type FolderRescanPendingInfo = {
 };
 
 const toLocalSrc = (filePath: string) =>
-  `konomi://local/${encodeURIComponent(filePath.replace(/\\/g, "/"))}`;
+  `/api/files/image?path=${encodeURIComponent(filePath)}`;
 
 const normalizeFolderPath = (folderPath: string): string => {
   const normalized = folderPath.replace(/\\/g, "/").replace(/\/+$/, "").trim();
