@@ -29,9 +29,7 @@ export async function* walkImageFiles(
       // folder not accessible
     } finally {
       if (handle) {
-        await handle.close().catch(() => {
-          // ignore close errors
-        });
+        try { await handle.close(); } catch { /* ignore close errors */ }
       }
     }
   }
