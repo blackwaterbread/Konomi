@@ -41,7 +41,10 @@
     "db:push:server": "bunx --bun prisma db push --config prisma.server.config.ts",
     "db:migrate:server": "bunx --bun prisma migrate dev --config prisma.server.config.ts",
     "db:prompts": "node ./scripts/run-electron-node.mjs ./scripts/build-prompts-db.mjs",
-    "prebuild:native": "node scripts/build-native.mjs"
+    "prebuild:native": "node scripts/build-native.mjs",
+    "docker:build": "docker build -t konomi:latest .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@fastify/static": "^9.1.1",

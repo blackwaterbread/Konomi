@@ -46,7 +46,7 @@ RUN bun run db:generate:server
 RUN bun run build:web
 
 # 6) Production-only node_modules
-RUN rm -rf node_modules && bun install --frozen-lockfile --production
+RUN rm -rf node_modules && bun install --frozen-lockfile --production --ignore-scripts
 
 # ── Stage 2: Runtime ────────────────────────────────────────
 FROM node:22-alpine AS runtime
