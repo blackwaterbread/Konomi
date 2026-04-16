@@ -1,6 +1,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { WebSocket } from "ws";
 import { createWebSocketSender } from "./sender";
@@ -59,6 +60,17 @@ async function main() {
   registerPromptRoutes(app, services);
   registerNaiRoutes(app, services);
   registerImageFileRoutes(app);
+
+  // ── SPA static files ─────────────────────
+  const webDistDir = path.join(repoRoot, "konomi-web", "dist");
+  await app.register(fastifyStatic, {
+    root: webDistDir,
+    wildcard: false,
+  });
+  // SPA fallback: non-API routes → index.html
+  app.setNotFoundHandler((_req, reply) => {
+    reply.sendFile("index.html", webDistDir);
+  });
 
   // ── Bootstrap ────────────────────────────
   await bootstrap(services);

@@ -44,6 +44,7 @@
     "prebuild:native": "node scripts/build-native.mjs"
   },
   "dependencies": {
+    "@fastify/static": "^9.1.1",
     "@konomi/app": "workspace:*",
     "@konomi/core": "workspace:*",
     "@konomi/server": "workspace:*",
