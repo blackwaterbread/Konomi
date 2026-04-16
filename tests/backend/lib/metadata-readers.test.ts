@@ -32,7 +32,7 @@ describe("metadata readers", () => {
       sampler: "Euler a",
       steps: 28,
       cfgScale: 7,
-      seed: 1234,
+      seed: "1234",
       model: "animeModel",
       width: 832,
       height: 1216,
@@ -59,7 +59,7 @@ describe("metadata readers", () => {
     expect(readMidjourneyMetaFromBuffer(buf)).toMatchObject({
       source: "midjourney",
       prompt: "cat wizard",
-      seed: 987,
+      seed: "987",
       model: "midjourney-v6",
       width: 1024,
       height: 1024,
@@ -96,7 +96,7 @@ describe("metadata readers", () => {
       source: "webui",
       prompt: "portrait, dramatic lighting",
       model: "webuiModel",
-      seed: 42,
+      seed: "42",
     });
   });
 

@@ -21,6 +21,11 @@ vi.mock("@/components/duplicate-resolution-dialog", () => ({
     open ? <div>Duplicate Resolution Dialog</div> : null,
 }));
 
+vi.mock("@/components/available-folders-dialog", () => ({
+  AvailableFoldersDialog: ({ open }: { open: boolean }) =>
+    open ? <div>Available Folders Dialog</div> : null,
+}));
+
 vi.mock("@/components/ui/context-menu", () => ({
   ContextMenu: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -417,144 +422,40 @@ describe("Sidebar", () => {
     expect(handleFolderRescanWithDuplicateCheck).toHaveBeenCalledWith(folder);
   });
 
-  it("opens the folder dialog through the imperative handle", async () => {
-    const folderDialogState = createFolderDialogState();
-    useFolderDialogMock.mockReturnValue(folderDialogState);
-
+  it("opens the available folders dialog through the imperative handle", async () => {
     const { ref } = renderSidebar();
 
     ref.current?.openFolderDialog();
 
     await waitFor(() =>
-      expect(folderDialogState.handleOpenChange).toHaveBeenCalledWith(true),
+      expect(screen.getByText("Available Folders Dialog")).toBeInTheDocument(),
     );
   });
 
-  it("opens single folder dialog via dropdown menu", async () => {
+  it("opens available folders dialog via plus button", async () => {
     const user = userEvent.setup();
-    const folderDialogState = createFolderDialogState();
-    useFolderDialogMock.mockReturnValue(folderDialogState);
 
     renderSidebar();
 
-    await user.click(screen.getByText("Add Folder"));
+    // The "+" button in the folders section header
+    const addButtons = screen.getAllByRole("button").filter(
+      (btn) => btn.querySelector(".lucide-plus") !== null,
+    );
+    expect(addButtons.length).toBeGreaterThan(0);
+    await user.click(addButtons[0]);
 
     await waitFor(() =>
-      expect(folderDialogState.handleOpenChange).toHaveBeenCalledWith(true),
+      expect(screen.getByText("Available Folders Dialog")).toBeInTheDocument(),
     );
   });
 
-  it("opens multi-folder dialog via dropdown menu", async () => {
-    const user = userEvent.setup();
+  it("disables folder add button while analyzing", () => {
+    renderSidebar({ isAnalyzing: true });
 
-    renderSidebar();
-
-    await user.click(screen.getByText("Add Multiple Folders"));
-
-    await waitFor(() =>
-      expect(
-        screen.getByText("Select folders to add"),
-      ).toBeInTheDocument(),
+    // When analyzing, a disabled spinner button replaces the enabled add button
+    const disabledButtons = screen.getAllByRole("button").filter(
+      (btn) => btn.disabled && btn.querySelector(".animate-spin") !== null,
     );
-  });
-
-  it("adds multiple folders through the multi-folder dialog", async () => {
-    const user = userEvent.setup();
-    const addFolders = vi.fn().mockResolvedValue({
-      added: [createFolder(10, "alpha"), createFolder(11, "beta")],
-      errors: [],
-    });
-    const onFolderAdded = vi.fn();
-
-    window.dialog.selectDirectories = vi
-      .fn()
-      .mockResolvedValue(["C:\\alpha", "C:\\beta"]);
-
-    renderSidebar({
-      folderActions: { addFolders, onFolderAdded },
-    });
-
-    // Open multi-folder dialog
-    await user.click(screen.getByText("Add Multiple Folders"));
-
-    // Click browse button to select folders
-    await user.click(screen.getByText("Select Folders"));
-
-    // Entries should appear
-    await waitFor(() => {
-      expect(screen.getByText("alpha")).toBeInTheDocument();
-      expect(screen.getByText("beta")).toBeInTheDocument();
-    });
-
-    // Submit
-    await user.click(screen.getByText("Add 2"));
-
-    await waitFor(() => {
-      expect(addFolders).toHaveBeenCalledWith([
-        "C:\\alpha",
-        "C:\\beta",
-      ]);
-      expect(onFolderAdded).toHaveBeenCalledWith(10);
-      expect(onFolderAdded).toHaveBeenCalledWith(11);
-    });
-  });
-
-  it("removes individual entries from multi-folder dialog", async () => {
-    const user = userEvent.setup();
-
-    window.dialog.selectDirectories = vi
-      .fn()
-      .mockResolvedValue(["C:\\alpha", "C:\\beta"]);
-
-    renderSidebar();
-
-    await user.click(screen.getByText("Add Multiple Folders"));
-    await user.click(screen.getByText("Select Folders"));
-
-    await waitFor(() => {
-      expect(screen.getByText("alpha")).toBeInTheDocument();
-    });
-
-    // Remove first entry via X button
-    const removeButtons = screen.getAllByRole("button").filter(
-      (btn) => btn.querySelector(".lucide-x") !== null,
-    );
-    if (removeButtons.length > 0) {
-      await user.click(removeButtons[0]);
-    }
-
-    await waitFor(() => {
-      expect(screen.queryByText("alpha")).not.toBeInTheDocument();
-      expect(screen.getByText("beta")).toBeInTheDocument();
-    });
-  });
-
-  it("deduplicates paths when browsing multiple times in multi-folder dialog", async () => {
-    const user = userEvent.setup();
-    const selectDirectories = vi.fn();
-    window.dialog.selectDirectories = selectDirectories;
-
-    selectDirectories.mockResolvedValueOnce(["C:\\alpha"]);
-
-    renderSidebar();
-
-    await user.click(screen.getByText("Add Multiple Folders"));
-    await user.click(screen.getByText("Select Folders"));
-
-    await waitFor(() => {
-      expect(screen.getByText("alpha")).toBeInTheDocument();
-    });
-
-    // Browse again with overlapping path
-    selectDirectories.mockResolvedValueOnce(["C:\\alpha", "C:\\gamma"]);
-    await user.click(screen.getByText("Select Folders"));
-
-    await waitFor(() => {
-      expect(screen.getByText("gamma")).toBeInTheDocument();
-    });
-
-    // "alpha" should appear only once
-    const alphaElements = screen.getAllByText("alpha");
-    expect(alphaElements).toHaveLength(1);
+    expect(disabledButtons.length).toBeGreaterThan(0);
   });
 });

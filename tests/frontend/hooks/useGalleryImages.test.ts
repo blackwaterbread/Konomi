@@ -41,7 +41,7 @@ describe("useGalleryImages", () => {
       {
         id: "11",
         prompt: "sunset beach",
-        src: expect.stringContaining("konomi://local/"),
+        src: expect.stringContaining("/api/files/image?path="),
       },
     ]);
     expect(result.current.totalImageCount).toBe(1);
