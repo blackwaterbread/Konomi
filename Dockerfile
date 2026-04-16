@@ -80,6 +80,8 @@ RUN chmod +x /entrypoint.sh
 ENV KONOMI_PORT=3000
 ENV KONOMI_HOST=0.0.0.0
 ENV KONOMI_DATA_ROOT=/images
+ENV KONOMI_USER_DATA=/config
+ENV DATABASE_URL=mysql://konomi:konomi@db:3306/konomi
 ENV PUID=1000
 ENV PGID=1000
 ENV TZ=Asia/Seoul
