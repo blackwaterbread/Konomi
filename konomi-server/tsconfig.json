@@ -8,9 +8,8 @@
     "skipLibCheck": true,
     "outDir": "../out/web",
     "rootDir": "..",
-    "baseUrl": "..",
     "paths": {
-      "@core/*": ["konomi-core/*"]
+      "@core/*": ["../konomi-core/*"]
     }
   },
   "include": ["./**/*", "../konomi-core/**/*"],
