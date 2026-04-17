@@ -54,6 +54,7 @@ export type {
 declare global {
   interface Window {
     appInfo: {
+      isElectron: boolean;
       isDevMode: () => Promise<boolean>;
       get: () => Promise<AppInfo>;
       getLocale: () => Promise<string>;

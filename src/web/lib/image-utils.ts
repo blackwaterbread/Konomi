@@ -14,18 +14,31 @@ export function parseTokens(json: string | undefined): PromptToken[] {
   }
 }
 
-/** Build an image URL that goes through the server file API. */
-export function imageUrl(filePath: string): string {
+const GALLERY_THUMB_WIDTH = 400;
+
+function isElectronEnv(): boolean {
+  return (
+    typeof window !== "undefined" && window.appInfo?.isElectron === true
+  );
+}
+
+/** Build an image URL for an arbitrary path. Electron uses the konomi:// protocol; browser uses the server file API. */
+export function imageUrl(filePath: string, thumbWidth?: number): string {
+  if (isElectronEnv()) {
+    const encoded = encodeURIComponent(filePath.replace(/\\/g, "/"));
+    return thumbWidth
+      ? `konomi://local/${encoded}?w=${thumbWidth}`
+      : `konomi://local/${encoded}`;
+  }
   return `/api/files/image?path=${encodeURIComponent(filePath)}`;
 }
 
 export function rowToImageData(row: ImageRow): ImageData {
-  const base = imageUrl(row.path);
   return {
     id: String(row.id),
     path: row.path,
-    src: base,
-    fullSrc: base,
+    src: imageUrl(row.path, GALLERY_THUMB_WIDTH),
+    fullSrc: imageUrl(row.path),
     prompt: row.prompt,
     negativePrompt: row.negativePrompt,
     characterPrompts: (() => {

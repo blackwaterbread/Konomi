@@ -148,6 +148,119 @@ const views = [
   { id: "recent", icon: Clock },
 ] as const;
 
+interface ElectronFolderAddDialogProps {
+  openRequest: number;
+  onSubmit: (name: string, path: string) => Promise<void>;
+}
+
+const ElectronFolderAddDialog = memo(function ElectronFolderAddDialog({
+  openRequest,
+  onSubmit,
+}: ElectronFolderAddDialogProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [path, setPath] = useState("");
+  const submittingRef = useRef(false);
+  const lastOpenRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (openRequest === 0 || openRequest === lastOpenRequestRef.current) return;
+    lastOpenRequestRef.current = openRequest;
+    setOpen(true);
+  }, [openRequest]);
+
+  const handleBrowse = useCallback(async () => {
+    if (submittingRef.current) return;
+    try {
+      const selected = await window.dialog.selectDirectory();
+      if (selected) {
+        setPath(selected);
+        if (!name.trim()) {
+          const derived =
+            selected.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ||
+            selected;
+          setName(derived);
+        }
+      }
+    } catch {
+      // dialog cancelled
+    }
+  }, [name]);
+
+  const handleSubmit = useCallback(() => {
+    if (submittingRef.current) return;
+    const trimmedName = name.trim();
+    const trimmedPath = path.trim();
+    if (!trimmedName || !trimmedPath) return;
+    submittingRef.current = true;
+    setOpen(false);
+    setName("");
+    setPath("");
+    onSubmit(trimmedName, trimmedPath).finally(() => {
+      submittingRef.current = false;
+    });
+  }, [name, path, onSubmit]);
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!next && submittingRef.current) return;
+    if (!next) {
+      setName("");
+      setPath("");
+    }
+    setOpen(next);
+  }, []);
+
+  const canSubmit = !!name.trim() && !!path.trim() && !submittingRef.current;
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("sidebar.dialog.newFolderTitle")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm text-muted-foreground">
+              {t("sidebar.dialog.name")}
+            </label>
+            <Input
+              placeholder={t("sidebar.dialog.namePlaceholder")}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm text-muted-foreground">
+              {t("sidebar.dialog.path")}
+            </label>
+            <div className="flex gap-2">
+              <Input
+                placeholder={t("sidebar.dialog.pathPlaceholder")}
+                value={path}
+                className="flex-1 font-mono text-xs"
+                readOnly
+              />
+              <Button variant="outline" onClick={handleBrowse}>
+                {t("sidebar.dialog.browse")}
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="ghost">{t("common.cancel")}</Button>
+          </DialogClose>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            {t("sidebar.dialog.add")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+});
+
 interface SidebarNewCategoryDialogProps {
   open: boolean;
   onClose: () => void;
@@ -1383,6 +1496,8 @@ export const Sidebar = memo(
     ref,
   ) {
     const { t } = useTranslation();
+    const { appInfo } = useApi();
+    const isElectron = appInfo.isElectron;
     const { activeView, onViewChange } = view;
     const {
       folders,
@@ -1455,6 +1570,7 @@ export const Sidebar = memo(
       checkingDuplicates,
       pendingFolder,
       handleFolderRescanWithDuplicateCheck,
+      handleFolderAddWithDuplicateCheck,
     } = useDuplicateResolutionDialog({
       addFolder: createFolder,
       onFolderAdded,
@@ -1553,14 +1669,26 @@ export const Sidebar = memo(
     }, [handleCancelFolder, rollbackRequest]);
 
     const [availableFoldersOpen, setAvailableFoldersOpen] = useState(false);
+    const [electronAddFolderOpen, setElectronAddFolderOpen] = useState(0);
     const registeredPaths = useMemo(
       () => new Set(folders.map((f) => f.path)),
       [folders],
     );
 
     const handleOpenAvailableFolders = useCallback(() => {
-      setAvailableFoldersOpen(true);
-    }, []);
+      if (isElectron) {
+        setElectronAddFolderOpen((n) => n + 1);
+      } else {
+        setAvailableFoldersOpen(true);
+      }
+    }, [isElectron]);
+
+    const handleElectronAddFolderSubmit = useCallback(
+      async (name: string, path: string) => {
+        await handleFolderAddWithDuplicateCheck(name, path);
+      },
+      [handleFolderAddWithDuplicateCheck],
+    );
 
     const handleAvailableFoldersAdd = useCallback(
       async (dirs: { name: string; path: string }[]) => {
@@ -1940,12 +2068,19 @@ export const Sidebar = memo(
           </DialogContent>
         </Dialog>
 
-        <AvailableFoldersDialog
-          open={availableFoldersOpen}
-          onOpenChange={setAvailableFoldersOpen}
-          registeredPaths={registeredPaths}
-          onAdd={handleAvailableFoldersAdd}
-        />
+        {isElectron ? (
+          <ElectronFolderAddDialog
+            openRequest={electronAddFolderOpen}
+            onSubmit={handleElectronAddFolderSubmit}
+          />
+        ) : (
+          <AvailableFoldersDialog
+            open={availableFoldersOpen}
+            onOpenChange={setAvailableFoldersOpen}
+            registeredPaths={registeredPaths}
+            onAdd={handleAvailableFoldersAdd}
+          />
+        )}
       </>
     );
   }),

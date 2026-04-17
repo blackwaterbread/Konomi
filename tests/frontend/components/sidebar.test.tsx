@@ -6,14 +6,9 @@ import { Sidebar, type SidebarHandle } from "@/components/sidebar";
 import type { Category, Folder } from "@preload/index.d";
 
 const useDuplicateResolutionDialogMock = vi.fn();
-const useFolderDialogMock = vi.fn();
 
 vi.mock("@/hooks/useDuplicateResolutionDialog", () => ({
   useDuplicateResolutionDialog: () => useDuplicateResolutionDialogMock(),
-}));
-
-vi.mock("@/hooks/useFolderDialog", () => ({
-  useFolderDialog: () => useFolderDialogMock(),
 }));
 
 vi.mock("@/components/duplicate-resolution-dialog", () => ({
@@ -160,21 +155,6 @@ function createDuplicateDialogModel() {
   };
 }
 
-function createFolderDialogState() {
-  return {
-    open: false,
-    name: "",
-    path: "",
-    canSubmit: false,
-    isSubmitting: false,
-    submitError: null,
-    setName: vi.fn(),
-    handleBrowse: vi.fn(),
-    handleSubmit: vi.fn(),
-    handleOpenChange: vi.fn(),
-  };
-}
-
 type SidebarOverrides = Partial<
   Omit<
     ComponentProps<typeof Sidebar>,
@@ -278,8 +258,6 @@ describe("Sidebar", () => {
         .mockResolvedValue(undefined),
     });
 
-    useFolderDialogMock.mockReset();
-    useFolderDialogMock.mockReturnValue(createFolderDialogState());
   });
 
   it("processes rollback requests once per request id", async () => {

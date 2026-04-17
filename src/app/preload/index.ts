@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 contextBridge.exposeInMainWorld("appInfo", {
+  isElectron: true,
   isDevMode: () => ipcRenderer.invoke("app:isDevMode"),
   get: () => ipcRenderer.invoke("app:getInfo"),
   getLocale: () => ipcRenderer.invoke("app:getLocale"),
