@@ -30,7 +30,14 @@ export function createPrismaFolderRepo(getDb: () => PrismaClient) {
     },
 
     async delete(id: number): Promise<void> {
-      await getDb().folder.delete({ where: { id } });
+      const db = getDb();
+      await db.$transaction(async (tx) => {
+        await tx.imageCategory.deleteMany({
+          where: { image: { folderId: id } },
+        });
+        await tx.image.deleteMany({ where: { folderId: id } });
+        await tx.folder.delete({ where: { id } });
+      });
     },
 
     async rename(id: number, name: string): Promise<FolderEntity> {
