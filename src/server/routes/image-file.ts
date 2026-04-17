@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { FastifyInstance } from "fastify";
 import { readImageMeta, readImageMetaFromBuffer } from "@core/lib/image-meta";
+import { isUnderDataRoot } from "../lib/data-root";
 
 /**
  * Image file serving route — replaces the konomi:// protocol handler from Electron.
@@ -21,6 +22,9 @@ export function registerImageFileRoutes(app: FastifyInstance) {
     const filePath = req.query.path;
     if (!filePath) {
       return reply.code(400).send({ error: "path query parameter required" });
+    }
+    if (!isUnderDataRoot(filePath)) {
+      return reply.code(403).send({ error: "Path is not under data root" });
     }
 
     try {
@@ -48,6 +52,9 @@ export function registerImageFileRoutes(app: FastifyInstance) {
     const filePath = req.query.path;
     if (!filePath) {
       return reply.code(400).send({ error: "path query parameter required" });
+    }
+    if (!isUnderDataRoot(filePath)) {
+      return reply.code(403).send({ error: "Path is not under data root" });
     }
     return readImageMeta(filePath);
   });
