@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@source "../../web";
+@source "../../app/renderer";
+
 @custom-variant dark (&:is(.dark *));
 
 @keyframes heart-pop {
