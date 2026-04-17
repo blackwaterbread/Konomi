@@ -4862,9 +4862,9 @@ export const GenerationView = memo(
 
         const path = item.kind === "image" ? item.image.path : item.path;
         const src = item.kind === "image" ? item.image.src : item.src;
-        const buf = await window.image.readFile(path);
+        const data = await window.image.readFile(path);
         return {
-          data: new Uint8Array(buf),
+          data,
           previewUrl: src,
           name: item.name,
           isObjectUrl: false,

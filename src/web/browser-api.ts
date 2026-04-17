@@ -135,8 +135,8 @@ export function createBrowserApi(): KonomiApi {
       readMetaFromBuffer: async () => null,
       readFile: async (path) => {
         const res = await fetch(`${BASE_URL}/api/files/image?path=${encodeURIComponent(path)}`);
-        const buf = await res.arrayBuffer();
-        return Buffer.from(buf);
+        if (!res.ok) throw new Error(`API /api/files/image: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
       },
       getSearchPresetStats: () => rpc("/api/images/search-preset-stats"),
       suggestTags: (query) => rpc("/api/images/suggest-tags", query),

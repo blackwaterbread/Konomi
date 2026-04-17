@@ -95,7 +95,7 @@ declare global {
     image: {
       readNaiMeta: (path: string) => Promise<ImageMeta | null>;
       readMetaFromBuffer: (data: Uint8Array) => Promise<ImageMeta | null>;
-      readFile: (path: string) => Promise<Buffer>;
+      readFile: (path: string) => Promise<Uint8Array>;
       getSearchPresetStats: () => Promise<ImageSearchPresetStats>;
       suggestTags: (
         query: ImageTagSuggestQuery,
