@@ -15,7 +15,7 @@ services:
       # Mount host image directories into /images
       # Each subdirectory becomes a selectable folder in the UI
       - /path/to/your/images:/images:ro
-      # Persistent config + SQLite database
+      # Persistent config + Database data
       - konomi_data:/config
 
 volumes:
