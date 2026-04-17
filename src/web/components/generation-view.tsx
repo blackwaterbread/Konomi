@@ -73,6 +73,7 @@ import type { ImageData } from "@/components/image-card";
 import { PromptInput } from "@/components/prompt-input";
 import { PromptGroupPanel } from "@/components/prompt-group-panel";
 import { PromptSourcePanel } from "@/components/prompt-source-panel";
+import { useApi } from "@/api";
 
 type DropItem =
   | {
@@ -3294,6 +3295,7 @@ interface RightSidePanelProps {
   validating: boolean;
   onValidateApiKey: () => void;
   outputFolder: string;
+  onOutputFolderChange: (folder: string) => void;
   onSelectOutputFolder: () => void;
   configSaving: boolean;
   onSaveConfig: () => void;
@@ -3317,12 +3319,15 @@ const RightSidePanel = memo(function RightSidePanel({
   validating,
   onValidateApiKey,
   outputFolder,
+  onOutputFolderChange,
   onSelectOutputFolder,
   configSaving,
   onSaveConfig,
   onResizeStart,
 }: RightSidePanelProps) {
   const { t } = useTranslation();
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
 
   return visible ? (
     <>
@@ -3478,14 +3483,21 @@ const RightSidePanel = memo(function RightSidePanel({
                       "generation.actions.outputFolderPlaceholder",
                     )}
                     className={cn(INPUT_CLS, "flex-1 min-w-0")}
-                    readOnly
+                    readOnly={isElectron}
+                    onChange={
+                      isElectron
+                        ? undefined
+                        : (e) => onOutputFolderChange(e.target.value)
+                    }
                   />
-                  <button
-                    onClick={onSelectOutputFolder}
-                    className="shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                  >
-                    <FolderOpen className="h-3.5 w-3.5" />
-                  </button>
+                  {isElectron && (
+                    <button
+                      onClick={onSelectOutputFolder}
+                      className="shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                    >
+                      <FolderOpen className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -5152,6 +5164,7 @@ export const GenerationView = memo(
               validating={validating}
               onValidateApiKey={handleValidateApiKey}
               outputFolder={outputFolder}
+              onOutputFolderChange={onOutputFolderChange}
               onSelectOutputFolder={handleSelectOutputFolder}
               configSaving={configSaving}
               onSaveConfig={handleSaveConfig}
