@@ -3,7 +3,22 @@ import "@/lib/i18n";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import i18n from "@/lib/i18n";
-import { resetPreloadMocks } from "./helpers/preload-mocks";
+import { preloadMocks, resetPreloadMocks } from "./helpers/preload-mocks";
+import type { KonomiApi } from "@/api";
+
+vi.mock("@/api/context", async () => {
+  const actual = await vi.importActual<typeof import("@/api/context")>(
+    "@/api/context",
+  );
+  return {
+    ...actual,
+    useApi: (): KonomiApi =>
+      ({
+        ...preloadMocks,
+        appInfo: { ...preloadMocks.appInfo, isElectron: false },
+      }) as unknown as KonomiApi,
+  };
+});
 
 vi.mock("sonner", () => ({
   toast: {
