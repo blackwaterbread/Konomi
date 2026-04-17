@@ -1,3 +1,5 @@
+import fs from "fs/promises";
+import path from "path";
 import type { FastifyInstance } from "fastify";
 import type { Services } from "../services";
 import { listAvailableDirectories, isUnderDataRoot } from "../lib/data-root";
@@ -41,6 +43,30 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
   app.get<{ Params: { id: string } }>("/api/folders/:id/subdirectories", async (req) => {
     return folderService.getSubfolderPaths(Number(req.params.id));
   });
+
+  app.get<{ Querystring: { path: string } }>(
+    "/api/folders/subdirectories",
+    async (req, reply) => {
+      const folderPath = req.query.path;
+      if (!folderPath) {
+        return reply.code(400).send({ error: "path query parameter required" });
+      }
+      if (!isUnderDataRoot(folderPath)) {
+        return reply.code(403).send({ error: "Path is not under data root" });
+      }
+      try {
+        const entries = await fs.readdir(folderPath, { withFileTypes: true });
+        return entries
+          .filter((e) => e.isDirectory())
+          .map((e) => ({
+            name: e.name,
+            path: path.join(folderPath, e.name),
+          }));
+      } catch {
+        return [];
+      }
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/api/folders/:id/stats", async (req) => {
     return folderService.getStats(Number(req.params.id));

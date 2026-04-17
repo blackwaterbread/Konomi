@@ -124,7 +124,8 @@ export function createBrowserApi(): KonomiApi {
       rename: (id, name) => rpcPatch(`/api/folders/${id}`, { name }),
       revealInExplorer: async () => {},
       listSubdirectories: (id) => rpc(`/api/folders/${id}/subdirectories`),
-      listSubdirectoriesByPath: async () => [],
+      listSubdirectoriesByPath: (folderPath) =>
+        rpc(`/api/folders/subdirectories?path=${encodeURIComponent(folderPath)}`),
       stats: (id) => rpc(`/api/folders/${id}/stats`),
       size: (id) => rpc(`/api/folders/${id}/size`),
       availableDirectories: () => rpc("/api/folders/available"),
