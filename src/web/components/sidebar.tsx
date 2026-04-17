@@ -61,6 +61,7 @@ import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import type { Subfolder } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
 import { AvailableFoldersDialog } from "@/components/available-folders-dialog";
+import { useApi } from "@/api";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -320,7 +321,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   onRootToggle,
 }: SidebarFolderRowProps) {
   const { t } = useTranslation();
-  /* 
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
+  /*
   간편하게 폴더/카테고리 Sidebar에서 Input 입력으로 이름 바꿀 수 있는 기능이었는데 이런저런 이유로 비활성화
   그리고 이거 요상한 버그가 있는데 카테고리 Input에 이름 바꾸면 위에 Folder까지 리렌더링 되는데, 
   폴더 Input에 먼저 입력이 들어가고 난 뒤에 카테고리 Input 변경하면 또 리렌더링이 의도한대로 작동한다. 
@@ -557,27 +560,29 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                   <Folder className="h-2.5 w-2.5" />
                 </Button>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-                onClick={() =>
-                  onDeleteRequest({
-                    id: folder.id,
-                    name: folder.name,
-                  })
-                }
-                disabled={scanning}
-              >
-                <span className="relative inline-flex items-center justify-center">
-                  <Trash2 className="h-3 w-3" />
-                  {scanning && (
-                    <span className="absolute inset-0 flex items-center justify-center -translate-x-[0.75px] translate-y-[0.75px]">
-                      <span className="block h-[140%] w-px bg-current rotate-45" />
-                    </span>
-                  )}
-                </span>
-              </Button>
+              {isElectron && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    onDeleteRequest({
+                      id: folder.id,
+                      name: folder.name,
+                    })
+                  }
+                  disabled={scanning}
+                >
+                  <span className="relative inline-flex items-center justify-center">
+                    <Trash2 className="h-3 w-3" />
+                    {scanning && (
+                      <span className="absolute inset-0 flex items-center justify-center -translate-x-[0.75px] translate-y-[0.75px]">
+                        <span className="block h-[140%] w-px bg-current rotate-45" />
+                      </span>
+                    )}
+                  </span>
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -607,19 +612,23 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
         <ContextMenuItem onSelect={() => setPropertiesOpen(true)}>
           {t("sidebar.folders.properties")}
         </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          className="text-destructive focus:text-destructive"
-          disabled={scanning}
-          onSelect={() =>
-            onDeleteRequest({
-              id: folder.id,
-              name: folder.name,
-            })
-          }
-        >
-          {t("sidebar.folders.delete")}
-        </ContextMenuItem>
+        {isElectron && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              className="text-destructive focus:text-destructive"
+              disabled={scanning}
+              onSelect={() =>
+                onDeleteRequest({
+                  id: folder.id,
+                  name: folder.name,
+                })
+              }
+            >
+              {t("sidebar.folders.delete")}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
       <Dialog open={propertiesOpen} onOpenChange={setPropertiesOpen}>
         <DialogContent className="max-w-lg">

@@ -40,6 +40,7 @@ import type {
 // ── AppInfo API ────────────────────────────────────────────────
 
 export interface AppInfoApi {
+  isElectron: boolean;
   isDevMode(): Promise<boolean>;
   get(): Promise<AppInfo>;
   getLocale(): Promise<string>;

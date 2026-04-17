@@ -7,7 +7,7 @@ import type { KonomiApi } from "@/api";
 
 export function createElectronApi(): KonomiApi {
   return {
-    appInfo: window.appInfo,
+    appInfo: { ...window.appInfo, isElectron: true },
     db: window.db,
     dialog: window.dialog,
     folder: {

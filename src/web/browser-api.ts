@@ -82,6 +82,7 @@ export function connectWebSocket(): WebSocket {
 export function createBrowserApi(): KonomiApi {
   return {
     appInfo: {
+      isElectron: false,
       isDevMode: async () => import.meta.env.DEV,
       get: async () => ({
         appName: "Konomi Web",
