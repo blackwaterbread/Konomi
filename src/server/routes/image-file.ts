@@ -2,7 +2,10 @@ import fs from "fs";
 import path from "path";
 import type { FastifyInstance } from "fastify";
 import { readImageMeta, readImageMetaFromBuffer } from "@core/lib/image-meta";
+import { resizePng } from "@core/lib/konomi-image";
+import { resizeWebp } from "@core/lib/webp-alpha";
 import { isUnderDataRoot } from "../lib/data-root";
+import { encodeBgraToPng } from "../lib/png-encode";
 
 /**
  * Image file serving route — replaces the konomi:// protocol handler from Electron.
@@ -18,7 +21,8 @@ export function registerImageFileRoutes(app: FastifyInstance) {
   );
 
   // Serve image file by absolute path (URL-encoded in query param)
-  app.get<{ Querystring: { path: string } }>("/api/files/image", async (req, reply) => {
+  // Optional ?w=<maxWidth> downscales PNG/WebP to a PNG thumbnail.
+  app.get<{ Querystring: { path: string; w?: string } }>("/api/files/image", async (req, reply) => {
     const filePath = req.query.path;
     if (!filePath) {
       return reply.code(400).send({ error: "path query parameter required" });
@@ -43,6 +47,23 @@ export function registerImageFileRoutes(app: FastifyInstance) {
     };
 
     const mime = mimeMap[ext] ?? "application/octet-stream";
+
+    const maxWidth = parseInt(req.query.w ?? "", 10);
+    if (maxWidth > 0 && (ext === ".png" || ext === ".webp")) {
+      try {
+        const buf = await fs.promises.readFile(filePath);
+        const result = ext === ".webp"
+          ? resizeWebp(buf, maxWidth)
+          : resizePng(buf, maxWidth);
+        if (result) {
+          const png = encodeBgraToPng(result.data, result.width, result.height);
+          return reply.type("image/png").send(png);
+        }
+      } catch {
+        // Fall through to original file
+      }
+    }
+
     const stream = fs.createReadStream(filePath);
     return reply.type(mime).send(stream);
   });
