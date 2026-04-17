@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.platform }}
-          path: konomi-native/prebuilds/${{ matrix.platform }}/
+          path: src/native/prebuilds/${{ matrix.platform }}/
 
   commit:
     needs: build
@@ -68,15 +68,15 @@ jobs:
         run: |
           for dir in prebuilds-artifacts/*/; do
             platform=$(basename "$dir")
-            mkdir -p "konomi-native/prebuilds/$platform"
-            cp "$dir"*.node "konomi-native/prebuilds/$platform/"
+            mkdir -p "src/native/prebuilds/$platform"
+            cp "$dir"*.node "src/native/prebuilds/$platform/"
           done
 
       - name: Commit prebuilds
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add konomi-native/prebuilds/
+          git add src/native/prebuilds/
           git diff --staged --quiet && echo "No changes" || (
             git commit -m "build: update prebuilt native addon binaries [skip ci]"
             git push

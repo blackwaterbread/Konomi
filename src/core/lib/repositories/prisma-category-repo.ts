@@ -1,4 +1,4 @@
-import type { PrismaClient } from "../../../generated/prisma/client";
+import type { PrismaClient } from "../../../../generated/prisma/client";
 import type { CategoryEntity } from "@core/types/repository";
 
 export type CategoryRepo = ReturnType<typeof createPrismaCategoryRepo>;

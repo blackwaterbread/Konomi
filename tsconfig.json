@@ -1,7 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "konomi-app" },
-    { "path": "konomi-web" }
+    { "path": "src/app" },
+    { "path": "src/web" }
   ]
 }

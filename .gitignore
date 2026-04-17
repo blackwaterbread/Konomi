@@ -13,7 +13,7 @@ out
 dist
 
 # Native addon build artifacts
-konomi-native/*/build/
+src/native/*/build/
 
 # npm lock (use bun)
 package-lock.json

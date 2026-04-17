@@ -25,7 +25,7 @@ jobs:
         run: bun run db:generate
 
       - name: Build
-        run: bun run build && bun run verify:prompts-db && bunx electron-builder --win --config konomi-app/electron-builder.yml --publish never
+        run: bun run build && bun run verify:prompts-db && bunx electron-builder --win --config src/app/electron-builder.yml --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -53,7 +53,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           CSC_LINK: ""
-        run: bunx electron-vite build -c konomi-app/electron.vite.config.ts && bun run verify:prompts-db && bunx electron-builder --mac --x64 --config konomi-app/electron-builder.yml --config.mac.identity=null --publish never
+        run: bunx electron-vite build -c src/app/electron.vite.config.ts && bun run verify:prompts-db && bunx electron-builder --mac --x64 --config src/app/electron-builder.yml --config.mac.identity=null --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -81,7 +81,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           CSC_LINK: ""
-        run: bunx electron-vite build -c konomi-app/electron.vite.config.ts && bun run verify:prompts-db && bunx electron-builder --mac --arm64 --config konomi-app/electron-builder.yml --config.mac.identity=null --publish never
+        run: bunx electron-vite build -c src/app/electron.vite.config.ts && bun run verify:prompts-db && bunx electron-builder --mac --arm64 --config src/app/electron-builder.yml --config.mac.identity=null --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5

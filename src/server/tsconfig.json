@@ -9,9 +9,9 @@
     "outDir": "../out/web",
     "rootDir": "..",
     "paths": {
-      "@core/*": ["../konomi-core/*"]
+      "@core/*": ["../core/*"]
     }
   },
-  "include": ["./**/*", "../konomi-core/**/*"],
+  "include": ["./**/*", "../core/**/*"],
   "exclude": ["node_modules"]
 }

@@ -1,5 +1,5 @@
 import { getDB, getDialect } from "./db";
-import type { Prisma } from "../../generated/prisma/client";
+import type { Prisma } from "../../../generated/prisma/client";
 import type { SearchStatSource } from "@core/types/repository";
 import {
   buildStatDeltasFromMutations,

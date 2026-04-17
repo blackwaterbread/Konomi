@@ -7,11 +7,11 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!**/.git/*'
-  - '!konomi-core/**'
-  - '!konomi-app/**'
-  - '!konomi-web/**'
-  - '!konomi-server/**'
-  - '!konomi-native/**'
+  - '!src/core/**'
+  - '!src/app/**'
+  - '!src/web/**'
+  - '!src/server/**'
+  - '!src/native/**'
   - '!dist/**'
   - '!dist-*/**'
   - '!tmp/**'
@@ -101,7 +101,7 @@ linux:
   category: Utility
 
 asarUnpack:
-  - "konomi-native/prebuilds/**"
+  - "src/native/prebuilds/**"
 
 npmRebuild: false
 electronLanguages:

@@ -3,7 +3,7 @@ import { builtinModules } from "module";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import pkg from "../package.json";
+import pkg from "../../package.json";
 
 const appVersion = JSON.stringify(pkg.version);
 
@@ -46,8 +46,8 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        "@": resolve("konomi-web/src"),
-        "@core": resolve("konomi-core"),
+        "@": resolve("src/web"),
+        "@core": resolve("src/core"),
       },
     },
     build: {
@@ -61,11 +61,11 @@ export default defineConfig({
           );
         },
         input: {
-          index: resolve("konomi-app/main/index.ts"),
-          "nai.worker": resolve("konomi-core/lib/nai.worker.ts"),
-          "phash.worker": resolve("konomi-core/lib/phash.worker.ts"),
-          "bench-scan-worker": resolve("konomi-app/main/lib/bench-scan-worker.ts"),
-          utility: resolve("konomi-app/main/utility.ts"),
+          index: resolve("src/app/main/index.ts"),
+          "nai.worker": resolve("src/core/lib/nai.worker.ts"),
+          "phash.worker": resolve("src/core/lib/phash.worker.ts"),
+          "bench-scan-worker": resolve("src/app/main/lib/bench-scan-worker.ts"),
+          utility: resolve("src/app/main/utility.ts"),
         },
       },
     },
@@ -73,19 +73,19 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        input: resolve("konomi-app/preload/index.ts"),
+        input: resolve("src/app/preload/index.ts"),
       },
     },
   },
   renderer: {
-    root: "konomi-app/renderer",
+    root: "src/app/renderer",
     define: {
       __APP_VERSION__: appVersion,
     },
     resolve: {
       alias: {
-        "@": resolve("konomi-web/src"),
-        "@preload": resolve("konomi-app/preload"),
+        "@": resolve("src/web"),
+        "@preload": resolve("src/app/preload"),
       },
     },
     plugins: [tailwindcss(), standaloneReactDevToolsPlugin(), react()],

@@ -9,8 +9,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "konomi-web/src"),
-      "@preload": resolve(__dirname, "konomi-app/preload"),
+      "@": resolve(__dirname, "src/web"),
+      "@preload": resolve(__dirname, "src/app/preload"),
     },
   },
   test: {

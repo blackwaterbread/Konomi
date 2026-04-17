@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
-const outDir = join(root, "konomi-native", "prebuilds", `${platform}-${arch}`);
+const outDir = join(root, "src", "native", "prebuilds", `${platform}-${arch}`);
 
 mkdirSync(outDir, { recursive: true });
 
@@ -71,7 +71,7 @@ function buildAddon({ name, dir, rootEnv, srcNode, destNode }) {
     const src = join("build", "Release", srcNode);
     const dest = join(outDir, destNode);
     copyFileSync(src, dest);
-    console.log(`Done: konomi-native/prebuilds/${platform}-${arch}/${destNode}`);
+    console.log(`Done: src/native/prebuilds/${platform}-${arch}/${destNode}`);
   } catch (err) {
     console.error(`Failed to build ${name}: ${err.message}`);
     process.exitCode = 1;
@@ -82,7 +82,7 @@ function buildAddon({ name, dir, rootEnv, srcNode, destNode }) {
 
 buildAddon({
   name: "webp-alpha",
-  dir: join(root, "konomi-native", "webp-alpha"),
+  dir: join(root, "src", "native", "webp-alpha"),
   rootEnv: "LIBWEBP_ROOT",
   srcNode: "webp_alpha.node",
   destNode: "webp-alpha.node",
@@ -92,7 +92,7 @@ buildAddon({
 
 buildAddon({
   name: "konomi-image",
-  dir: join(root, "konomi-native", "konomi-image"),
+  dir: join(root, "src", "native", "konomi-image"),
   rootEnv: "LIBPNG_ROOT",
   srcNode: "konomi_image.node",
   destNode: "konomi-image.node",

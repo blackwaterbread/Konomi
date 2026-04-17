@@ -16,10 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 COPY package.json bun.lock ./
-COPY konomi-core/package.json konomi-core/
-COPY konomi-server/package.json konomi-server/
-COPY konomi-web/package.json konomi-web/
-COPY konomi-app/package.json konomi-app/
+COPY src/core/package.json src/core/
+COPY src/server/package.json src/server/
+COPY src/web/package.json src/web/
+COPY src/app/package.json src/app/
 
 RUN npm install -g node-gyp && bun install --frozen-lockfile
 
@@ -76,7 +76,7 @@ RUN rm -rf node_modules && bun install --frozen-lockfile --production --ignore-s
   && find node_modules \( -name "README*" -o -name "CHANGELOG*" -o -name "LICENSE*" \) -delete \
   && find node_modules \( -name "test" -o -name "tests" -o -name "docs" -o -name ".github" \) -type d -exec rm -rf {} + 2>/dev/null \
   ; \
-  # ── Stubs for packages imported by konomi-core but unused at runtime ──
+  # ── Stubs for packages imported by core but unused at runtime ──
   mkdir -p node_modules/better-sqlite3 && \
   printf '{"name":"better-sqlite3","main":"index.js"}' > node_modules/better-sqlite3/package.json && \
   printf 'module.exports=function(){throw new Error("stub")}' > node_modules/better-sqlite3/index.js && \
@@ -120,12 +120,12 @@ RUN ln -sf mariadbd /usr/bin/mysqld && \
 WORKDIR /app
 
 COPY --from=builder /build/package.json ./
-COPY --from=builder /build/konomi-core/ ./konomi-core/
-COPY --from=builder /build/konomi-server/ ./konomi-server/
-COPY --from=builder /build/out/web/ ./konomi-web/dist/
-COPY --from=builder /build/konomi-web/package.json ./konomi-web/
-COPY --from=builder /build/konomi-app/package.json ./konomi-app/
-COPY --from=builder /build/konomi-native/prebuilds/linux-x64/ ./konomi-native/prebuilds/linux-x64/
+COPY --from=builder /build/src/core/ ./src/core/
+COPY --from=builder /build/src/server/ ./src/server/
+COPY --from=builder /build/out/web/ ./src/web/dist/
+COPY --from=builder /build/src/web/package.json ./src/web/
+COPY --from=builder /build/src/app/package.json ./src/app/
+COPY --from=builder /build/src/native/prebuilds/linux-x64/ ./src/native/prebuilds/linux-x64/
 COPY --from=builder /build/generated/ ./generated/
 COPY --from=builder /build/node_modules/ ./node_modules/
 COPY --from=builder /build/prisma/ ./prisma/
@@ -149,4 +149,4 @@ EXPOSE 3000
 VOLUME ["/images", "/config"]
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
-CMD ["bun", "konomi-server/index.ts"]
+CMD ["bun", "src/server/index.ts"]

@@ -5,9 +5,9 @@ node_modules
 database/
 out/
 dist/
-konomi-native/prebuilds/
-konomi-web/dist/
-konomi-web/node_modules/
+src/native/prebuilds/
+src/web/dist/
+src/web/node_modules/
 .vscode/
 .idea/
 *.log

@@ -1,4 +1,4 @@
-import type { PrismaClient } from "../../../generated/prisma/client";
+import type { PrismaClient } from "../../../../generated/prisma/client";
 import type { FolderEntity } from "@core/types/repository";
 
 export type FolderRepo = ReturnType<typeof createPrismaFolderRepo>;

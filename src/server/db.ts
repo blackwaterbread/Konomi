@@ -1,5 +1,5 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "../generated/prisma-server/client";
+import { PrismaClient } from "../../generated/prisma-server/client";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "mysql://root:mariadb@127.0.0.1:3306/konomi";

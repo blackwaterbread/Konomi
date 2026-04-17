@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["konomi-web/src/**/*.{ts,tsx}"],
+    files: ["src/web/**/*.{ts,tsx}"],
     plugins: {
       react,
       "react-hooks": reactHooks,

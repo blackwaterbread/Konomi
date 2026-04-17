@@ -18,10 +18,10 @@ import { getDB } from "./db";
 
 // Dev defaults — Electron app sets these via bridge env vars
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, "../..");
 process.env.KONOMI_USER_DATA ??= path.join(repoRoot, "database");
 process.env.KONOMI_MIGRATIONS_PATH ??= path.join(repoRoot, "prisma", "migrations", "sqlite");
-process.env.KONOMI_PREBUILDS_PATH ??= path.join(repoRoot, "konomi-native", "prebuilds");
+process.env.KONOMI_PREBUILDS_PATH ??= path.join(repoRoot, "src", "native", "prebuilds");
 
 // Inject MySQL PrismaClient into core modules
 setDBProvider(getDB as any, "mysql");
@@ -62,7 +62,7 @@ async function main() {
   registerImageFileRoutes(app);
 
   // ── SPA static files ─────────────────────
-  const webDistDir = path.join(repoRoot, "konomi-web", "dist");
+  const webDistDir = path.join(repoRoot, "src", "web", "dist");
   await app.register(fastifyStatic, {
     root: webDistDir,
     wildcard: false,

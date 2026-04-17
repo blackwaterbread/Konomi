@@ -1,4 +1,4 @@
-import type { PrismaClient, Prisma } from "../../../generated/prisma/client";
+import type { PrismaClient, Prisma } from "../../../../generated/prisma/client";
 import type {
   ImageEntity,
   ImageSyncRow,

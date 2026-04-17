@@ -3,7 +3,7 @@ import "@/lib/i18n";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ApiProvider } from "@/api";
-import { createBrowserApi, connectWebSocket } from "./api";
+import { createBrowserApi, connectWebSocket } from "./browser-api";
 import { BootstrapApp } from "@/bootstrap-app";
 
 const api = createBrowserApi();

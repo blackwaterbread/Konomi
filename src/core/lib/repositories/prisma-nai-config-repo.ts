@@ -1,4 +1,4 @@
-import type { PrismaClient } from "../../../generated/prisma/client";
+import type { PrismaClient } from "../../../../generated/prisma/client";
 import type { NaiConfigEntity } from "@core/types/repository";
 
 export type NaiConfigRepo = ReturnType<typeof createPrismaNaiConfigRepo>;

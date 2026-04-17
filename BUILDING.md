@@ -26,13 +26,13 @@ bun install
 ## 2. Build the Native Addons
 
 Konomi uses two C++ native addons. Prebuilt binaries are committed to the
-repository under `konomi-native/prebuilds/`, so this step is only needed when building from
+repository under `src/native/prebuilds/`, so this step is only needed when building from
 source for the first time, or after modifying addon sources.
 
 | Addon | Source | Purpose |
 |-------|--------|---------|
-| `webp-alpha` | `konomi-native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
-| `konomi-image` | `konomi-native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
+| `webp-alpha` | `src/native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
+| `konomi-image` | `src/native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
 
 ### Windows
 
@@ -77,7 +77,7 @@ bun run prebuild:native
 The script outputs built binaries to:
 
 ```
-konomi-native/prebuilds/
+src/native/prebuilds/
   win32-x64/
     webp-alpha.node
     konomi-image.node
@@ -127,11 +127,11 @@ bun run build:linux  # Linux AppImage / deb
 ## Project Structure
 
 ```
-konomi-core/           Platform-agnostic business logic
-konomi-app/            Electron desktop app (main, preload, renderer)
-konomi-web/            Shared React UI + web client
-konomi-server/         Fastify web backend
-konomi-native/         C++ native addons + prebuilt binaries
+src/core/              Platform-agnostic business logic
+src/app/               Electron desktop app (main, preload, renderer)
+src/web/               Shared React UI + web client
+src/server/            Fastify web backend
+src/native/            C++ native addons + prebuilt binaries
 prisma/                Prisma schema + migrations
 scripts/               Build and utility scripts
 ```

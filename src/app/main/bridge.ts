@@ -82,8 +82,8 @@ class UtilityBridge {
         KONOMI_USER_DATA: app.getPath("userData"),
         KONOMI_MIGRATIONS_PATH: join(app.getAppPath(), "prisma", "migrations", "sqlite"),
         KONOMI_PREBUILDS_PATH: app.isPackaged
-          ? join(process.resourcesPath, "app.asar.unpacked", "konomi-native", "prebuilds")
-          : join(app.getAppPath(), "konomi-native", "prebuilds"),
+          ? join(process.resourcesPath, "app.asar.unpacked", "src", "native", "prebuilds")
+          : join(app.getAppPath(), "src", "native", "prebuilds"),
       },
     });
     this.child = child;

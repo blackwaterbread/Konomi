@@ -74,7 +74,7 @@
         "vitest": "^4.1.0",
       },
     },
-    "konomi-app": {
+    "src/app": {
       "name": "@konomi/app",
       "version": "0.1.0",
       "dependencies": {
@@ -82,7 +82,7 @@
         "electron-updater": "^6.8.3",
       },
     },
-    "konomi-core": {
+    "src/core": {
       "name": "@konomi/core",
       "version": "0.1.0",
       "dependencies": {
@@ -91,7 +91,7 @@
         "better-sqlite3": "^12.6.2",
       },
     },
-    "konomi-server": {
+    "src/server": {
       "name": "@konomi/server",
       "version": "0.1.0",
       "dependencies": {
@@ -100,7 +100,7 @@
         "fastify": "^5.8.5",
       },
     },
-    "konomi-web": {
+    "src/web": {
       "name": "@konomi/web",
       "version": "0.1.0",
       "dependencies": {
@@ -401,13 +401,13 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@konomi/app": ["@konomi/app@workspace:konomi-app"],
+    "@konomi/app": ["@konomi/app@workspace:src/app"],
 
-    "@konomi/core": ["@konomi/core@workspace:konomi-core"],
+    "@konomi/core": ["@konomi/core@workspace:src/core"],
 
-    "@konomi/server": ["@konomi/server@workspace:konomi-server"],
+    "@konomi/server": ["@konomi/server@workspace:src/server"],
 
-    "@konomi/web": ["@konomi/web@workspace:konomi-web"],
+    "@konomi/web": ["@konomi/web@workspace:src/web"],
 
     "@lukeed/ms": ["@lukeed/ms@2.0.2", "", {}, "sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA=="],
 
