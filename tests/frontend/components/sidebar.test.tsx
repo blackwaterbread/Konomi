@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar, type SidebarHandle } from "@/components/sidebar";
 import type { Category, Folder } from "@preload/index.d";
+import { setElectronMode } from "../helpers/electron-mode";
 
 const useDuplicateResolutionDialogMock = vi.fn();
 
@@ -435,5 +436,28 @@ describe("Sidebar", () => {
       (btn) => btn.disabled && btn.querySelector(".animate-spin") !== null,
     );
     expect(disabledButtons.length).toBeGreaterThan(0);
+  });
+
+  it("hides Open-in-Explorer and Delete folder items in browser mode", () => {
+    renderSidebar({ folderState: { folders: [createFolder(1, "Primary")] } });
+
+    expect(
+      screen.queryByRole("button", { name: "Open in Explorer" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete Folder" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Open-in-Explorer and Delete folder items in electron mode", () => {
+    setElectronMode(true);
+    renderSidebar({ folderState: { folders: [createFolder(1, "Primary")] } });
+
+    expect(
+      screen.getByRole("button", { name: "Open in Explorer" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Folder" }),
+    ).toBeInTheDocument();
   });
 });

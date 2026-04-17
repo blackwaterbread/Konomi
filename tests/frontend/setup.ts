@@ -4,6 +4,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import i18n from "@/lib/i18n";
 import { preloadMocks, resetPreloadMocks } from "./helpers/preload-mocks";
+import { isElectronMode, resetElectronMode } from "./helpers/electron-mode";
 import type { KonomiApi } from "@/api";
 
 vi.mock("@/api/context", async () => {
@@ -15,7 +16,7 @@ vi.mock("@/api/context", async () => {
     useApi: (): KonomiApi =>
       ({
         ...preloadMocks,
-        appInfo: { ...preloadMocks.appInfo, isElectron: false },
+        appInfo: { ...preloadMocks.appInfo, isElectron: isElectronMode() },
       }) as unknown as KonomiApi,
   };
 });
@@ -93,6 +94,7 @@ beforeEach(async () => {
   sessionStorage.clear();
   await i18n.changeLanguage("en");
   resetPreloadMocks();
+  resetElectronMode();
 });
 
 afterEach(() => {

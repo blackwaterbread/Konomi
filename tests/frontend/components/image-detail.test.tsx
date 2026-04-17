@@ -4,6 +4,12 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ImageDetail } from "@/components/image-detail";
 import { createGalleryImage } from "../helpers/gallery-image";
+import { setElectronMode } from "../helpers/electron-mode";
+
+vi.mock("@/components/ui/context-menu", async () => {
+  const { contextMenuMock } = await import("../helpers/context-menu-mock");
+  return contextMenuMock;
+});
 
 /** Wrapper that manages similarPage state for tests that need paging interaction */
 function PagedImageDetail(
@@ -259,5 +265,33 @@ describe("ImageDetail similar images", () => {
 
     expect(getSimilarThumbButtons(panel)).toHaveLength(2);
     expect(within(panel).queryByText("2/2")).not.toBeInTheDocument();
+  });
+});
+
+describe("ImageDetail platform branches", () => {
+  it("hides Reveal Original item in browser mode", () => {
+    renderPagedImageDetail();
+
+    expect(
+      screen.queryByRole("button", { name: "Reveal Original" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Reveal Original item in electron mode when onReveal is provided", () => {
+    setElectronMode(true);
+    renderPagedImageDetail({ onReveal: vi.fn() });
+
+    expect(
+      screen.getByRole("button", { name: "Reveal Original" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides Reveal Original item in electron mode when onReveal is absent", () => {
+    setElectronMode(true);
+    renderPagedImageDetail();
+
+    expect(
+      screen.queryByRole("button", { name: "Reveal Original" }),
+    ).not.toBeInTheDocument();
   });
 });

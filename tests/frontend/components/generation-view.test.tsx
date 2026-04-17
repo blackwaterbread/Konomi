@@ -16,6 +16,7 @@ import {
 } from "@/components/generation-view";
 import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 import { createGalleryImage } from "../helpers/gallery-image";
+import { setElectronMode } from "../helpers/electron-mode";
 
 function renderGenerationView(
   overrides: Partial<ComponentPropsWithoutRef<typeof GenerationView>> = {},
@@ -824,5 +825,32 @@ describe("GenerationView", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("leaves the output folder input editable and hides the picker in browser mode", async () => {
+    preloadMocks.nai.getConfig.mockResolvedValueOnce({ id: 1, apiKey: "" });
+
+    renderGenerationView({ outputFolder: "" });
+
+    const outputInput = await screen.findByPlaceholderText("Choose save path...");
+
+    expect(outputInput).not.toHaveAttribute("readonly");
+    expect(
+      outputInput.parentElement?.querySelector(".lucide-folder-open"),
+    ).toBeNull();
+  });
+
+  it("marks the output folder input readOnly and shows the picker in electron mode", async () => {
+    setElectronMode(true);
+    preloadMocks.nai.getConfig.mockResolvedValueOnce({ id: 1, apiKey: "" });
+
+    renderGenerationView({ outputFolder: "" });
+
+    const outputInput = await screen.findByPlaceholderText("Choose save path...");
+
+    expect(outputInput).toHaveAttribute("readonly");
+    expect(
+      outputInput.parentElement?.querySelector(".lucide-folder-open"),
+    ).not.toBeNull();
   });
 });
