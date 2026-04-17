@@ -132,7 +132,15 @@ export function createBrowserApi(): KonomiApi {
 
     image: {
       readNaiMeta: (path) => rpc(`/api/files/image/meta?path=${encodeURIComponent(path)}`),
-      readMetaFromBuffer: async () => null,
+      readMetaFromBuffer: async (data) => {
+        const res = await fetch(`${BASE_URL}/api/files/image/meta/buffer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: new Blob([new Uint8Array(data)]),
+        });
+        if (!res.ok) throw new Error(`API /api/files/image/meta/buffer: ${res.status}`);
+        return parseBody(res);
+      },
       readFile: async (path) => {
         const res = await fetch(`${BASE_URL}/api/files/image?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error(`API /api/files/image: ${res.status}`);
