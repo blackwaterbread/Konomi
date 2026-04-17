@@ -24,6 +24,7 @@ import type { PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
 import { TokenContainer } from "./token-container";
 import { useTranslation } from "react-i18next";
+import { useApi } from "@/api";
 import type { GalleryDensity } from "./image-gallery";
 
 export interface ImageData {
@@ -106,6 +107,8 @@ export const ImageCard = memo(function ImageCard({
   const { t } = useTranslation();
   const { formatDate, formatDateTime } = useLocaleFormatters();
   const TOKEN_PREVIEW_LIMIT = density === "compact" ? 5 : density === "dense" ? 3 : 10;
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
   const showFooter = density === "normal" || density === "compact";
   const showHoverOverlay = density !== "micro";
   const showHoverTokens = density === "normal" || density === "compact" || density === "dense";
@@ -197,11 +200,15 @@ export const ImageCard = memo(function ImageCard({
           {t("imageCard.menu.sendToSource")}
         </ContextMenuItem>
       )}
-      <ContextMenuSeparator />
-      <ContextMenuItem onSelect={() => onReveal(image.path)}>
-        <ExternalLink className="h-4 w-4" />
-        {t("imageCard.menu.revealOriginal")}
-      </ContextMenuItem>
+      {isElectron && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onReveal(image.path)}>
+            <ExternalLink className="h-4 w-4" />
+            {t("imageCard.menu.revealOriginal")}
+          </ContextMenuItem>
+        </>
+      )}
       {selectionMode && selected && selectedCount > 1 && onBulkCategory ? (
         <ContextMenuItem onSelect={onBulkCategory}>
           <Tag className="h-4 w-4" />

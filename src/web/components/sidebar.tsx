@@ -701,15 +701,19 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        <ContextMenuItem
-          onSelect={() => {
-            onReveal(folder.id);
-          }}
-        >
-          <ExternalLink className="h-4 w-4" />
-          {t("sidebar.folders.openInExplorer")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
+        {isElectron && (
+          <>
+            <ContextMenuItem
+              onSelect={() => {
+                onReveal(folder.id);
+              }}
+            >
+              <ExternalLink className="h-4 w-4" />
+              {t("sidebar.folders.openInExplorer")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
         <ContextMenuItem
           disabled={scanning || isAnalyzing}
           onSelect={() => {
@@ -800,6 +804,8 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   onToggle,
 }: SidebarSubfolderRowProps) {
   const { t } = useTranslation();
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -835,14 +841,16 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
           </Button>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem
-          onSelect={() => window.folder.revealInExplorer(subfolder.path)}
-        >
-          <ExternalLink className="h-4 w-4 mr-2" />
-          {t("sidebar.folders.openInExplorer")}
-        </ContextMenuItem>
-      </ContextMenuContent>
+      {isElectron && (
+        <ContextMenuContent>
+          <ContextMenuItem
+            onSelect={() => window.folder.revealInExplorer(subfolder.path)}
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            {t("sidebar.folders.openInExplorer")}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   );
 });

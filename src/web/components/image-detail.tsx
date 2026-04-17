@@ -59,6 +59,7 @@ import type { ImageListQuery } from "@preload/index.d";
 import { TokenContainer } from "./token-container";
 import { ComfyWorkflowViewer } from "./comfy-workflow-viewer";
 import { useTranslation } from "react-i18next";
+import { useApi } from "@/api";
 
 type SimilarityReason = "visual" | "prompt" | "both";
 
@@ -1297,6 +1298,8 @@ export function ImageDetail({
   onRescanMetadata,
 }: ImageDetailProps) {
   const { t } = useTranslation();
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [fitMode, setFitMode] = useState<"fit" | "actual">("fit");
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1717,7 +1720,7 @@ export function ImageDetail({
               </ContextMenuItem>
             )}
             <ContextMenuSeparator />
-            {onReveal && (
+            {isElectron && onReveal && (
               <ContextMenuItem onSelect={() => onReveal(image.path)}>
                 <ExternalLink className="h-4 w-4" />
                 {t("imageCard.menu.revealOriginal")}
