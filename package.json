@@ -23,7 +23,7 @@
     "dev": "electron-vite dev -c src/app/electron.vite.config.ts",
     "dev:server": "bun --watch src/server/index.ts",
     "dev:web": "vite --config src/web/vite.config.ts",
-    "dev:web:all": "concurrently -k -n server,web \"bun run dev:server\" \"bun run dev:web\"",
+    "dev:web:all": "concurrently -k -n server,web \"bun --watch src/server/index.ts\" \"vite --config src/web/vite.config.ts\"",
     "build": "bun run typecheck && electron-vite build -c src/app/electron.vite.config.ts",
     "build:web": "vite build --config src/web/vite.config.ts",
     "verify:prompts-db": "node ./scripts/run-electron-node.mjs ./scripts/verify-prompts-db.mjs",

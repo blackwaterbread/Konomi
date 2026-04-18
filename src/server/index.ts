@@ -82,6 +82,27 @@ async function main() {
 
   // Initial scan runs asynchronously so it doesn't delay server readiness.
   void runInitialScan(services);
+
+  // ── Graceful shutdown ────────────────────
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info(`Received ${signal}, shutting down`);
+    try {
+      services.watchService.stopAll();
+      for (const socket of clients) socket.close();
+      clients.clear();
+      await app.close();
+    } catch (err) {
+      log.errorWithStack("Shutdown error", err as Error);
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGHUP", () => void shutdown("SIGHUP"));
 }
 
 main().catch((err) => {
