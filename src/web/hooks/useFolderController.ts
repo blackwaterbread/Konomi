@@ -36,6 +36,7 @@ export function useFolderController(
     toggleSubfolder,
     toggleRoot,
     setFolderSubfoldersVisible,
+    setOnlySubfolderVisible,
     clearFolderSubfolders,
     seedSubfolders,
     refreshSubfolders,
@@ -185,10 +186,23 @@ export function useFolderController(
     (id: number) => {
       isolateFolder(id);
       for (const folder of folders) {
-        setFolderSubfoldersVisible(folder.id, true);
+        setFolderSubfoldersVisible(folder.id, folder.id === id);
       }
     },
     [isolateFolder, folders, setFolderSubfoldersVisible],
+  );
+
+  const isolateSubfolderVisible = useCallback(
+    (folderId: number, subfolderPath: string) => {
+      isolateFolder(folderId);
+      for (const folder of folders) {
+        if (folder.id !== folderId) {
+          setFolderSubfoldersVisible(folder.id, false);
+        }
+      }
+      setOnlySubfolderVisible(folderId, subfolderPath);
+    },
+    [isolateFolder, folders, setFolderSubfoldersVisible, setOnlySubfolderVisible],
   );
 
   return {
@@ -204,6 +218,7 @@ export function useFolderController(
     isFolderPartial,
     toggleFolder: toggleFolderVisible,
     isolateFolder: isolateFolderVisible,
+    isolateSubfolder: isolateSubfolderVisible,
     addSelectedFolder,
     removeSelectedFolder,
     folderCount,

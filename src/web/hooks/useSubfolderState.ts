@@ -176,6 +176,25 @@ export function useSubfolderState() {
     [subfoldersByFolder],
   );
 
+  // Hide every subfolder (and root) except the given subfolder path.
+  const setOnlySubfolderVisible = useCallback(
+    (folderId: number, subfolderPath: string) => {
+      setDeselected((prev) => {
+        const next = new Map(prev);
+        const allPaths = subfoldersByFolder.get(folderId)?.map((s) => s.path) ?? [];
+        const hidden = new Set<string>([ROOT_SENTINEL]);
+        for (const p of allPaths) {
+          if (p !== subfolderPath) hidden.add(p);
+        }
+        if (hidden.size === 0) next.delete(folderId);
+        else next.set(folderId, hidden);
+        writeDeselected(next);
+        return next;
+      });
+    },
+    [subfoldersByFolder],
+  );
+
   const seedSubfolders = useCallback(
     (folderId: number, subdirs: { name: string; path: string }[]) => {
       if (subdirs.length === 0) return;
@@ -234,6 +253,7 @@ export function useSubfolderState() {
     toggleSubfolder,
     toggleRoot,
     setFolderSubfoldersVisible,
+    setOnlySubfolderVisible,
     clearFolderSubfolders,
     seedSubfolders,
     refreshSubfolders,

@@ -106,6 +106,7 @@ interface SidebarFolderActions {
   reorderFolders: (ids: number[]) => void;
   onFolderToggle?: (id: number) => void;
   onFolderIsolate?: (id: number) => void;
+  onSubfolderIsolate?: (folderId: number, subfolderPath: string) => void;
   onFolderToggleCollapse?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
@@ -905,7 +906,10 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
           {t("sidebar.folders.rescan")}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => onIsolate?.(folder.id)}>
+        <ContextMenuItem
+          disabled={scanning || isAnalyzing}
+          onSelect={() => onIsolate?.(folder.id)}
+        >
           {t("sidebar.folders.isolate")}
         </ContextMenuItem>
         <ContextMenuItem disabled={isScanning} onSelect={handleStartEditing}>
@@ -980,13 +984,17 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
 interface SidebarSubfolderRowProps {
   subfolder: Subfolder;
   isVisible: boolean;
+  isolateDisabled?: boolean;
   onToggle?: (path: string, folderId: number) => void;
+  onIsolate?: (folderId: number, subfolderPath: string) => void;
 }
 
 const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   subfolder,
   isVisible,
+  isolateDisabled,
   onToggle,
+  onIsolate,
 }: SidebarSubfolderRowProps) {
   const { t } = useTranslation();
   const { appInfo } = useApi();
@@ -1026,16 +1034,25 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
           </Button>
         </div>
       </ContextMenuTrigger>
-      {isElectron && (
-        <ContextMenuContent>
-          <ContextMenuItem
-            onSelect={() => window.folder.revealInExplorer(subfolder.path)}
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            {t("sidebar.folders.openInExplorer")}
-          </ContextMenuItem>
-        </ContextMenuContent>
-      )}
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={isolateDisabled}
+          onSelect={() => onIsolate?.(subfolder.folderId, subfolder.path)}
+        >
+          {t("sidebar.folders.isolate")}
+        </ContextMenuItem>
+        {isElectron && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() => window.folder.revealInExplorer(subfolder.path)}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              {t("sidebar.folders.openInExplorer")}
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
     </ContextMenu>
   );
 });
@@ -1392,6 +1409,7 @@ interface SidebarFoldersSectionProps {
   showAddMenu?: boolean;
   onToggle?: (id: number) => void;
   onIsolate?: (id: number) => void;
+  onSubfolderIsolate?: (folderId: number, subfolderPath: string) => void;
   onToggleCollapse?: (id: number) => void;
   onRename: (id: number, name: string) => Promise<void>;
   onDeleteRequest: (target: { id: number; name: string }) => void;
@@ -1426,6 +1444,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   showAddMenu,
   onToggle,
   onIsolate,
+  onSubfolderIsolate,
   onToggleCollapse,
   onRename,
   onDeleteRequest,
@@ -1544,7 +1563,9 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                         isVisible={
                           isSubfolderVisible?.(sf.path, sf.folderId) ?? true
                         }
+                        isolateDisabled={scanning || isAnalyzing}
                         onToggle={onSubfolderToggle}
+                        onIsolate={onSubfolderIsolate}
                       />
                     ))}
                   </div>
@@ -1742,6 +1763,7 @@ export const Sidebar = memo(
       reorderFolders,
       onFolderToggle,
       onFolderIsolate,
+      onSubfolderIsolate,
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
@@ -2200,6 +2222,7 @@ export const Sidebar = memo(
                 showAddMenu={isElectron}
                 onToggle={onFolderToggle}
                 onIsolate={onFolderIsolate}
+                onSubfolderIsolate={onSubfolderIsolate}
                 onToggleCollapse={onFolderToggleCollapse}
                 onRename={handleFolderRename}
                 onDeleteRequest={handleDeleteFolderRequest}
