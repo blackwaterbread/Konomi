@@ -1,15 +1,11 @@
-# Building the Konomi
+# Building Konomi
 
-## Prerequisites
+Konomi ships in two shapes from the same codebase:
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| [Node.js](https://nodejs.org/) | 22+ | |
-| [Bun](https://bun.sh/) | latest | Package manager & script runner |
-| [Git](https://git-scm.com/) | any | |
-| **Windows** — [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | 2019+ | C++ workload required for native addons |
-| **Windows** — [vcpkg](https://vcpkg.io/) | any | For libwebp and libpng static libraries |
-| **macOS** — [Homebrew](https://brew.sh/) | any | For libwebp and libpng (auto-detected) |
+- **Desktop app** (Electron) — SQLite, packaged with electron-builder
+- **Web server** (Fastify + static web client) — MariaDB, deployed via Docker
+
+Pick the path that matches what you're building.
 
 ---
 
@@ -21,130 +17,176 @@ cd Konomi
 bun install
 ```
 
----
+Common prerequisites:
 
-## 2. Build the Native Addons
+| Tool | Notes |
+|------|-------|
+| [Node.js](https://nodejs.org/) 22+ | |
+| [Bun](https://bun.sh/) | package manager + script runner |
 
-Konomi uses two C++ native addons. Prebuilt binaries are committed to the
-repository under `prebuilds/`, so this step is only needed when building from
-source for the first time, or after modifying addon sources.
-
-| Addon | Source | Purpose |
-|-------|--------|---------|
-| `webp-alpha` | `src/native/webp-alpha/` | WebP alpha-channel decode (libwebp) |
-| `konomi-image` | `src/native/konomi-image/` | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
-
-### Windows
-
-**Install libraries via vcpkg (one-time setup):**
-
-```powershell
-git clone https://github.com/microsoft/vcpkg.git <YOUR_VCPKG_PATH>
-<YOUR_VCPKG_PATH>\bootstrap-vcpkg.bat
-<YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static libpng:x64-windows-static
-```
-
-**Set environment variables (permanent):**
-
-1. Win + R → `sysdm.cpl` → Advanced → Environment Variables
-2. Under "User variables", add:
-   - `LIBWEBP_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
-   - `LIBPNG_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
-3. Restart your terminal after saving
-
-> `set VAR=...` in cmd is session-only and will not persist.
-
-**Build the addons:**
-
-```powershell
-bun run prebuild:native
-```
-
-### macOS
-
-**Install libraries via Homebrew (one-time setup):**
-
-```bash
-brew install webp libpng
-```
-
-**Build the addons (LIBWEBP_ROOT and LIBPNG_ROOT are auto-detected from brew):**
-
-```bash
-bun run prebuild:native
-```
-
-The script outputs built binaries to:
-
-```
-prebuilds/
-  win32-x64/
-    webp-alpha.node
-    konomi-image.node
-  darwin-x64/
-    webp-alpha.node
-    konomi-image.node
-  darwin-arm64/
-    webp-alpha.node
-    konomi-image.node
-```
-
-Commit the generated `.node` files when updating native addons.
+Native addon build toolchain is only required when no prebuilt binary
+matches your platform. See [PREBUILD.md](PREBUILD.md).
 
 ---
 
-## 3. Database Setup
+## 2. Native Addons
 
-```bash
-bun run db:generate   # Generate Prisma client
-bun run db:migrate    # Run migrations (app must be closed)
-```
+Prebuilt binaries for `win32-x64`, `darwin-x64`, `darwin-arm64` are
+committed to [`prebuilds/`](prebuilds/). If your platform is covered, skip
+this step.
+
+Otherwise build them from source — see [PREBUILD.md](PREBUILD.md).
 
 ---
 
-## 4. Run in Development
+## 3. Desktop (Electron)
+
+### 3.1 Database (SQLite)
+
+```bash
+bun run db:generate   # Generate Prisma client (SQLite)
+bun run db:migrate    # Run migrations (app must be closed — SQLite locks)
+```
+
+Migrations live in [`prisma/migrations/sqlite/`](prisma/migrations/sqlite/).
+Schema: [`prisma/schema/sqlite.prisma`](prisma/schema/sqlite.prisma).
+
+### 3.2 Run in development
 
 ```bash
 bun run dev
 ```
 
-This starts Electron + Vite with HMR.
+Launches Electron + Vite with HMR.
 
----
-
-## 5. Build for Distribution
+### 3.3 Build installers
 
 ```bash
-bun run build:win    # Windows installer
+bun run build:win    # Windows installer (NSIS)
 bun run build:mac    # macOS app
 bun run build:linux  # Linux AppImage / deb
 ```
 
-> **Note:** Run `bun run db:migrate` before building if the schema has changed.
+electron-builder config: [`src/app/electron-builder.yml`](src/app/electron-builder.yml).
+
+> Run `bun run db:migrate` before building if the schema has changed.
+
+---
+
+## 4. Web Server (Fastify + MariaDB)
+
+The server reuses `@konomi/core` business logic and speaks MariaDB through
+Prisma's MySQL adapter.
+
+### 4.1 Prerequisites
+
+- MariaDB 10.11+ (or MySQL 8+), reachable via `DATABASE_URL`
+- For Docker deploys, Docker is all you need — MariaDB is bundled
+
+### 4.2 Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KONOMI_PORT` | `3000` | Listen port |
+| `KONOMI_HOST` | `0.0.0.0` | Listen host |
+| `DATABASE_URL` | `mysql://root:mariadb@127.0.0.1:3306/konomi` | MariaDB DSN |
+| `KONOMI_DATA_ROOT` | `/images` | Root for image folders (Docker volume mount point) |
+| `KONOMI_USER_DATA` | `<repoRoot>/database` | Writable data dir |
+
+### 4.3 Database (MariaDB)
+
+```bash
+bun run db:generate:server   # Generate Prisma client (MariaDB)
+bun run db:push:server       # Push schema (development)
+bun run db:migrate:server    # Create + apply migrations
+```
+
+Schema: [`prisma/schema/mariadb.prisma`](prisma/schema/mariadb.prisma).
+
+### 4.4 Development
+
+Run server and web client together:
+
+```bash
+bun run dev:web:all
+```
+
+Or separately:
+
+```bash
+bun run dev:server   # Fastify on KONOMI_PORT (default 3000)
+bun run dev:web      # Vite dev server for src/web
+```
+
+### 4.5 Production build
+
+```bash
+bun run build:web    # Build static web client → out/web
+bun src/server/index.ts
+```
+
+The server serves the built web client at `/` and the API at `/api/*`.
+
+---
+
+## 5. Docker
+
+All-in-one image that bundles the server, web client, native addons, and a
+minimal MariaDB — see [`Dockerfile`](Dockerfile).
+
+```bash
+bun run docker:build   # docker build -t konomi:latest .
+bun run docker:up      # docker compose up -d
+bun run docker:down    # docker compose down
+```
+
+Mount host image directories at `/images/<name>` in
+[`docker-compose.yml`](docker-compose.yml). Each first-level subdirectory
+becomes a selectable folder in the UI; see [`src/server/lib/data-root.ts`](src/server/lib/data-root.ts)
+for the scan rules.
 
 ---
 
 ## Project Structure
 
 ```
-src/core/              Platform-agnostic business logic
+src/core/              Platform-agnostic business logic (@konomi/core)
 src/app/               Electron desktop app (main, preload, renderer)
-src/web/               Shared React UI + web client
+src/web/               Web client (React UI shared via @konomi/web)
 src/server/            Fastify web backend
-src/native/            C++ native addons (source)
+src/native/            C++ native addon sources
 prebuilds/             Prebuilt native binaries (per platform-arch)
-prisma/                Prisma schema + migrations
+prisma/                Prisma schemas + migrations (sqlite + mariadb)
+docker/                Docker entrypoint + init scripts
 scripts/               Build and utility scripts
+tests/                 Vitest suites (backend + frontend)
 ```
+
+---
 
 ## Key Commands
 
 ```bash
-bun run dev              # Start dev server
-bun run build            # Typecheck + build
-bun run typecheck        # Run typechecks
-bun run lint             # ESLint
-bun run prebuild:native  # Rebuild native addons
-bun run db:migrate       # Run Prisma migrations
-bun run db:generate      # Regenerate Prisma client
+# Desktop
+bun run dev                  # Electron dev (HMR)
+bun run build                # Typecheck + electron-vite build
+bun run build:{win,mac,linux}
+bun run db:migrate           # SQLite migrations
+
+# Web / Server
+bun run dev:web:all          # Fastify + Vite dev client
+bun run build:web            # Build static web client
+bun run db:migrate:server    # MariaDB migrations
+
+# Docker
+bun run docker:{build,up,down}
+
+# Native
+bun run prebuild:native      # Rebuild native addons (see PREBUILD.md)
+
+# Quality
+bun run typecheck            # Run typechecks (node + web)
+bun run lint                 # ESLint
+bun run test:backend         # Vitest backend suite
+bun run test:frontend        # Vitest frontend suite
 ```
