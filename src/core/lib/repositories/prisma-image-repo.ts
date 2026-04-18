@@ -14,6 +14,7 @@ import type {
   ImageQueryResolutionFilter,
   SubfolderFilter,
 } from "@core/types/image-query";
+import { getDialect } from "@core/lib/db";
 
 // ---------------------------------------------------------------------------
 // Query builder internals
@@ -48,7 +49,7 @@ const IMAGE_LIST_PAGE_SELECT = {
 } as const satisfies Prisma.ImageSelect;
 
 const IMAGE_LIST_PAGE_COLUMNS = Object.keys(IMAGE_LIST_PAGE_SELECT)
-  .map((c) => `"${c}"`)
+  .map((c) => `\`${c}\``)
   .join(", ");
 
 type NormalizedQuery = {
@@ -353,7 +354,7 @@ function buildImageWhereSql(query: NormalizedQuery): {
   const params: unknown[] = [];
 
   if (query.subfolderFilters.length === 0) {
-    conditions.push(`"folderId" IN (${placeholders(query.folderIds.length)})`);
+    conditions.push(`\`folderId\` IN (${placeholders(query.folderIds.length)})`);
     params.push(...query.folderIds);
   } else {
     const sep = process.platform === "win32" ? "\\" : "/";
@@ -365,7 +366,7 @@ function buildImageWhereSql(query: NormalizedQuery): {
     );
     const orParts: string[] = [];
     if (unfilteredIds.length > 0) {
-      orParts.push(`"folderId" IN (${placeholders(unfilteredIds.length)})`);
+      orParts.push(`\`folderId\` IN (${placeholders(unfilteredIds.length)})`);
       params.push(...unfilteredIds);
     }
     for (const sf of query.subfolderFilters) {
@@ -373,19 +374,19 @@ function buildImageWhereSql(query: NormalizedQuery): {
       const pathParts: string[] = [];
       for (const p of sf.selectedPaths) {
         const prefix = p.endsWith(sep) ? p : p + sep;
-        pathParts.push(`"path" LIKE ? ESCAPE '\\'`);
+        pathParts.push(`\`path\` LIKE ? ESCAPE '\\'`);
         sfParams.push(sqlLikeEscape(prefix) + "%");
       }
       if (sf.includeRoot && sf.allPaths.length > 0) {
         const notParts = sf.allPaths.map((p) => {
           const prefix = p.endsWith(sep) ? p : p + sep;
           sfParams.push(sqlLikeEscape(prefix) + "%");
-          return `"path" NOT LIKE ? ESCAPE '\\'`;
+          return `\`path\` NOT LIKE ? ESCAPE '\\'`;
         });
         pathParts.push(`(${notParts.join(" AND ")})`);
       }
       if (pathParts.length > 0) {
-        orParts.push(`("folderId" = ? AND (${pathParts.join(" OR ")}))`);
+        orParts.push(`(\`folderId\` = ? AND (${pathParts.join(" OR ")}))`);
         params.push(...sfParams);
       }
     }
@@ -395,12 +396,12 @@ function buildImageWhereSql(query: NormalizedQuery): {
   }
 
   const searchColumns = [
-    '"promptTokens"',
-    '"negativePromptTokens"',
-    '"characterPromptTokens"',
-    '"prompt"',
-    '"negativePrompt"',
-    '"characterPrompts"',
+    "`promptTokens`",
+    "`negativePromptTokens`",
+    "`characterPromptTokens`",
+    "`prompt`",
+    "`negativePrompt`",
+    "`characterPrompts`",
   ];
   for (const terms of query.searchGroups) {
     const orParts: string[] = [];
@@ -416,16 +417,16 @@ function buildImageWhereSql(query: NormalizedQuery): {
   if (query.resolutionFilters.length > 0) {
     const orParts = query.resolutionFilters.map((f) => {
       params.push(f.width, f.height);
-      return `("width" = ? AND "height" = ?)`;
+      return `(\`width\` = ? AND \`height\` = ?)`;
     });
     conditions.push(`(${orParts.join(" OR ")})`);
   }
   if (query.modelFilters.length > 0) {
-    conditions.push(`"model" IN (${placeholders(query.modelFilters.length)})`);
+    conditions.push(`\`model\` IN (${placeholders(query.modelFilters.length)})`);
     params.push(...query.modelFilters);
   }
   if (query.seedFilters.length > 0) {
-    conditions.push(`"seed" IN (${placeholders(query.seedFilters.length)})`);
+    conditions.push(`\`seed\` IN (${placeholders(query.seedFilters.length)})`);
     params.push(...query.seedFilters);
   }
   for (const tag of query.excludeTags) {
@@ -438,17 +439,17 @@ function buildImageWhereSql(query: NormalizedQuery): {
   if (query.onlyRecent) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - query.recentDays);
-    conditions.push(`"fileModifiedAt" >= ?`);
+    conditions.push(`\`fileModifiedAt\` >= ?`);
     params.push(cutoff.toISOString());
   }
   if (query.customCategoryId !== null) {
     conditions.push(
-      `EXISTS (SELECT 1 FROM "ImageCategory" WHERE "ImageCategory"."imageId" = "Image"."id" AND "ImageCategory"."categoryId" = ?)`,
+      "EXISTS (SELECT 1 FROM `ImageCategory` WHERE `ImageCategory`.`imageId` = `Image`.`id` AND `ImageCategory`.`categoryId` = ?)",
     );
     params.push(query.customCategoryId);
   }
   if (query.builtinCategory === "favorites") {
-    conditions.push(`"isFavorite" = 1`);
+    conditions.push(`\`isFavorite\` = 1`);
   }
   return {
     sql: conditions.length > 0 ? conditions.join(" AND ") : "1=1",
@@ -713,9 +714,10 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
 
       if (normalized.builtinCategory === "random") {
         const { sql: whereSql, params } = buildImageWhereSql(normalized);
+        const randomFn = getDialect() === "mysql" ? "RAND()" : "RANDOM()";
         const rows = (
           await db.$queryRawUnsafe<RawImageRow[]>(
-            `SELECT ${IMAGE_LIST_PAGE_COLUMNS} FROM "Image" WHERE ${whereSql} ORDER BY RANDOM() LIMIT ?`,
+            `SELECT ${IMAGE_LIST_PAGE_COLUMNS} FROM \`Image\` WHERE ${whereSql} ORDER BY ${randomFn} LIMIT ?`,
             ...params,
             normalized.pageSize,
           )
