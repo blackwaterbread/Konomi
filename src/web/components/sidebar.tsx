@@ -55,6 +55,12 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
@@ -255,6 +261,179 @@ const ElectronFolderAddDialog = memo(function ElectronFolderAddDialog({
           </DialogClose>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             {t("sidebar.dialog.add")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+});
+
+interface MultiFolderEntry {
+  path: string;
+  name: string;
+}
+
+function pathToFolderName(folderPath: string): string {
+  return (
+    folderPath.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ||
+    folderPath
+  );
+}
+
+interface SidebarMultiFolderDialogProps {
+  openRequest: number;
+  onSubmit: (
+    paths: string[],
+  ) => Promise<{ errors: { path: string; message: string }[] }>;
+}
+
+const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
+  openRequest,
+  onSubmit,
+}: SidebarMultiFolderDialogProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<MultiFolderEntry[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitErrors, setSubmitErrors] = useState<
+    { path: string; message: string }[]
+  >([]);
+  const lastOpenRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (openRequest === 0 || openRequest === lastOpenRequestRef.current) return;
+    lastOpenRequestRef.current = openRequest;
+    setEntries([]);
+    setSubmitErrors([]);
+    setIsSubmitting(false);
+    setOpen(true);
+  }, [openRequest]);
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!next && isSubmitting) return;
+    if (!next) {
+      setEntries([]);
+      setSubmitErrors([]);
+    }
+    setOpen(next);
+  }, [isSubmitting]);
+
+  const handleBrowse = useCallback(async () => {
+    if (isSubmitting) return;
+    try {
+      const paths = await window.dialog.selectDirectories();
+      if (!paths || paths.length === 0) return;
+      setEntries((prev) => {
+        const existing = new Set(prev.map((e) => e.path));
+        const newEntries = paths
+          .filter((p) => !existing.has(p))
+          .map((p) => ({ path: p, name: pathToFolderName(p) }));
+        return [...prev, ...newEntries];
+      });
+    } catch {
+      // dialog cancelled
+    }
+  }, [isSubmitting]);
+
+  const handleRemove = useCallback((path: string) => {
+    setEntries((prev) => prev.filter((e) => e.path !== path));
+    setSubmitErrors((prev) => prev.filter((e) => e.path !== path));
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    setIsSubmitting(true);
+    setSubmitErrors([]);
+    const paths = entries.map((e) => e.path);
+    const { errors } = await onSubmit(paths);
+    setIsSubmitting(false);
+    if (errors.length > 0) {
+      setSubmitErrors(errors);
+      setEntries((prev) =>
+        prev.filter((e) => errors.some((err) => err.path === e.path)),
+      );
+    } else {
+      setEntries([]);
+      setSubmitErrors([]);
+      setOpen(false);
+    }
+  }, [entries, onSubmit]);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("sidebar.dialog.multiFolderTitle")}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {entries.length > 0 ? (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {entries.map((entry) => {
+                const error = submitErrors.find((e) => e.path === entry.path);
+                return (
+                  <div
+                    key={entry.path}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border px-3 py-2",
+                      error && "border-destructive/40 bg-destructive/5",
+                    )}
+                  >
+                    <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {entry.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">
+                        {entry.path}
+                      </p>
+                      {error && (
+                        <p className="text-xs text-destructive mt-0.5">
+                          {error.message}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => handleRemove(entry.path)}
+                      disabled={isSubmitting}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <FolderPlus className="h-8 w-8 mb-2 opacity-50" />
+              <p className="text-sm">{t("sidebar.dialog.multiFolderEmpty")}</p>
+            </div>
+          )}
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleBrowse}
+            disabled={isSubmitting}
+          >
+            <FolderPlus className="h-4 w-4 mr-2" />
+            {t("sidebar.dialog.multiFolderBrowse")}
+          </Button>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="ghost" disabled={isSubmitting}>
+              {t("common.cancel")}
+            </Button>
+          </DialogClose>
+          <Button
+            onClick={handleSubmit}
+            disabled={entries.length === 0 || isSubmitting}
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : null}
+            {t("sidebar.dialog.addCount", { count: entries.length })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1209,6 +1388,8 @@ interface SidebarFoldersSectionProps {
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
   onOpenAddFolders: () => void;
+  onOpenAddMultipleFolders?: () => void;
+  showAddMenu?: boolean;
   onToggle?: (id: number) => void;
   onIsolate?: (id: number) => void;
   onToggleCollapse?: (id: number) => void;
@@ -1241,6 +1422,8 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isRootVisible,
   isFolderPartial,
   onOpenAddFolders,
+  onOpenAddMultipleFolders,
+  showAddMenu,
   onToggle,
   onIsolate,
   onToggleCollapse,
@@ -1275,6 +1458,29 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
           >
             <Loader2 className="h-4 w-4 animate-spin" />
           </Button>
+        ) : showAddMenu && onOpenAddMultipleFolders ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              <DropdownMenuItem onSelect={onOpenAddFolders}>
+                {t("sidebar.folders.addOne")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onOpenAddMultipleFolders}>
+                {t("sidebar.folders.addMultiple")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             variant="ghost"
@@ -1530,6 +1736,7 @@ export const Sidebar = memo(
     } = folderState;
     const {
       createFolder,
+      addFolders,
       deleteFolder,
       renameFolder,
       reorderFolders,
@@ -1538,6 +1745,7 @@ export const Sidebar = memo(
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
+      onFoldersAdded,
       onFolderCancelled,
       onFolderRescan,
       onSubfolderToggle,
@@ -1686,6 +1894,7 @@ export const Sidebar = memo(
 
     const [availableFoldersOpen, setAvailableFoldersOpen] = useState(false);
     const [electronAddFolderOpen, setElectronAddFolderOpen] = useState(0);
+    const [electronAddMultipleOpen, setElectronAddMultipleOpen] = useState(0);
 
     const handleOpenAvailableFolders = useCallback(() => {
       if (isElectron) {
@@ -1695,11 +1904,29 @@ export const Sidebar = memo(
       }
     }, [isElectron]);
 
+    const handleOpenAddMultipleFolders = useCallback(() => {
+      setElectronAddMultipleOpen((n) => n + 1);
+    }, []);
+
     const handleElectronAddFolderSubmit = useCallback(
       async (name: string, path: string) => {
         await handleFolderAddWithDuplicateCheck(name, path);
       },
       [handleFolderAddWithDuplicateCheck],
+    );
+
+    const handleMultiFolderSubmit = useCallback(
+      async (paths: string[]) => {
+        const { added, errors } = await addFolders(paths);
+        if (added.length > 0) {
+          onFoldersAdded?.(added.map((f) => f.id));
+          toast.success(
+            t("sidebar.folders.addedMultiple", { count: added.length }),
+          );
+        }
+        return { errors };
+      },
+      [addFolders, onFoldersAdded, t],
     );
 
     useImperativeHandle(
@@ -1969,6 +2196,8 @@ export const Sidebar = memo(
                 isRootVisible={isRootVisible}
                 isFolderPartial={isFolderPartial}
                 onOpenAddFolders={handleOpenAvailableFolders}
+                onOpenAddMultipleFolders={handleOpenAddMultipleFolders}
+                showAddMenu={isElectron}
                 onToggle={onFolderToggle}
                 onIsolate={onFolderIsolate}
                 onToggleCollapse={onFolderToggleCollapse}
@@ -2056,10 +2285,16 @@ export const Sidebar = memo(
         </Dialog>
 
         {isElectron ? (
-          <ElectronFolderAddDialog
-            openRequest={electronAddFolderOpen}
-            onSubmit={handleElectronAddFolderSubmit}
-          />
+          <>
+            <ElectronFolderAddDialog
+              openRequest={electronAddFolderOpen}
+              onSubmit={handleElectronAddFolderSubmit}
+            />
+            <SidebarMultiFolderDialog
+              openRequest={electronAddMultipleOpen}
+              onSubmit={handleMultiFolderSubmit}
+            />
+          </>
         ) : (
           <AvailableFoldersDialog
             open={availableFoldersOpen}
