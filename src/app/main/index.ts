@@ -24,6 +24,20 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 configureAppDataPaths();
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on("second-instance", () => {
+  const [existing] = BrowserWindow.getAllWindows();
+  if (!existing) return;
+  if (existing.isMinimized()) existing.restore();
+  if (!existing.isVisible()) existing.show();
+  existing.focus();
+});
+
 registerIpcHandlers();
 const log = createLogger("main/index");
 
