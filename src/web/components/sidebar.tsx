@@ -1521,7 +1521,6 @@ export const Sidebar = memo(
     } = folderState;
     const {
       createFolder,
-      addFolders,
       deleteFolder,
       renameFolder,
       reorderFolders,
@@ -1529,7 +1528,6 @@ export const Sidebar = memo(
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
-      onFoldersAdded,
       onFolderCancelled,
       onFolderRescan,
       onSubfolderToggle,
@@ -1678,10 +1676,6 @@ export const Sidebar = memo(
 
     const [availableFoldersOpen, setAvailableFoldersOpen] = useState(false);
     const [electronAddFolderOpen, setElectronAddFolderOpen] = useState(0);
-    const registeredPaths = useMemo(
-      () => new Set(folders.map((f) => f.path)),
-      [folders],
-    );
 
     const handleOpenAvailableFolders = useCallback(() => {
       if (isElectron) {
@@ -1696,32 +1690,6 @@ export const Sidebar = memo(
         await handleFolderAddWithDuplicateCheck(name, path);
       },
       [handleFolderAddWithDuplicateCheck],
-    );
-
-    const handleAvailableFoldersAdd = useCallback(
-      async (dirs: { name: string; path: string }[]) => {
-        const paths = dirs.map((d) => d.path);
-        const { added, errors } = await addFolders(paths);
-        if (added.length > 0) {
-          const addedIds = added.map((f) => f.id);
-          if (onFoldersAdded) {
-            onFoldersAdded(addedIds);
-          } else {
-            for (const folder of added) {
-              onFolderAdded?.(folder.id);
-            }
-          }
-          toast.success(
-            t("sidebar.folders.addedMultiple", { count: added.length }),
-          );
-        }
-        if (errors.length > 0) {
-          for (const err of errors) {
-            toast.error(err.message);
-          }
-        }
-      },
-      [addFolders, onFolderAdded, onFoldersAdded, t],
     );
 
     useImperativeHandle(
@@ -2085,8 +2053,6 @@ export const Sidebar = memo(
           <AvailableFoldersDialog
             open={availableFoldersOpen}
             onOpenChange={setAvailableFoldersOpen}
-            registeredPaths={registeredPaths}
-            onAdd={handleAvailableFoldersAdd}
           />
         )}
       </>

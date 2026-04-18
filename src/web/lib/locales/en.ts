@@ -49,12 +49,8 @@ const en = {
   },
   availableFolders: {
     title: "Add Folders",
-    description: "Select folders to add from mounted volumes.",
-    empty: "No directories found",
-    emptyHint: "Mount a volume to /images in your Docker configuration.",
-    selectAll: "Select all",
-    deselectAll: "Deselect all",
-    add: "Add {{count}} folder(s)",
+    description: "Folders mounted as Docker volumes are auto-registered and scanned.",
+    instruction: "To add a new folder, mount it under /images in your Docker configuration and restart the server.",
   },
   header: {
     searchPlaceholder: "Search images by prompt...",

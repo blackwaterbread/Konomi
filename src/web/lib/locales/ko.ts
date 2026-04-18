@@ -50,12 +50,8 @@ const ko = {
   },
   availableFolders: {
     title: "폴더 추가",
-    description: "마운트된 볼륨에서 추가할 폴더를 선택하세요.",
-    empty: "사용 가능한 디렉토리 없음",
-    emptyHint: "Docker 설정에서 /images에 볼륨을 마운트하세요.",
-    selectAll: "전체 선택",
-    deselectAll: "전체 해제",
-    add: "{{count}}개 폴더 추가",
+    description: "Docker 볼륨에 마운트된 폴더는 자동으로 등록되어 스캔됩니다.",
+    instruction: "새 폴더를 추가하려면 Docker 설정에서 해당 폴더를 /images 하위에 마운트한 뒤 서버를 재시작하세요.",
   },
   header: {
     searchPlaceholder: "프롬프트로 이미지 검색...",
