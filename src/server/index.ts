@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 process.env.KONOMI_USER_DATA ??= path.join(repoRoot, "database");
 process.env.KONOMI_MIGRATIONS_PATH ??= path.join(repoRoot, "prisma", "migrations", "sqlite");
-process.env.KONOMI_PREBUILDS_PATH ??= path.join(repoRoot, "src", "native", "prebuilds");
+process.env.KONOMI_PREBUILDS_PATH ??= path.join(repoRoot, "prebuilds");
 
 // Inject MySQL PrismaClient into core modules
 setDBProvider(getDB as any, "mysql");

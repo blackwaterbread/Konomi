@@ -101,7 +101,7 @@ linux:
   category: Utility
 
 asarUnpack:
-  - "src/native/prebuilds/**"
+  - "prebuilds/**"
 
 npmRebuild: false
 electronLanguages:

@@ -5,7 +5,7 @@ node_modules
 database/
 out/
 dist/
-src/native/prebuilds/
+prebuilds/
 src/web/dist/
 src/web/node_modules/
 .vscode/

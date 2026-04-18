@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
-const outDir = join(root, "src", "native", "prebuilds", `${platform}-${arch}`);
+const outDir = join(root, "prebuilds", `${platform}-${arch}`);
 
 mkdirSync(outDir, { recursive: true });
 
@@ -71,7 +71,7 @@ function buildAddon({ name, dir, rootEnv, srcNode, destNode }) {
     const src = join("build", "Release", srcNode);
     const dest = join(outDir, destNode);
     copyFileSync(src, dest);
-    console.log(`Done: src/native/prebuilds/${platform}-${arch}/${destNode}`);
+    console.log(`Done: prebuilds/${platform}-${arch}/${destNode}`);
   } catch (err) {
     console.error(`Failed to build ${name}: ${err.message}`);
     process.exitCode = 1;

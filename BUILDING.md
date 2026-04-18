@@ -26,7 +26,7 @@ bun install
 ## 2. Build the Native Addons
 
 Konomi uses two C++ native addons. Prebuilt binaries are committed to the
-repository under `src/native/prebuilds/`, so this step is only needed when building from
+repository under `prebuilds/`, so this step is only needed when building from
 source for the first time, or after modifying addon sources.
 
 | Addon | Source | Purpose |
@@ -77,7 +77,7 @@ bun run prebuild:native
 The script outputs built binaries to:
 
 ```
-src/native/prebuilds/
+prebuilds/
   win32-x64/
     webp-alpha.node
     konomi-image.node
@@ -131,7 +131,8 @@ src/core/              Platform-agnostic business logic
 src/app/               Electron desktop app (main, preload, renderer)
 src/web/               Shared React UI + web client
 src/server/            Fastify web backend
-src/native/            C++ native addons + prebuilt binaries
+src/native/            C++ native addons (source)
+prebuilds/             Prebuilt native binaries (per platform-arch)
 prisma/                Prisma schema + migrations
 scripts/               Build and utility scripts
 ```
