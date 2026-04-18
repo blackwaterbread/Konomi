@@ -1022,7 +1022,7 @@ export const ImageGallery = memo(function ImageGallery({
   useEffect(() => {
     const viewport = getScrollAreaViewport(scrollRef.current);
     if (viewport) viewport.scrollTop = 0;
-  }, [currentPage]);
+  }, [currentPage, selectionScopeKey, sortBy]);
 
   const resetSelectionState = useCallback(() => {
     selectAllRequestSeqRef.current += 1;
