@@ -109,6 +109,8 @@ export default function App({
   const [announcementKey, setAnnouncementKey] = useState(0);
   const generationViewRef = useRef<GenerationViewHandle | null>(null);
   const sidebarRef = useRef<SidebarHandle | null>(null);
+  const deleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bulkDeleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
   const { isDarkTheme } = useAppAppearance({
     theme: settings.theme,
     language: settings.language,
@@ -732,7 +734,12 @@ export default function App({
       </Dialog>
 
       <Dialog open={deleteDialog.open} onOpenChange={deleteDialog.onOpenChange}>
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            deleteConfirmButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t("app.dialog.imageDelete.title")}</DialogTitle>
           </DialogHeader>
@@ -743,7 +750,11 @@ export default function App({
             <DialogClose asChild>
               <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={deleteDialog.onConfirm}>
+            <Button
+              ref={deleteConfirmButtonRef}
+              variant="destructive"
+              onClick={deleteDialog.onConfirm}
+            >
               {t("common.delete")}
             </Button>
           </DialogFooter>
@@ -754,7 +765,12 @@ export default function App({
         open={bulkDeleteDialog.open}
         onOpenChange={bulkDeleteDialog.onOpenChange}
       >
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            bulkDeleteConfirmButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t("app.dialog.bulkDelete.title")}</DialogTitle>
           </DialogHeader>
@@ -767,7 +783,11 @@ export default function App({
             <DialogClose asChild>
               <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={bulkDeleteDialog.onConfirm}>
+            <Button
+              ref={bulkDeleteConfirmButtonRef}
+              variant="destructive"
+              onClick={bulkDeleteDialog.onConfirm}
+            >
               {t("common.delete")}
             </Button>
           </DialogFooter>
