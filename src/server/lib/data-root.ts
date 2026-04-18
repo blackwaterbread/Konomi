@@ -41,6 +41,20 @@ export async function listAvailableDirectories(): Promise<DetectedDirectory[]> {
 }
 
 /**
+ * Check whether DATA_ROOT itself exists. Used to distinguish "user removed all
+ * volumes" from "DATA_ROOT misconfigured / not mounted" — the latter must not
+ * trigger destructive reconciliation.
+ */
+export async function dataRootExists(): Promise<boolean> {
+  try {
+    await fs.access(DATA_ROOT);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check whether a path is under DATA_ROOT.
  */
 export function isUnderDataRoot(target: string): boolean {

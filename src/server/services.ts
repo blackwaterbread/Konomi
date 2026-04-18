@@ -1,7 +1,11 @@
 import path from "path";
 import type { EventSender } from "@core/types/event-sender";
 import { getDB } from "./db";
-import { listAvailableDirectories } from "./lib/data-root";
+import {
+  listAvailableDirectories,
+  dataRootExists,
+  isUnderDataRoot,
+} from "./lib/data-root";
 import { createPrismaFolderRepo } from "@core/lib/repositories/prisma-folder-repo";
 import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import { createPrismaCategoryRepo } from "@core/lib/repositories/prisma-category-repo";
@@ -136,20 +140,54 @@ export function createServices(sender: EventSender) {
 
 export type Services = ReturnType<typeof createServices>;
 
+function normalizeFsPath(p: string): string {
+  const resolved = path.resolve(p);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+async function reconcileRemovedFolders(services: Services): Promise<number> {
+  // Guard: if DATA_ROOT itself is missing, don't assume every folder was
+  // removed — that could wipe a user's entire library on a misconfigured
+  // restart. Skip reconciliation entirely in that case.
+  if (!(await dataRootExists())) {
+    log.warn("DATA_ROOT missing, skipping folder reconciliation");
+    return 0;
+  }
+
+  const detected = await listAvailableDirectories();
+  const detectedPaths = new Set(detected.map((d) => normalizeFsPath(d.path)));
+  const existing = await services.folderService.list();
+
+  let removed = 0;
+  for (const folder of existing) {
+    // Defensive: only reconcile folders under DATA_ROOT. Web-server folders
+    // always are, but skip any outliers to avoid deleting unrelated state.
+    if (!isUnderDataRoot(folder.path)) continue;
+    if (detectedPaths.has(normalizeFsPath(folder.path))) continue;
+    try {
+      await services.folderService.delete(folder.id);
+      removed++;
+      log.info(`Auto-removed missing folder: ${folder.name} (${folder.path})`);
+    } catch (err) {
+      log.errorWithStack(
+        `Failed to auto-remove folder ${folder.path}`,
+        err as Error,
+      );
+    }
+  }
+  return removed;
+}
+
 async function autoRegisterFolders(services: Services): Promise<number> {
   const detected = await listAvailableDirectories();
   if (detected.length === 0) return 0;
 
   const existing = await services.folderService.list();
-  const normalizePath = (p: string) => {
-    const resolved = path.resolve(p);
-    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-  };
-  const existingPaths = new Set(existing.map((f) => normalizePath(f.path)));
+  const existingPaths = new Set(existing.map((f) => normalizeFsPath(f.path)));
 
   let registered = 0;
   for (const dir of detected) {
-    if (existingPaths.has(normalizePath(dir.path))) continue;
+    if (existingPaths.has(normalizeFsPath(dir.path))) continue;
     try {
       await services.folderService.create(dir.name, dir.path);
       registered++;
@@ -170,6 +208,9 @@ export async function bootstrap(services: Services): Promise<void> {
 
   await services.duplicateService.ensureIgnoredLoaded();
   log.info("Loaded ignored duplicate paths");
+
+  const removed = await reconcileRemovedFolders(services);
+  if (removed > 0) log.info(`Auto-removed ${removed} folder(s)`);
 
   const registered = await autoRegisterFolders(services);
   if (registered > 0) log.info(`Auto-registered ${registered} folder(s)`);
