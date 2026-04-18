@@ -102,6 +102,7 @@ export default function App({
     galleryReady,
     initialize: initializeFolders,
   } = useFolderController(initialFolderCount, initialFolders);
+  const allFolderIds = useMemo(() => folders.map((f) => f.id), [folders]);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
   const [initialRefreshDone, setInitialRefreshDone] = useState(false);
   const [checkingDuplicates, setCheckingDuplicates] = useState(false);
@@ -212,7 +213,12 @@ export default function App({
     runScan,
     handleCancelScan,
     confirmCancelScan,
-  } = useScanning({ schedulePageRefresh, loadSearchPresetStats });
+  } = useScanning({
+    schedulePageRefresh,
+    loadSearchPresetStats,
+    refreshSubfolders,
+    allFolderIds,
+  });
 
   const {
     isAnalyzing,

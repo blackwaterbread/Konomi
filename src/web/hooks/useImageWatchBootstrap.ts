@@ -147,6 +147,14 @@ export function useImageEventSubscriptions({
         }
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
+        // Subfolder list is derived from image paths. New images may belong
+        // to a subfolder that isn't yet in the cached list — refresh so the
+        // sidebar picks it up without requiring a restart.
+        const refresh = refreshSubfoldersRef.current;
+        if (refresh) {
+          const touchedFolderIds = [...new Set(rows.map((r) => r.folderId))];
+          if (touchedFolderIds.length > 0) void refresh(touchedFolderIds);
+        }
       }
     });
 

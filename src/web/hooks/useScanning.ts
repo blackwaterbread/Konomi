@@ -8,9 +8,16 @@ const log = createLogger("renderer/useScanning");
 export function useScanning({
   schedulePageRefresh,
   loadSearchPresetStats,
+  refreshSubfolders,
+  allFolderIds,
 }: {
   schedulePageRefresh: (delay?: number) => void;
   loadSearchPresetStats: () => Promise<void>;
+  refreshSubfolders?: (
+    folderIds: number[],
+    options?: { allowEmpty?: boolean },
+  ) => Promise<void>;
+  allFolderIds?: number[];
 }) {
   const [scanning, setScanning] = useState(false);
   const [activeScanFolderIds, setActiveScanFolderIds] = useState<Set<number>>(
@@ -29,6 +36,16 @@ export function useScanning({
   const scanningRef = useRef(false);
   const scanStartCountRef = useRef(0);
   const rollbackRequestSeqRef = useRef(0);
+
+  const refreshSubfoldersRef = useRef(refreshSubfolders);
+  useEffect(() => {
+    refreshSubfoldersRef.current = refreshSubfolders;
+  }, [refreshSubfolders]);
+
+  const allFolderIdsRef = useRef(allFolderIds);
+  useEffect(() => {
+    allFolderIdsRef.current = allFolderIds;
+  }, [allFolderIds]);
 
   useEffect(() => {
     const offScanFolder = window.image.onScanFolder(
@@ -92,6 +109,19 @@ export function useScanning({
           }
           if (refreshSearchPresetStats) {
             void loadSearchPresetStats();
+          }
+          // Subfolder list is derived from image paths. A scan may introduce
+          // new subfolders (or drop empty ones); refresh so the sidebar
+          // reflects the post-scan state without a restart.
+          const refresh = refreshSubfoldersRef.current;
+          if (refresh) {
+            const ids =
+              folderIds && folderIds.length > 0
+                ? folderIds
+                : (allFolderIdsRef.current ?? []);
+            if (ids.length > 0) {
+              void refresh(ids, { allowEmpty: true });
+            }
           }
           return true;
         })
