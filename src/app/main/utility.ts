@@ -47,6 +47,7 @@ import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo"
 import { createPromptTagService } from "@core/services/prompt-tag-service";
 import { getPromptsDBPath } from "@core/lib/prompts-db";
 import { getDB, runMigrations } from "@core/lib/db";
+import Database from "better-sqlite3";
 
 let scanCancelToken: CancelToken | null = null;
 let computeHashesInFlight: Promise<number> | null = null;
@@ -82,6 +83,7 @@ const similarityCacheAdapter = {
 
 const promptTagService = createPromptTagService({
   getDbPath: getPromptsDBPath,
+  openDatabase: (path, options) => new Database(path, options),
 });
 
 const scanService = createScanService({

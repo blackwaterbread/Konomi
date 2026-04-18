@@ -8,6 +8,9 @@ import {
   normalizePromptTerm,
 } from "../../../src/core/services/prompt-tag-service";
 
+const openDatabase = (filePath: string, options: { readonly: boolean; fileMustExist: boolean }) =>
+  new Database(filePath, options);
+
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
@@ -69,12 +72,13 @@ describe("prompt-tag-service", () => {
     const dbPath = createPromptDb({
       meta: { schema_version: "7" },
     });
-    service = createPromptTagService({ getDbPath: () => dbPath });
+    service = createPromptTagService({ getDbPath: () => dbPath, openDatabase });
 
     expect(service.getSchemaVersion()).toBe(7);
 
     const missingService = createPromptTagService({
       getDbPath: () => path.join(path.dirname(dbPath), "missing.db"),
+      openDatabase,
     });
     expect(missingService.getSchemaVersion()).toBe(null);
   });
@@ -94,7 +98,7 @@ describe("prompt-tag-service", () => {
         { tag: "sun", count: 70 },
       ],
     });
-    service = createPromptTagService({ getDbPath: () => dbPath });
+    service = createPromptTagService({ getDbPath: () => dbPath, openDatabase });
 
     const result = service.suggestTags({
       prefix: " Sun ",
@@ -134,7 +138,7 @@ describe("prompt-tag-service", () => {
         { tag: "tag-10", count: 10 },
       ],
     });
-    service = createPromptTagService({ getDbPath: () => dbPath });
+    service = createPromptTagService({ getDbPath: () => dbPath, openDatabase });
 
     const result = service.suggestTags({
       prefix: "tag-",

@@ -42,6 +42,7 @@ import {
   refreshSimilarityCacheForImageIds,
 } from "@core/lib/phash";
 import { createLogger } from "@core/lib/logger";
+import { Database } from "bun:sqlite";
 
 const log = createLogger("web/services");
 
@@ -74,7 +75,14 @@ export function createServices(sender: EventSender) {
   const categoryService = createCategoryService({ categoryRepo, imageRepo });
   const promptBuilderService = createPromptBuilderService({ promptRepo });
   const naiGenService = createNaiGenService({ naiConfigRepo });
-  const promptTagService = createPromptTagService({ getDbPath: getPromptsDBPath });
+  const promptTagService = createPromptTagService({
+    getDbPath: getPromptsDBPath,
+    openDatabase: (path, options) =>
+      new Database(path, {
+        readonly: options.readonly,
+        create: !options.fileMustExist,
+      }),
+  });
 
   const scanService = createScanService({
     imageRepo,

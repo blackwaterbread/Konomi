@@ -1,7 +1,25 @@
 import fs from "fs";
-import Database from "better-sqlite3";
+import { createLogger } from "@core/lib/logger";
+
+const log = createLogger("prompt-tag-service");
 
 // ── Types ──────────────────────────────────────────────────────
+
+export interface SqliteStatement {
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+}
+
+export interface SqliteConnection {
+  prepare(sql: string): SqliteStatement;
+  exec(sql: string): void;
+  close(): void;
+}
+
+export type SqliteOpener = (
+  path: string,
+  options: { readonly: boolean; fileMustExist: boolean },
+) => SqliteConnection;
 
 export type PromptTagSearchQuery = {
   name?: string;
@@ -50,6 +68,7 @@ export type PromptTagSuggestResult = {
 
 export type PromptTagServiceDeps = {
   getDbPath: () => string;
+  openDatabase: SqliteOpener;
 };
 
 // ── Constants ──────────────────────────────────────────────────
@@ -122,29 +141,29 @@ const EMPTY_STATS: PromptTagSuggestStats = {
 };
 
 export function createPromptTagService(deps: PromptTagServiceDeps) {
-  const { getDbPath } = deps;
+  const { getDbPath, openDatabase } = deps;
 
-  let db: Database.Database | null = null;
+  let db: SqliteConnection | null = null;
   let statsCache: PromptTagSuggestStats | null = null;
 
   function isAvailable(): boolean {
     return fs.existsSync(getDbPath());
   }
 
-  function getDb(): Database.Database {
+  function getDb(): SqliteConnection {
     if (!db) {
-      db = new Database(getDbPath(), {
+      db = openDatabase(getDbPath(), {
         readonly: true,
         fileMustExist: true,
       });
-      db.pragma("foreign_keys = ON");
-      db.pragma("query_only = ON");
+      db.exec("PRAGMA foreign_keys = ON");
+      db.exec("PRAGMA query_only = ON");
     }
     return db;
   }
 
   function readPostCountAtOffset(
-    database: Database.Database,
+    database: SqliteConnection,
     offset: number,
   ): number {
     const row = database
@@ -159,7 +178,7 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
   }
 
   function computeBucketThresholds(
-    database: Database.Database,
+    database: SqliteConnection,
     totalTags: number,
   ): number[] {
     if (totalTags <= 0) return [];
@@ -216,7 +235,8 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
         ),
       };
       return statsCache;
-    } catch {
+    } catch (err) {
+      log.errorWithStack("Failed to read prompt tag stats", err as Error);
       statsCache = EMPTY_STATS;
       return statsCache;
     }
@@ -232,13 +252,13 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
     },
 
     getSchemaVersion(): number | null {
-      let tempDb: Database.Database | null = null;
+      let tempDb: SqliteConnection | null = null;
       try {
-        tempDb = new Database(getDbPath(), {
+        tempDb = openDatabase(getDbPath(), {
           readonly: true,
           fileMustExist: true,
         });
-        tempDb.pragma("query_only = ON");
+        tempDb.exec("PRAGMA query_only = ON");
         const row = tempDb
           .prepare(
             `SELECT value
@@ -249,7 +269,8 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
           .get() as { value?: string | number } | undefined;
         const version = Number.parseInt(String(row?.value ?? ""), 10);
         return Number.isFinite(version) ? version : null;
-      } catch {
+      } catch (err) {
+        log.errorWithStack("Failed to read prompts.db schema version", err as Error);
         return null;
       } finally {
         tempDb?.close();
@@ -289,7 +310,8 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
           tag: string;
           count: number;
         }>;
-      } catch {
+      } catch (err) {
+        log.errorWithStack("suggestTags query failed", err as Error);
         return { suggestions: [], stats };
       }
 
@@ -375,7 +397,8 @@ export function createPromptTagService(deps: PromptTagServiceDeps) {
           pageSize,
           totalPages,
         };
-      } catch {
+      } catch (err) {
+        log.errorWithStack("searchTags query failed", err as Error);
         return empty;
       }
     },
