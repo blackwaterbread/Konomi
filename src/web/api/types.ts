@@ -100,7 +100,9 @@ export interface ImageApi {
   suggestTags(query: ImageTagSuggestQuery): Promise<ImageTagSuggestion[]>;
   listPage(query: ImageListQuery): Promise<ImageListResult>;
   listMatchingIds(query: ImageListQuery): Promise<number[]>;
-  bulkDelete(ids: number[]): Promise<{ deleted: number; failed: number }>;
+  bulkDelete(
+    ids: number[],
+  ): Promise<{ deleted: number; failed: number; deletedFromDb: number }>;
   listByIds(ids: number[]): Promise<ImageRow[]>;
   quickVerify(): Promise<{ changedFolderIds: number[]; unchangedFolderIds: number[] }>;
   scan(options?: {
@@ -114,7 +116,7 @@ export interface ImageApi {
   listIgnoredDuplicates(): Promise<string[]>;
   clearIgnoredDuplicates(): Promise<number>;
   revealInExplorer(path: string): Promise<void>;
-  delete(path: string): Promise<void>;
+  delete(path: string): Promise<{ deletedFromDb: boolean }>;
   computeHashes(): Promise<number>;
   resetHashes(): Promise<void>;
   rescanMetadata(): Promise<number>;

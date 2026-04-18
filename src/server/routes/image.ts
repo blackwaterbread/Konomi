@@ -13,7 +13,10 @@ import {
   getGroupForImage,
   getSimilarityReasons,
   resetAllHashes,
+  deleteSimilarityCacheForImageIds,
 } from "@core/lib/phash";
+import { decrementImageSearchStatsForRows } from "@core/lib/search-stats-store";
+import type { SearchStatSource } from "@core/types/repository";
 
 let scanCancelToken: CancelToken | null = null;
 let computeHashesInFlight: Promise<number> | null = null;
@@ -100,24 +103,66 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   });
 
   // ── Delete ───────────────────────────────
+  // fs.watch on Linux / network volumes can miss deletion events, so explicitly
+  // remove the DB row, similarity cache, and search stats here instead of
+  // relying on the watcher. setScanActive pauses the watcher during the delete
+  // so the (possibly delayed) file-gone event doesn't double-decrement stats.
   app.post<{ Body: { path: string } }>("/api/images/delete", async (req) => {
-    await fs.promises.unlink(req.body.path);
-    return null;
+    watchService.setScanActive(true);
+    try {
+      const existing = await services.imageRepo.findByPath(req.body.path);
+      await fs.promises.unlink(req.body.path).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== "ENOENT") throw err;
+      });
+      if (existing) {
+        await services.imageRepo.deleteByIds([existing.id]);
+        await deleteSimilarityCacheForImageIds([existing.id]);
+        await decrementImageSearchStatsForRows(
+          [existing as SearchStatSource],
+          emitSearchStatsProgress,
+        );
+        sender.send("image:removed", [existing.id]);
+      }
+      return { deletedFromDb: existing !== null };
+    } finally {
+      watchService.setScanActive(false, { discardDeferredChanges: true });
+    }
   });
 
   app.post<{ Body: { ids: number[] } }>("/api/images/bulk-delete", async (req) => {
-    const rows = await services.imageRepo.listByIds(req.body.ids);
-    let deleted = 0;
-    let failed = 0;
-    for (const row of rows) {
-      try {
-        await fs.promises.unlink(row.path);
-        deleted++;
-      } catch {
-        failed++;
+    watchService.setScanActive(true);
+    try {
+      const rows = await services.imageRepo.listByIds(req.body.ids);
+      let deleted = 0;
+      let failed = 0;
+      const deletedRows: typeof rows = [];
+      for (const row of rows) {
+        try {
+          await fs.promises.unlink(row.path).catch((err: NodeJS.ErrnoException) => {
+            if (err.code !== "ENOENT") throw err;
+          });
+          deletedRows.push(row);
+          deleted++;
+        } catch {
+          failed++;
+        }
       }
+      let deletedFromDb = 0;
+      if (deletedRows.length > 0) {
+        const deletedIds = deletedRows.map((r) => r.id);
+        await services.imageRepo.deleteByIds(deletedIds);
+        await deleteSimilarityCacheForImageIds(deletedIds);
+        await decrementImageSearchStatsForRows(
+          deletedRows as SearchStatSource[],
+          emitSearchStatsProgress,
+        );
+        sender.send("image:removed", deletedIds);
+        deletedFromDb = deletedIds.length;
+      }
+      return { deleted, failed, deletedFromDb };
+    } finally {
+      watchService.setScanActive(false, { discardDeferredChanges: true });
     }
-    return { deleted, failed };
   });
 
   // ── Ignored duplicates ───────────────────

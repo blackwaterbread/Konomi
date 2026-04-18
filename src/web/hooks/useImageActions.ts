@@ -19,6 +19,8 @@ interface UseImageActionsOptions {
   sortBy: SortBy;
   selectedBuiltinCategory: BuiltinCategory;
   schedulePageRefresh: (delay?: number) => void;
+  markSelfRemoved: (count: number) => void;
+  releaseSelfRemoved: (count: number) => void;
   generationViewRef: MutableRefObject<GenerationViewHandle | null>;
   handlePanelChange: (panel: ActivePanel) => void | Promise<void>;
   page: number;
@@ -32,6 +34,8 @@ export function useImageActions({
   sortBy,
   selectedBuiltinCategory,
   schedulePageRefresh,
+  markSelfRemoved,
+  releaseSelfRemoved,
   generationViewRef,
   handlePanelChange,
   page,
@@ -174,13 +178,23 @@ export function useImageActions({
     if (!deleteConfirmId) return;
     const image = images.find((entry) => entry.id === deleteConfirmId);
     if (image) {
-      window.image.delete(image.path).catch((error: unknown) => {
-        toast.error(
-          t("error.imageDeleteFailed", {
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
-      });
+      markSelfRemoved(1);
+      window.image.delete(image.path).then(
+        (result) => {
+          // Server didn't find the path in DB → no image:removed event will
+          // arrive. Release the optimistic mark so future external removals
+          // aren't silently consumed.
+          if (!result.deletedFromDb) releaseSelfRemoved(1);
+        },
+        (error: unknown) => {
+          releaseSelfRemoved(1);
+          toast.error(
+            t("error.imageDeleteFailed", {
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        },
+      );
       if (selectedImage?.id === deleteConfirmId) {
         setSelectedImage(null);
         setIsDetailOpen(false);
@@ -197,7 +211,7 @@ export function useImageActions({
       schedulePageRefresh(1500);
     }
     setDeleteConfirmId(null);
-  }, [deleteConfirmId, images, schedulePageRefresh, selectedBuiltinCategory, selectedImage?.id, setImages, t]);
+  }, [deleteConfirmId, images, markSelfRemoved, releaseSelfRemoved, schedulePageRefresh, selectedBuiltinCategory, selectedImage?.id, setImages, t]);
 
   const handleSendToGenerator = useCallback(
     (image: ImageData) => {
@@ -289,8 +303,11 @@ export function useImageActions({
     setBulkDeleteIds(null);
 
     const deleteIds = bulkDeleteIds;
+    markSelfRemoved(deleteIds.length);
     window.image.bulkDelete(deleteIds).then(
-      ({ failed }) => {
+      ({ failed, deletedFromDb }) => {
+        const leak = deleteIds.length - deletedFromDb;
+        if (leak > 0) releaseSelfRemoved(leak);
         if (failed > 0) {
           toast.error(
             t("error.bulkDeletePartialFail", {
@@ -301,6 +318,7 @@ export function useImageActions({
         }
       },
       (error: unknown) => {
+        releaseSelfRemoved(deleteIds.length);
         toast.error(
           t("error.bulkDeletePartialFail", {
             failed: deleteIds.length,
@@ -323,7 +341,7 @@ export function useImageActions({
         : prev.filter((entry) => !idSet.has(entry.id)),
     );
     schedulePageRefresh(1500);
-  }, [bulkDeleteIds, schedulePageRefresh, selectedBuiltinCategory, selectedImage, setImages, t]);
+  }, [bulkDeleteIds, markSelfRemoved, releaseSelfRemoved, schedulePageRefresh, selectedBuiltinCategory, selectedImage, setImages, t]);
 
   const handleBulkDeleteDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {

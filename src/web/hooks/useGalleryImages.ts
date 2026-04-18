@@ -25,6 +25,7 @@ export function useGalleryImages(
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingNewCount, setPendingNewCount] = useState(0);
+  const [pendingRemovedCount, setPendingRemovedCount] = useState(0);
 
   const pageRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -33,6 +34,7 @@ export function useGalleryImages(
   const builtinCategoryRef = useRef(listBaseQuery.builtinCategory);
   const listRequestSeqRef = useRef(0);
   const loadImagesPageRef = useRef<() => Promise<void>>(async () => {});
+  const expectedRemovedRef = useRef(0);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -57,6 +59,8 @@ export function useGalleryImages(
   const loadImagesPage = useCallback(async () => {
     if (!enabled) return;
     setPendingNewCount(0);
+    setPendingRemovedCount(0);
+    expectedRemovedRef.current = 0;
     const requestId = ++listRequestSeqRef.current;
     setIsLoading(true);
     // Eagerly unmount old cards so Blink can release decoded bitmaps
@@ -105,8 +109,37 @@ export function useGalleryImages(
     setPendingNewCount((prev) => prev + count);
   }, []);
 
+  const incrementPendingRemoved = useCallback((count: number) => {
+    if (!enabledRef.current) return;
+    if (builtinCategoryRef.current === "random") return;
+    // Subtract self-initiated removals so the banner only counts external
+    // deletes (another client, direct FS change) rather than the user's own.
+    const consumed = Math.min(expectedRemovedRef.current, count);
+    expectedRemovedRef.current -= consumed;
+    const rest = count - consumed;
+    if (rest <= 0) return;
+    setPendingRemovedCount((prev) => prev + rest);
+  }, []);
+
+  const markSelfRemoved = useCallback((count: number) => {
+    if (count > 0) expectedRemovedRef.current += count;
+  }, []);
+
+  // Releases over-marked self-removals when fewer image:removed events arrive
+  // than the caller pre-marked (e.g. some unlinks failed, or the path wasn't
+  // in the DB to begin with). Without this the counter leaks and silently
+  // eats future external removal events.
+  const releaseSelfRemoved = useCallback((count: number) => {
+    if (count <= 0) return;
+    expectedRemovedRef.current = Math.max(
+      0,
+      expectedRemovedRef.current - count,
+    );
+  }, []);
+
   const applyPendingRefresh = useCallback(() => {
     setPendingNewCount(0);
+    setPendingRemovedCount(0);
     if (pageRefreshTimerRef.current) clearTimeout(pageRefreshTimerRef.current);
     pageRefreshTimerRef.current = setTimeout(() => {
       void loadImagesPageRef.current();
@@ -168,7 +201,11 @@ export function useGalleryImages(
     hasLoadedOnce,
     isLoading,
     pendingNewCount,
+    pendingRemovedCount,
     incrementPendingNew,
+    incrementPendingRemoved,
+    markSelfRemoved,
+    releaseSelfRemoved,
     applyPendingRefresh,
     schedulePageRefresh,
   };

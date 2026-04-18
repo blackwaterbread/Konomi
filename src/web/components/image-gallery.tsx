@@ -151,6 +151,7 @@ interface ImageGalleryState {
   isRefreshing?: boolean;
   selectionScopeKey?: string;
   pendingNewCount?: number;
+  pendingRemovedCount?: number;
 }
 
 interface ImageGalleryActions {
@@ -977,6 +978,7 @@ export const ImageGallery = memo(function ImageGallery({
     isRefreshing = false,
     selectionScopeKey,
     pendingNewCount = 0,
+    pendingRemovedCount = 0,
   } = gallery;
   const { t } = useTranslation();
   const {
@@ -1204,6 +1206,17 @@ export const ImageGallery = memo(function ImageGallery({
         >
           <RotateCw className="h-4 w-4" />
           {t("gallery.pendingNewBanner", { count: pendingNewCount })}
+        </button>
+      )}
+
+      {pendingRemovedCount > 0 && pendingNewCount === 0 && !scanning && (
+        <button
+          type="button"
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium text-destructive-foreground bg-destructive/90 border-b border-destructive hover:bg-destructive transition-colors cursor-pointer select-none"
+          onClick={onApplyPendingRefresh}
+        >
+          <RotateCw className="h-4 w-4" />
+          {t("gallery.pendingRemovedBanner", { count: pendingRemovedCount })}
         </button>
       )}
 

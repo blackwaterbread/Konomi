@@ -299,6 +299,45 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       await imageRepo.setFavorite(id, isFavorite);
       return null;
     }
+    // fs.watch can miss deletion events on some filesystems (network volumes,
+    // some Linux setups), so callers explicitly request DB cleanup after they
+    // unlink/trash a file. setScanActive pauses the watcher so any delayed
+    // file-gone event won't double-decrement search stats.
+    case "image:cleanupDeletedByPath": {
+      const { path: imagePath } = payload as { path: string };
+      watchService.setScanActive(true);
+      try {
+        const existing = await imageRepo.findByPath(imagePath);
+        if (!existing) return { deletedFromDb: false };
+        await imageRepo.deleteByIds([existing.id]);
+        await deleteSimilarityCacheForImageIds([existing.id]);
+        await decrementImageSearchStatsForRows(
+          [existing],
+          emitSearchStatsProgress,
+        );
+        utilitySender.send("image:removed", [existing.id]);
+        return { deletedFromDb: true };
+      } finally {
+        watchService.setScanActive(false, { discardDeferredChanges: true });
+      }
+    }
+    case "image:cleanupDeletedByIds": {
+      const { ids } = payload as { ids: number[] };
+      if (ids.length === 0) return { deletedFromDb: 0 };
+      watchService.setScanActive(true);
+      try {
+        const rows = await imageRepo.listByIds(ids);
+        if (rows.length === 0) return { deletedFromDb: 0 };
+        const deletedIds = rows.map((r) => r.id);
+        await imageRepo.deleteByIds(deletedIds);
+        await deleteSimilarityCacheForImageIds(deletedIds);
+        await decrementImageSearchStatsForRows(rows, emitSearchStatsProgress);
+        utilitySender.send("image:removed", deletedIds);
+        return { deletedFromDb: deletedIds.length };
+      } finally {
+        watchService.setScanActive(false, { discardDeferredChanges: true });
+      }
+    }
     case "image:watch":
       // No-op if watcher was already started at boot (paused mode).
       // Kept for backwards compatibility; the watcher is now auto-started.

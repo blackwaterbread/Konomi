@@ -74,7 +74,8 @@ export function useSubfolderState() {
   }, []);
 
   const refreshSubfolders = useCallback(
-    async (folderIds: number[]) => {
+    async (folderIds: number[], options?: { allowEmpty?: boolean }) => {
+      const allowEmpty = options?.allowEmpty ?? false;
       const results = await Promise.all(
         folderIds.map(async (id) => {
           const paths = await window.folder.listSubdirectories(id);
@@ -85,7 +86,16 @@ export function useSubfolderState() {
         let changed = false;
         const next = new Map(prev);
         for (const { id, paths } of results) {
-          if (paths.length === 0 && (prev.get(id)?.length ?? 0) > 0) continue;
+          // Initial load: preserve existing entries when DB returns empty
+          // (scan still in progress). Image:removed callers pass allowEmpty
+          // so the last subfolder can clear when its images are deleted.
+          if (
+            !allowEmpty &&
+            paths.length === 0 &&
+            (prev.get(id)?.length ?? 0) > 0
+          ) {
+            continue;
+          }
           changed = true;
           next.set(
             id,

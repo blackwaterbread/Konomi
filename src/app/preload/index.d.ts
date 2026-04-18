@@ -102,7 +102,9 @@ declare global {
       ) => Promise<ImageTagSuggestion[]>;
       listPage: (query: ImageListQuery) => Promise<ImageListResult>;
       listMatchingIds: (query: ImageListQuery) => Promise<number[]>;
-      bulkDelete: (ids: number[]) => Promise<{ deleted: number; failed: number }>;
+      bulkDelete: (
+        ids: number[],
+      ) => Promise<{ deleted: number; failed: number; deletedFromDb: number }>;
       listByIds: (ids: number[]) => Promise<ImageRow[]>;
       quickVerify: () => Promise<{
         changedFolderIds: number[];
@@ -127,7 +129,7 @@ declare global {
         cb: (item: FolderDuplicateGroup) => void,
       ) => () => void;
       revealInExplorer: (path: string) => Promise<void>;
-      delete: (path: string) => Promise<void>;
+      delete: (path: string) => Promise<{ deletedFromDb: boolean }>;
       computeHashes: () => Promise<number>;
       resetHashes: () => Promise<void>;
       rescanMetadata: () => Promise<number>;

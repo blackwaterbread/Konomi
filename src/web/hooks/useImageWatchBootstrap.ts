@@ -96,20 +96,37 @@ export function useImageEventSubscriptions({
   scheduleAnalysis,
   schedulePageRefresh,
   incrementPendingNew,
+  incrementPendingRemoved,
   effectiveFolderIds,
+  refreshSubfolders,
 }: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan"> & {
   incrementPendingNew: (count: number) => void;
+  incrementPendingRemoved: (count: number) => void;
   effectiveFolderIds: Set<number>;
+  refreshSubfolders?: (
+    folderIds: number[],
+    options?: { allowEmpty?: boolean },
+  ) => Promise<void>;
 }) {
   const incrementPendingNewRef = useRef(incrementPendingNew);
   useEffect(() => {
     incrementPendingNewRef.current = incrementPendingNew;
   }, [incrementPendingNew]);
 
+  const incrementPendingRemovedRef = useRef(incrementPendingRemoved);
+  useEffect(() => {
+    incrementPendingRemovedRef.current = incrementPendingRemoved;
+  }, [incrementPendingRemoved]);
+
   const effectiveFolderIdsRef = useRef(effectiveFolderIds);
   useEffect(() => {
     effectiveFolderIdsRef.current = effectiveFolderIds;
   }, [effectiveFolderIds]);
+
+  const refreshSubfoldersRef = useRef(refreshSubfolders);
+  useEffect(() => {
+    refreshSubfoldersRef.current = refreshSubfolders;
+  }, [refreshSubfolders]);
 
   useEffect(() => {
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
@@ -135,10 +152,19 @@ export function useImageEventSubscriptions({
 
     const offRemoved = window.image.onRemoved((ids: number[]) => {
       if (ids.length === 0) return;
-      // Removals still auto-refresh to avoid showing stale/broken cards
-      schedulePageRefresh(60);
+      if (rescanningRef.current) return;
+      if (!scanningRef.current) {
+        incrementPendingRemovedRef.current(ids.length);
+      }
       scheduleAnalysis();
       scheduleSearchStatsRefresh(120);
+      // Subfolder list is derived from image paths, so removed images can
+      // leave stale entries until the next full refresh. Recompute now.
+      const refresh = refreshSubfoldersRef.current;
+      if (refresh) {
+        const folderIds = [...effectiveFolderIdsRef.current];
+        if (folderIds.length > 0) void refresh(folderIds, { allowEmpty: true });
+      }
     });
 
     return () => {
@@ -173,6 +199,7 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     scanningRef,
     scheduleAnalysis,
     incrementPendingNew: () => {},
+    incrementPendingRemoved: () => {},
     effectiveFolderIds: new Set(),
   });
 

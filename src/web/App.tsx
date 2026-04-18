@@ -173,6 +173,9 @@ export default function App({
     handleSearchChange,
     schedulePageRefresh,
     incrementPendingNew,
+    incrementPendingRemoved,
+    markSelfRemoved,
+    releaseSelfRemoved,
     applyPendingRefresh,
     listBaseQuery,
     imageGalleryState,
@@ -285,6 +288,8 @@ export default function App({
     sortBy,
     selectedBuiltinCategory: queryFragment.builtinCategory,
     schedulePageRefresh,
+    markSelfRemoved,
+    releaseSelfRemoved,
     generationViewRef,
     handlePanelChange,
     page: imageGalleryPagination.page,
@@ -335,7 +340,9 @@ export default function App({
     scheduleAnalysis,
     schedulePageRefresh,
     incrementPendingNew,
+    incrementPendingRemoved,
     effectiveFolderIds,
+    refreshSubfolders,
   });
 
   // Single mount orchestrator — explicit sequential initialization

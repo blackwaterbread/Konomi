@@ -326,7 +326,7 @@ export function resetPreloadMocks(): void {
   preloadMocks.image.listMatchingIds.mockReset().mockResolvedValue([]);
   preloadMocks.image.bulkDelete
     .mockReset()
-    .mockResolvedValue({ deleted: 0, failed: 0 });
+    .mockResolvedValue({ deleted: 0, failed: 0, deletedFromDb: 0 });
   preloadMocks.image.listByIds.mockReset().mockResolvedValue([]);
   preloadMocks.image.scan.mockReset().mockResolvedValue(undefined);
   preloadMocks.image.setFavorite.mockReset().mockResolvedValue(undefined);
@@ -334,7 +334,7 @@ export function resetPreloadMocks(): void {
   preloadMocks.image.listIgnoredDuplicates.mockReset().mockResolvedValue([]);
   preloadMocks.image.clearIgnoredDuplicates.mockReset().mockResolvedValue(0);
   preloadMocks.image.revealInExplorer.mockReset().mockResolvedValue(undefined);
-  preloadMocks.image.delete.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.delete.mockReset().mockResolvedValue({ deletedFromDb: true });
   preloadMocks.image.computeHashes.mockReset().mockResolvedValue(0);
   preloadMocks.image.resetHashes.mockReset().mockResolvedValue(undefined);
   preloadMocks.image.similarGroups.mockReset().mockResolvedValue([]);

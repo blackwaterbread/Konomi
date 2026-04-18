@@ -187,6 +187,7 @@ const en = {
     scanningBanner: "Scanning — gallery will refresh when done",
     syncingBanner: "Syncing library...",
     pendingNewBanner: "{{count}} new image(s) — click to refresh",
+    pendingRemovedBanner: "{{count}} image(s) removed — click to refresh",
     emptyTitle: "No images found",
     emptyDescription: "Try changing the search or adjusting filters.",
     columnSize: {

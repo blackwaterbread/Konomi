@@ -68,6 +68,8 @@ function renderImageActions(options?: {
       sortBy: options?.sortBy ?? "recent",
       selectedBuiltinCategory: options?.selectedBuiltinCategory ?? null,
       schedulePageRefresh,
+      markSelfRemoved: vi.fn(),
+      releaseSelfRemoved: vi.fn(),
       generationViewRef,
       handlePanelChange,
       page: 1,

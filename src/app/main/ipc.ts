@@ -91,13 +91,23 @@ export function registerIpcHandlers(): void {
     } catch {
       await unlink(path);
     }
+    return (await bridge.request("image:cleanupDeletedByPath", { path })) as {
+      deletedFromDb: boolean;
+    };
   });
   ipcMain.handle(
     "image:bulkDelete",
-    async (_, ids: number[]): Promise<{ deleted: number; failed: number }> => {
-      const rows = await bridge.request("image:listByIds", { ids }) as Array<{ path: string }>;
+    async (
+      _,
+      ids: number[],
+    ): Promise<{ deleted: number; failed: number; deletedFromDb: number }> => {
+      const rows = (await bridge.request("image:listByIds", { ids })) as Array<{
+        id: number;
+        path: string;
+      }>;
       let deleted = 0;
       let failed = 0;
+      const succeededIds: number[] = [];
       const BATCH = 20;
       for (let i = 0; i < rows.length; i += BATCH) {
         const batch = rows.slice(i, i + BATCH);
@@ -109,14 +119,26 @@ export function registerIpcHandlers(): void {
             } catch {
               await unlink(row.path);
             }
+            return row.id;
           }),
         );
         for (const r of results) {
-          if (r.status === "fulfilled") deleted++;
-          else failed++;
+          if (r.status === "fulfilled") {
+            deleted++;
+            succeededIds.push(r.value);
+          } else {
+            failed++;
+          }
         }
       }
-      return { deleted, failed };
+      let deletedFromDb = 0;
+      if (succeededIds.length > 0) {
+        const result = (await bridge.request("image:cleanupDeletedByIds", {
+          ids: succeededIds,
+        })) as { deletedFromDb: number };
+        deletedFromDb = result.deletedFromDb;
+      }
+      return { deleted, failed, deletedFromDb };
     },
   );
 

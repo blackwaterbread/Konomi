@@ -752,6 +752,8 @@ describe("App", () => {
       hasLoadedOnce: true,
       isLoading: false,
       schedulePageRefresh,
+      markSelfRemoved: vi.fn(),
+      releaseSelfRemoved: vi.fn(),
     });
 
     render(<App />);
