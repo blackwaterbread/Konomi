@@ -24,6 +24,7 @@ export function useFolderController(
     toggleFolderWithCascade,
     addSelectedFolder,
     removeSelectedFolder,
+    isolateFolder,
   } = useFolderSelection();
   const { collapsedFolderIds, toggleCollapse } = useFolderCollapse();
   const {
@@ -180,6 +181,16 @@ export function useFolderController(
     [removeFolder, clearFolderSubfolders],
   );
 
+  const isolateFolderVisible = useCallback(
+    (id: number) => {
+      isolateFolder(id);
+      for (const folder of folders) {
+        setFolderSubfoldersVisible(folder.id, true);
+      }
+    },
+    [isolateFolder, folders, setFolderSubfoldersVisible],
+  );
+
   return {
     folders,
     hasLoaded,
@@ -192,6 +203,7 @@ export function useFolderController(
     effectiveFolderIds,
     isFolderPartial,
     toggleFolder: toggleFolderVisible,
+    isolateFolder: isolateFolderVisible,
     addSelectedFolder,
     removeSelectedFolder,
     folderCount,

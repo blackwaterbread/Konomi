@@ -871,6 +871,7 @@ const en = {
     folders: {
       openInExplorer: "Open in Explorer",
       rescan: "Rescan Folder",
+      isolate: "Show Only This Folder",
       rename: "Rename Folder",
       delete: "Delete Folder",
       properties: "Folder Properties",

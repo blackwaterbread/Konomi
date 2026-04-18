@@ -61,11 +61,16 @@ export function useFolderSelection() {
     });
   }, []);
 
+  const isolateFolder = useCallback((id: number) => {
+    setSelectedFolderIds(new Set([id]));
+  }, []);
+
   return {
     selectedFolderIds,
     toggleFolder,
     toggleFolderWithCascade,
     addSelectedFolder,
     removeSelectedFolder,
+    isolateFolder,
   };
 }

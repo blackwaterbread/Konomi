@@ -99,6 +99,7 @@ interface SidebarFolderActions {
   renameFolder: (id: number, name: string) => Promise<void>;
   reorderFolders: (ids: number[]) => void;
   onFolderToggle?: (id: number) => void;
+  onFolderIsolate?: (id: number) => void;
   onFolderToggleCollapse?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
@@ -396,6 +397,7 @@ interface SidebarFolderRowProps {
   isCollapsed?: boolean;
   onRename: (id: number, name: string) => Promise<void>;
   onToggle?: (id: number) => void;
+  onIsolate?: (id: number) => void;
   onToggleCollapse?: (id: number) => void;
   onDeleteRequest: (target: { id: number; name: string }) => void;
   onReveal: (folderId: number) => void;
@@ -422,6 +424,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   isCollapsed = false,
   onRename,
   onToggle,
+  onIsolate,
   onToggleCollapse,
   onDeleteRequest,
   onReveal,
@@ -723,6 +726,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
           {t("sidebar.folders.rescan")}
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => onIsolate?.(folder.id)}>
+          {t("sidebar.folders.isolate")}
+        </ContextMenuItem>
         <ContextMenuItem disabled={isScanning} onSelect={handleStartEditing}>
           {t("sidebar.folders.rename")}
         </ContextMenuItem>
@@ -1204,6 +1210,7 @@ interface SidebarFoldersSectionProps {
   isFolderPartial?: (folderId: number) => boolean;
   onOpenAddFolders: () => void;
   onToggle?: (id: number) => void;
+  onIsolate?: (id: number) => void;
   onToggleCollapse?: (id: number) => void;
   onRename: (id: number, name: string) => Promise<void>;
   onDeleteRequest: (target: { id: number; name: string }) => void;
@@ -1235,6 +1242,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isFolderPartial,
   onOpenAddFolders,
   onToggle,
+  onIsolate,
   onToggleCollapse,
   onRename,
   onDeleteRequest,
@@ -1309,6 +1317,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                   isAnalyzing={isAnalyzing}
                   onRename={onRename}
                   onToggle={onToggle}
+                  onIsolate={onIsolate}
                   onToggleCollapse={onToggleCollapse}
                   onDeleteRequest={onDeleteRequest}
                   onReveal={onReveal}
@@ -1525,6 +1534,7 @@ export const Sidebar = memo(
       renameFolder,
       reorderFolders,
       onFolderToggle,
+      onFolderIsolate,
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
@@ -1960,6 +1970,7 @@ export const Sidebar = memo(
                 isFolderPartial={isFolderPartial}
                 onOpenAddFolders={handleOpenAvailableFolders}
                 onToggle={onFolderToggle}
+                onIsolate={onFolderIsolate}
                 onToggleCollapse={onFolderToggleCollapse}
                 onRename={handleFolderRename}
                 onDeleteRequest={handleDeleteFolderRequest}
