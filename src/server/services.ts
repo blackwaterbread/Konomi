@@ -1,5 +1,7 @@
+import path from "path";
 import type { EventSender } from "@core/types/event-sender";
 import { getDB } from "./db";
+import { listAvailableDirectories } from "./lib/data-root";
 import { createPrismaFolderRepo } from "@core/lib/repositories/prisma-folder-repo";
 import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import { createPrismaCategoryRepo } from "@core/lib/repositories/prisma-category-repo";
@@ -134,6 +136,34 @@ export function createServices(sender: EventSender) {
 
 export type Services = ReturnType<typeof createServices>;
 
+async function autoRegisterFolders(services: Services): Promise<number> {
+  const detected = await listAvailableDirectories();
+  if (detected.length === 0) return 0;
+
+  const existing = await services.folderService.list();
+  const normalizePath = (p: string) => {
+    const resolved = path.resolve(p);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  const existingPaths = new Set(existing.map((f) => normalizePath(f.path)));
+
+  let registered = 0;
+  for (const dir of detected) {
+    if (existingPaths.has(normalizePath(dir.path))) continue;
+    try {
+      await services.folderService.create(dir.name, dir.path);
+      registered++;
+      log.info(`Auto-registered folder: ${dir.name} (${dir.path})`);
+    } catch (err) {
+      log.errorWithStack(
+        `Failed to auto-register folder ${dir.path}`,
+        err as Error,
+      );
+    }
+  }
+  return registered;
+}
+
 export async function bootstrap(services: Services): Promise<void> {
   await services.categoryService.seedBuiltins();
   log.info("Seeded builtin categories");
@@ -141,6 +171,23 @@ export async function bootstrap(services: Services): Promise<void> {
   await services.duplicateService.ensureIgnoredLoaded();
   log.info("Loaded ignored duplicate paths");
 
+  const registered = await autoRegisterFolders(services);
+  if (registered > 0) log.info(`Auto-registered ${registered} folder(s)`);
+
   await services.watchService.startAll({ paused: true });
   log.info("Watcher started in paused mode");
+}
+
+export async function runInitialScan(services: Services): Promise<void> {
+  try {
+    log.info("Initial scan starting");
+    await services.scanService.scanAll();
+    log.info("Initial scan complete");
+  } catch (err) {
+    log.errorWithStack("Initial scan failed", err as Error);
+  } finally {
+    services.watchService.setScanActive(false, {
+      discardDeferredChanges: true,
+    });
+  }
 }

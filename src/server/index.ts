@@ -5,7 +5,7 @@ import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { WebSocket } from "ws";
 import { createWebSocketSender } from "./sender";
-import { createServices, bootstrap } from "./services";
+import { createServices, bootstrap, runInitialScan } from "./services";
 import { registerFolderRoutes } from "./routes/folder";
 import { registerImageRoutes } from "./routes/image";
 import { registerCategoryRoutes } from "./routes/category";
@@ -78,6 +78,9 @@ async function main() {
   // ── Start ────────────────────────────────
   await app.listen({ port: PORT, host: HOST });
   log.info(`Konomi Web server listening on ${HOST}:${PORT}`);
+
+  // Initial scan runs asynchronously so it doesn't delay server readiness.
+  void runInitialScan(services);
 }
 
 main().catch((err) => {
