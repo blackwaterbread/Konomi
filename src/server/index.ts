@@ -14,7 +14,7 @@ import { registerNaiRoutes } from "./routes/nai";
 import { registerImageFileRoutes } from "./routes/image-file";
 import { createLogger } from "@core/lib/logger";
 import { setDBProvider } from "@core/lib/db";
-import { getDB } from "./db";
+import { getDB, ensureSchema } from "./db";
 
 // Dev defaults — Electron app sets these via bridge env vars
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +73,7 @@ async function main() {
   });
 
   // ── Bootstrap ────────────────────────────
+  await ensureSchema();
   await bootstrap(services);
 
   // ── Start ────────────────────────────────
