@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { parsePromptTokens } from "../lib/token";
+import { walkImageFiles } from "../lib/scanner";
 import { createLogger } from "../lib/logger";
 import type {
   ImageUpsertData,
@@ -149,7 +150,7 @@ export function createWatchService(deps: WatchServiceDeps) {
         }
         sender.send("image:removed", [existing.id]);
       } else {
-        await reconcileFolderMissingRows(folderId);
+        await reconcileFolder(folderId);
       }
       return;
     }
@@ -199,9 +200,15 @@ export function createWatchService(deps: WatchServiceDeps) {
     }
   }
 
-  // ── Folder reconciliation (detect missing files) ────────────
+  // ── Folder reconciliation (detect missing & new files) ─────
 
-  async function reconcileFolderMissingRows(folderId: number): Promise<void> {
+  // fs.watch on Windows/network volumes can fire events with null filename
+  // when many files change at once, so we also enumerate the folder and
+  // queue any PNG/WebP not yet in the DB.
+  const pathKey = (p: string): string =>
+    process.platform === "win32" ? p.toLowerCase() : p;
+
+  async function reconcileFolder(folderId: number): Promise<void> {
     if (scanActive) {
       deferredReconcileFolders.add(folderId);
       return;
@@ -218,6 +225,7 @@ export function createWatchService(deps: WatchServiceDeps) {
         return;
       }
 
+      const dbPathSet = new Set<string>();
       const allRemovedIds: number[] = [];
       let lastId = 0;
 
@@ -229,6 +237,8 @@ export function createWatchService(deps: WatchServiceDeps) {
         );
         if (rows.length === 0) break;
         lastId = rows[rows.length - 1].id;
+
+        for (const row of rows) dbPathSet.add(pathKey(row.path));
 
         const missing = rows.filter((row) => !fs.existsSync(row.path));
         for (let i = 0; i < missing.length; i += DELETE_BATCH) {
@@ -250,6 +260,16 @@ export function createWatchService(deps: WatchServiceDeps) {
 
       if (allRemovedIds.length > 0) {
         sender.send("image:removed", allRemovedIds);
+      }
+
+      try {
+        for await (const filePath of walkImageFiles(folder.path)) {
+          if (!dbPathSet.has(pathKey(filePath))) {
+            scheduleProcess(folderId, filePath);
+          }
+        }
+      } catch {
+        // ignore enumeration failures
       }
     } catch {
       // ignore reconciliation failures
@@ -283,7 +303,7 @@ export function createWatchService(deps: WatchServiceDeps) {
       folderId,
       setTimeout(() => {
         folderReconcileTimers.delete(folderId);
-        void reconcileFolderMissingRows(folderId);
+        void reconcileFolder(folderId);
       }, DEBOUNCE_MS),
     );
   }
