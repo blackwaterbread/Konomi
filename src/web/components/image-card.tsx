@@ -25,6 +25,7 @@ import { useLocaleFormatters } from "@/lib/formatters";
 import { TokenContainer } from "./token-container";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api";
+import { useLongPress } from "@/lib/long-press";
 import type { GalleryDensity } from "./image-gallery";
 
 export interface ImageData {
@@ -76,6 +77,8 @@ interface ImageCardProps {
   selectionMode?: boolean;
   selected?: boolean;
   onSelectChange?: (id: string, selected: boolean) => void;
+  onLongPressSelect?: (id: string) => void;
+  isMobile?: boolean;
   selectedCount?: number;
   onBulkDelete?: () => void;
   onBulkCategory?: () => void;
@@ -98,20 +101,31 @@ export const ImageCard = memo(function ImageCard({
   selectionMode = false,
   selected = false,
   onSelectChange,
+  onLongPressSelect,
   selectedCount = 0,
   onBulkDelete,
   onBulkCategory,
   onRescanMetadata,
   onBulkRescanMetadata,
+  isMobile = false,
 }: ImageCardProps) {
   const { t } = useTranslation();
   const { formatDate, formatDateTime } = useLocaleFormatters();
-  const TOKEN_PREVIEW_LIMIT = density === "compact" ? 5 : density === "dense" ? 3 : 10;
+  const TOKEN_PREVIEW_LIMIT =
+    density === "compact" ? 5 : density === "dense" ? 3 : 10;
   const { appInfo } = useApi();
   const isElectron = appInfo.isElectron;
+  const { handlers: longPressHandlers, didFireRef: longPressFiredRef } =
+    useLongPress(
+      () => {
+        onLongPressSelect?.(image.id);
+      },
+      { ms: 450, touchOnly: true, haptic: true },
+    );
   const showFooter = density === "normal" || density === "compact";
   const showHoverOverlay = density !== "micro";
-  const showHoverTokens = density === "normal" || density === "compact" || density === "dense";
+  const showHoverTokens =
+    density === "normal" || density === "compact" || density === "dense";
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
   const [hoverPreviewReady, setHoverPreviewReady] = useState(false);
@@ -146,12 +160,25 @@ export const ImageCard = memo(function ImageCard({
   );
 
   const handleCardClick = useCallback(() => {
+    // Suppress the click that naturally follows pointerup after long-press fires,
+    // otherwise long-press-to-select would immediately deselect on release.
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      return;
+    }
     if (selectionMode && onSelectChange) {
       onSelectChange(image.id, !selected);
       return;
     }
     onClick(image);
-  }, [image, onClick, onSelectChange, selected, selectionMode]);
+  }, [
+    image,
+    longPressFiredRef,
+    onClick,
+    onSelectChange,
+    selected,
+    selectionMode,
+  ]);
 
   const handleCheckboxChange = useCallback(
     (checked: boolean) => {
@@ -234,9 +261,7 @@ export const ImageCard = memo(function ImageCard({
               })}
             </ContextMenuItem>
           ) : (
-            <ContextMenuItem
-              onSelect={() => onRescanMetadata(image.path)}
-            >
+            <ContextMenuItem onSelect={() => onRescanMetadata(image.path)}>
               <RotateCw className="h-4 w-4" />
               {t("imageCard.menu.rescanMetadata")}
             </ContextMenuItem>
@@ -277,72 +302,81 @@ export const ImageCard = memo(function ImageCard({
         </div>
       );
     }
+    const listInner = (
+      <div
+        className={cn(
+          "group flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors cursor-pointer",
+          // Suppress iOS image-save callout + text selection during long-press.
+          isMobile &&
+            "select-none [-webkit-touch-callout:none] [-webkit-user-select:none]",
+        )}
+        onClick={handleCardClick}
+        {...longPressHandlers}
+      >
+        {selectionMode && (
+          <Checkbox
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
+          />
+        )}
+        <div className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20">
+          {image.src && !imageBroken && (
+            <img
+              ref={imgRef}
+              src={image.src}
+              alt={image.prompt || t("imageCard.previewAlt")}
+              className={cn(
+                "h-full w-full object-cover transition-opacity duration-200",
+                imageLoaded ? "opacity-100" : "opacity-0",
+              )}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                setImageLoaded(true);
+                setImageBroken(true);
+              }}
+            />
+          )}
+          {image.src && !imageLoaded && !imageBroken && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {imageBroken && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <ImageOff className="h-5 w-5 text-muted-foreground/60" />
+            </div>
+          )}
+        </div>
+        <p className="flex-1 text-xs text-muted-foreground font-mono truncate">
+          {image.prompt}
+        </p>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {image.width}×{image.height}
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground w-48 text-right">
+          {image.model}
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground w-48 text-right">
+          {formatDateTime(image.fileModifiedAt)}
+        </span>
+        {image.isFavorite && (
+          <Heart className="h-3.5 w-3.5 fill-favorite text-favorite shrink-0" />
+        )}
+      </div>
+    );
+    if (isMobile) return listInner;
     return (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger asChild>
-          <div
-            className="group flex items-center gap-3 px-3 py-2 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors cursor-pointer"
-            onClick={handleCardClick}
-          >
-            {selectionMode && (
-              <Checkbox
-                checked={selected}
-                onClick={(e) => e.stopPropagation()}
-                onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
-              />
-            )}
-            <div className="relative h-12 w-12 shrink-0 rounded-md overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20">
-              {image.src && !imageBroken && (
-                <img
-                  ref={imgRef}
-                  src={image.src}
-                  alt={image.prompt || t("imageCard.previewAlt")}
-                  className={cn(
-                    "h-full w-full object-cover transition-opacity duration-200",
-                    imageLoaded ? "opacity-100" : "opacity-0",
-                  )}
-                  loading="lazy"
-                  onLoad={() => setImageLoaded(true)}
-                  onError={() => {
-                    setImageLoaded(true);
-                    setImageBroken(true);
-                  }}
-                />
-              )}
-              {image.src && !imageLoaded && !imageBroken && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {imageBroken && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <ImageOff className="h-5 w-5 text-muted-foreground/60" />
-                </div>
-              )}
-            </div>
-            <p className="flex-1 text-xs text-muted-foreground font-mono truncate">
-              {image.prompt}
-            </p>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {image.width}×{image.height}
-            </span>
-            <span className="shrink-0 text-xs text-muted-foreground w-48 text-right">
-              {image.model}
-            </span>
-            <span className="shrink-0 text-xs text-muted-foreground w-48 text-right">
-              {formatDateTime(image.fileModifiedAt)}
-            </span>
-            {image.isFavorite && (
-              <Heart className="h-3.5 w-3.5 fill-favorite text-favorite shrink-0" />
-            )}
-          </div>
-        </ContextMenuTrigger>
+        <ContextMenuTrigger asChild>{listInner}</ContextMenuTrigger>
         {contextMenuContent}
       </ContextMenu>
     );
   }
 
-  const isDense = density === "dense" || density === "minimal" || density === "micro";
+  const isDense =
+    density === "dense" || density === "minimal" || density === "micro";
   const isMinimalOrMicro = density === "minimal" || density === "micro";
   const isMicro = density === "micro";
 
@@ -364,7 +398,11 @@ export const ImageCard = memo(function ImageCard({
         ? "h-3.5 w-3.5"
         : "h-4 w-4";
 
-  const favButtonPadding = isMicro ? "p-0.5" : isMinimalOrMicro ? "p-1" : "p-1.5";
+  const favButtonPadding = isMicro
+    ? "p-0.5"
+    : isMinimalOrMicro
+      ? "p-1"
+      : "p-1.5";
 
   if (image.deleted) {
     return (
@@ -396,199 +434,221 @@ export const ImageCard = memo(function ImageCard({
     );
   }
 
-  return (
-    <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger asChild>
+  const gridInner = (
+    <div
+      className={cn(
+        "group relative overflow-hidden bg-card border border-border hover:border-primary/50 transition-all duration-300 cursor-pointer",
+        roundedClass,
+        // Suppress iOS image-save callout + text selection during long-press.
+        isMobile &&
+          "select-none [-webkit-touch-callout:none] [-webkit-user-select:none]",
+      )}
+      onClick={handleCardClick}
+      onPointerEnter={handleHoverPreviewActivate}
+      {...longPressHandlers}
+    >
+      {/* Image */}
+      <div className={cn(aspectClass, "relative overflow-hidden")}>
+        <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+          {image.src && !imageBroken && (
+            <img
+              ref={imgRef}
+              src={image.src}
+              alt={image.prompt || t("imageCard.previewAlt")}
+              className={cn(
+                "absolute inset-0 h-full w-full object-cover transition-opacity duration-200",
+                imageLoaded ? "opacity-100" : "opacity-0",
+              )}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                setImageLoaded(true);
+                setImageBroken(true);
+              }}
+            />
+          )}
+          {image.src && !imageLoaded && !imageBroken && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+              <Loader2
+                className={cn(
+                  "animate-spin text-muted-foreground",
+                  isDense ? "h-4 w-4" : "h-6 w-6",
+                )}
+              />
+            </div>
+          )}
+          {imageBroken && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground/60">
+              <ImageOff className={isDense ? "h-4 w-4" : "h-8 w-8"} />
+              {!isDense && (
+                <span className="text-xs">{t("imageCard.missingImage")}</span>
+              )}
+            </div>
+          )}
+          {!image.src && !imageBroken && !isDense && (
+            <span className="text-muted-foreground text-sm">
+              {t("imageCard.emptyPreview")}
+            </span>
+          )}
+        </div>
+
+        {/* Hover Overlay */}
+        {showHoverOverlay && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div
+              className={cn(
+                "absolute bottom-0 left-0 right-0",
+                isDense ? "p-1.5" : density === "compact" ? "p-3" : "p-4",
+              )}
+            >
+              {showHoverTokens ? (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.preventDefault()}
+                  className={cn(
+                    "relative overflow-hidden rounded-md border border-white/15 bg-black/55 shadow-lg backdrop-blur-sm",
+                    isDense ? "max-h-16 p-1" : "max-h-28 p-2",
+                  )}
+                >
+                  {hoverPreviewReady && (
+                    <TokenContainer tokens={previewTokens} isEditable={false} />
+                  )}
+                  {hoverPreviewReady && hiddenTokenCount > 0 && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/80 to-transparent px-2 pb-1 pt-5">
+                      <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">
+                        {t("imageCard.moreTokens", { count: hiddenTokenCount })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* minimal: just model + date on hover */
+                <div className="text-[10px] text-white/80 truncate text-center">
+                  {image.model}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Favorite Button */}
+        <button
+          className={cn(
+            "absolute top-2 right-2 rounded-full bg-black/40 backdrop-blur-sm transition-opacity",
+            favButtonPadding,
+            isMicro && "top-0.5 right-0.5",
+            isMinimalOrMicro && !isMicro && "top-1 right-1",
+            image.isFavorite
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100 hover-none:opacity-100",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            setFavoritePopping(true);
+            onToggleFavorite(image.id);
+            setTimeout(() => setFavoritePopping(false), 450);
+          }}
+        >
+          {favoritePopping && !isMicro && (
+            <span
+              className="absolute inset-0 rounded-full border-2 border-favorite pointer-events-none"
+              style={{ animation: "heart-ripple 0.45s ease-out forwards" }}
+            />
+          )}
+          <Heart
+            className={cn(
+              "relative",
+              favIconSize,
+              image.isFavorite ? "fill-favorite text-favorite" : "text-white",
+            )}
+            style={
+              favoritePopping && !isMicro
+                ? {
+                    animation:
+                      "heart-pop 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards",
+                  }
+                : undefined
+            }
+          />
+        </button>
+
+        {selectionMode && (
+          <div
+            className={cn(
+              "absolute rounded-md border backdrop-blur-sm",
+              isMicro
+                ? "top-0.5 left-0.5 px-0.5 py-0.5"
+                : isMinimalOrMicro
+                  ? "top-1.5 left-1.5 px-1 py-0.5"
+                  : "top-3 left-3 px-1.5 py-1",
+              selected
+                ? "bg-primary/90 border-primary"
+                : "bg-background/80 border-border",
+            )}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
+              className={cn(
+                selected ? "border-primary-foreground" : "",
+                isMicro && "h-3 w-3",
+              )}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {showFooter && (
         <div
           className={cn(
-            "group relative overflow-hidden bg-card border border-border hover:border-primary/50 transition-all duration-300 cursor-pointer",
-            roundedClass,
+            "bg-card",
+            density === "compact" ? "p-2 space-y-1" : "p-3 space-y-2",
           )}
-          onClick={handleCardClick}
-          onPointerEnter={handleHoverPreviewActivate}
         >
-          {/* Image */}
-          <div className={cn(aspectClass, "relative overflow-hidden")}>
-            <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-              {image.src && !imageBroken && (
-                <img
-                  ref={imgRef}
-                  src={image.src}
-                  alt={image.prompt || t("imageCard.previewAlt")}
-                  className={cn(
-                    "absolute inset-0 h-full w-full object-cover transition-opacity duration-200",
-                    imageLoaded ? "opacity-100" : "opacity-0",
-                  )}
-                  loading="lazy"
-                  onLoad={() => setImageLoaded(true)}
-                  onError={() => {
-                    setImageLoaded(true);
-                    setImageBroken(true);
-                  }}
-                />
-              )}
-              {image.src && !imageLoaded && !imageBroken && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
-                  <Loader2 className={cn("animate-spin text-muted-foreground", isDense ? "h-4 w-4" : "h-6 w-6")} />
-                </div>
-              )}
-              {imageBroken && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground/60">
-                  <ImageOff className={isDense ? "h-4 w-4" : "h-8 w-8"} />
-                  {!isDense && (
-                    <span className="text-xs">{t("imageCard.missingImage")}</span>
-                  )}
-                </div>
-              )}
-              {!image.src && !imageBroken && !isDense && (
-                <span className="text-muted-foreground text-sm">
-                  {t("imageCard.emptyPreview")}
+          {density === "normal" && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge
+                variant="secondary"
+                className="text-xs bg-secondary text-secondary-foreground"
+              >
+                {image.category}
+              </Badge>
+              {image.tags.slice(0, 2).map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className="text-xs border-border text-muted-foreground"
+                >
+                  {tag}
+                </Badge>
+              ))}
+              {image.tags.length > 2 && (
+                <span className="text-xs text-muted-foreground">
+                  +{image.tags.length - 2}
                 </span>
               )}
             </div>
-
-            {/* Hover Overlay */}
-            {showHoverOverlay && (
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className={cn("absolute bottom-0 left-0 right-0", isDense ? "p-1.5" : density === "compact" ? "p-3" : "p-4")}>
-                  {showHoverTokens ? (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      onContextMenu={(e) => e.preventDefault()}
-                      className={cn(
-                        "relative overflow-hidden rounded-md border border-white/15 bg-black/55 shadow-lg backdrop-blur-sm",
-                        isDense ? "max-h-16 p-1" : "max-h-28 p-2",
-                      )}
-                    >
-                      {hoverPreviewReady && (
-                        <TokenContainer tokens={previewTokens} isEditable={false} />
-                      )}
-                      {hoverPreviewReady && hiddenTokenCount > 0 && (
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/80 to-transparent px-2 pb-1 pt-5">
-                          <span className="rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">
-                            {t("imageCard.moreTokens", { count: hiddenTokenCount })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    /* minimal: just model + date on hover */
-                    <div className="text-[10px] text-white/80 truncate text-center">
-                      {image.model}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Favorite Button */}
-            <button
-              className={cn(
-                "absolute top-2 right-2 rounded-full bg-black/40 backdrop-blur-sm transition-opacity",
-                favButtonPadding,
-                isMicro && "top-0.5 right-0.5",
-                isMinimalOrMicro && !isMicro && "top-1 right-1",
-                image.isFavorite
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100",
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setFavoritePopping(true);
-                onToggleFavorite(image.id);
-                setTimeout(() => setFavoritePopping(false), 450);
-              }}
-            >
-              {favoritePopping && !isMicro && (
-                <span
-                  className="absolute inset-0 rounded-full border-2 border-favorite pointer-events-none"
-                  style={{ animation: "heart-ripple 0.45s ease-out forwards" }}
-                />
-              )}
-              <Heart
-                className={cn(
-                  "relative",
-                  favIconSize,
-                  image.isFavorite
-                    ? "fill-favorite text-favorite"
-                    : "text-white",
-                )}
-                style={
-                  favoritePopping && !isMicro
-                    ? {
-                        animation:
-                          "heart-pop 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards",
-                      }
-                    : undefined
-                }
-              />
-            </button>
-
-            {selectionMode && (
-              <div
-                className={cn(
-                  "absolute rounded-md border backdrop-blur-sm",
-                  isMicro
-                    ? "top-0.5 left-0.5 px-0.5 py-0.5"
-                    : isMinimalOrMicro
-                      ? "top-1.5 left-1.5 px-1 py-0.5"
-                      : "top-3 left-3 px-1.5 py-1",
-                  selected
-                    ? "bg-primary/90 border-primary"
-                    : "bg-background/80 border-border",
-                )}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Checkbox
-                  checked={selected}
-                  onCheckedChange={(checked) => handleCheckboxChange(!!checked)}
-                  className={cn(
-                    selected ? "border-primary-foreground" : "",
-                    isMicro && "h-3 w-3",
-                  )}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          {showFooter && (
-            <div className={cn("bg-card", density === "compact" ? "p-2 space-y-1" : "p-3 space-y-2")}>
-              {density === "normal" && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge
-                    variant="secondary"
-                    className="text-xs bg-secondary text-secondary-foreground"
-                  >
-                    {image.category}
-                  </Badge>
-                  {image.tags.slice(0, 2).map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="outline"
-                      className="text-xs border-border text-muted-foreground"
-                    >
-                      {tag}
-                    </Badge>
-                  ))}
-                  {image.tags.length > 2 && (
-                    <span className="text-xs text-muted-foreground">
-                      +{image.tags.length - 2}
-                    </span>
-                  )}
-                </div>
-              )}
-              <div className={cn(
-                "flex items-center justify-between text-muted-foreground",
-                density === "compact" ? "text-[10px]" : "text-xs",
-              )}>
-                <span className="truncate">{image.model}</span>
-                <span className="shrink-0">{formatDate(image.fileModifiedAt)}</span>
-              </div>
-            </div>
           )}
+          <div
+            className={cn(
+              "flex items-center justify-between text-muted-foreground",
+              density === "compact" ? "text-[10px]" : "text-xs",
+            )}
+          >
+            <span className="truncate">{image.model}</span>
+            <span className="shrink-0">{formatDate(image.fileModifiedAt)}</span>
+          </div>
         </div>
-      </ContextMenuTrigger>
+      )}
+    </div>
+  );
+
+  if (isMobile) return gridInner;
+  return (
+    <ContextMenu onOpenChange={handleContextMenuOpenChange}>
+      <ContextMenuTrigger asChild>{gridInner}</ContextMenuTrigger>
       {contextMenuContent}
     </ContextMenu>
   );

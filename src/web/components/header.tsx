@@ -11,7 +11,9 @@ import {
   SlidersHorizontal,
   Bug,
   CircleAlert,
+  Menu,
 } from "lucide-react";
+import { toast } from "sonner";
 import infoImageUrl from "@/assets/images/info.webp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,7 @@ import {
   SEARCH_INPUT_APPEND_TAG_EVENT,
   type SearchInputAppendTagDetail,
 } from "@/lib/search-input-event";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import { useTranslation } from "react-i18next";
 
 const SEARCH_TERM_SPLIT_RE = /[,\n\uFF0C|\uFF5C]+/;
@@ -122,6 +125,67 @@ interface HeaderProps {
   devMode?: boolean;
   announcementDeferred?: boolean;
   onAnnouncementReopen?: () => void;
+  onToggleSidebar?: () => void;
+}
+
+type DropdownRect = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
+function useMobileDropdownRect(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  open: boolean,
+  enabled: boolean,
+): DropdownRect | null {
+  const [rect, setRect] = useState<DropdownRect | null>(null);
+
+  useEffect(() => {
+    if (!open || !enabled) {
+      setRect(null);
+      return;
+    }
+    const update = () => {
+      const node = inputRef.current;
+      if (!node) return;
+      const r = node.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const viewportTop = vv?.offsetTop ?? 0;
+      const viewportHeight = vv?.height ?? window.innerHeight;
+      const viewportBottom = viewportTop + viewportHeight;
+      const top = r.bottom + 4;
+      const maxHeight = viewportBottom - top - 8;
+      if (maxHeight <= 0) {
+        setRect(null);
+        return;
+      }
+      setRect({
+        top,
+        left: Math.max(8, r.left),
+        width: Math.min(r.width, window.innerWidth - 16),
+        maxHeight,
+      });
+    };
+    const scrollOpts: AddEventListenerOptions = {
+      passive: true,
+      capture: true,
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, scrollOpts);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, scrollOpts);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
+    };
+  }, [open, enabled, inputRef]);
+
+  return rect;
 }
 
 interface HeaderSearchSectionProps {
@@ -143,6 +207,7 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
 }: HeaderSearchSectionProps) {
   const { t } = useTranslation();
   const { formatNumber } = useLocaleFormatters();
+  const isMobile = useIsMobile();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [inputValue, setInputValue] = useState(searchQuery);
   const [caretPosition, setCaretPosition] = useState<number | null>(null);
@@ -332,6 +397,13 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
     );
   };
 
+  const suggestionsVisible = tagSuggestionOpen && tagSuggestions.length > 0;
+  const mobileDropdownRect = useMobileDropdownRect(
+    inputRef,
+    suggestionsVisible,
+    isMobile,
+  );
+
   return (
     <>
       <div
@@ -408,8 +480,25 @@ const HeaderSearchSection = memo(function HeaderSearchSection({
               }}
               className="w-full pl-10 pr-8 bg-secondary border-border focus:border-primary"
             />
-            {tagSuggestionOpen && tagSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 z-50 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
+            {suggestionsVisible && (
+              <div
+                className={cn(
+                  "z-50 overflow-y-auto rounded-md border border-border bg-popover shadow-md",
+                  isMobile && mobileDropdownRect
+                    ? "fixed"
+                    : "absolute top-full left-0 right-0 mt-1 overflow-hidden",
+                )}
+                style={
+                  isMobile && mobileDropdownRect
+                    ? {
+                        top: mobileDropdownRect.top,
+                        left: mobileDropdownRect.left,
+                        width: mobileDropdownRect.width,
+                        maxHeight: mobileDropdownRect.maxHeight,
+                      }
+                    : undefined
+                }
+              >
                 {tagSuggestions.map((item, index) => (
                   <button
                     key={`${item.tag}-${index}`}
@@ -908,6 +997,7 @@ export const Header = memo(function Header({
   devMode,
   announcementDeferred,
   onAnnouncementReopen,
+  onToggleSidebar,
 }: HeaderProps) {
   const { t } = useTranslation();
   const {
@@ -920,10 +1010,6 @@ export const Header = memo(function Header({
     rescanProgress,
     etaSeconds: etaMap,
   } = useHeaderProgress({ scanning, isAnalyzing });
-  const etaSuffix = (key: string) => {
-    const sec = etaMap.get(key);
-    return sec != null ? ` ${formatEta(sec, t)}` : "";
-  };
   const hasSearchStatsProgress =
     !!searchStatsProgress &&
     searchStatsProgress.total > 0 &&
@@ -943,6 +1029,83 @@ export const Header = memo(function Header({
     (hasSimilarityProgress ? similarityProgress : null) ??
     (hasSearchStatsProgress ? searchStatsProgress : null);
 
+  const statusActive =
+    scanning ||
+    checkingDuplicates ||
+    isAnalyzing ||
+    hasRescanProgress ||
+    hasSimilarityProgress ||
+    hasSearchStatsProgress;
+
+  const statusText = useMemo(() => {
+    if (!statusActive) return "";
+    const eta = (key: string) => {
+      const sec = etaMap.get(key);
+      return sec != null ? ` ${formatEta(sec, t)}` : "";
+    };
+    if (checkingDuplicates) return t("header.progress.checkingDuplicates");
+    if (scanProgress && scanProgress.total > 0) {
+      const names =
+        scanningFolderNames && scanningFolderNames.size > 0
+          ? Array.from(scanningFolderNames.values()).join(", ")
+          : null;
+      return names
+        ? t("header.progress.scanFolders", {
+            names,
+            done: scanProgress.done,
+            total: scanProgress.total,
+          }) + eta("scan")
+        : t("header.progress.scanImages", {
+            done: scanProgress.done,
+            total: scanProgress.total,
+          }) + eta("scan");
+    }
+    if (hasRescanProgress && rescanProgress) {
+      return (
+        t("header.progress.rescan", {
+          done: rescanProgress.done,
+          total: rescanProgress.total,
+        }) + eta("rescan")
+      );
+    }
+    if (hashProgress && hashProgress.total > 0) {
+      return (
+        t("header.progress.hashes", {
+          done: hashProgress.done,
+          total: hashProgress.total,
+        }) + eta("hash")
+      );
+    }
+    if (hasSimilarityProgress && similarityProgress) {
+      return t("header.progress.similarity") + eta("similarity");
+    }
+    if (hasSearchStatsProgress && searchStatsProgress) {
+      return (
+        t("header.progress.searchStats", {
+          done: searchStatsProgress.done,
+          total: searchStatsProgress.total,
+        }) + eta("searchStats")
+      );
+    }
+    if (scanPhase) return t(`header.progress.phase.${scanPhase}`);
+    return t("header.progress.working");
+  }, [
+    statusActive,
+    checkingDuplicates,
+    scanProgress,
+    scanningFolderNames,
+    hasRescanProgress,
+    rescanProgress,
+    hashProgress,
+    hasSimilarityProgress,
+    similarityProgress,
+    hasSearchStatsProgress,
+    searchStatsProgress,
+    scanPhase,
+    etaMap,
+    t,
+  ]);
+
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {activeProgress && activeProgress.total > 0 && (
@@ -955,8 +1118,19 @@ export const Header = memo(function Header({
           />
         </div>
       )}
-      <div className="flex min-h-16 items-center justify-between px-6 py-3 gap-4">
-        <div className="relative flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap sm:min-h-16 sm:gap-4 sm:px-6 sm:justify-between">
+        <div className="relative flex items-center gap-2 order-1 sm:shrink-0 sm:gap-3">
+          {onToggleSidebar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0 text-muted-foreground hover:text-foreground sm:hidden"
+              onClick={onToggleSidebar}
+              aria-label={t("sidebar.label")}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
           <span className="text-xl font-extrabold text-foreground select-none">
             Konomi
           </span>
@@ -968,59 +1142,39 @@ export const Header = memo(function Header({
               draggable={false}
             />
           </div>
-          {(scanning ||
-            checkingDuplicates ||
-            isAnalyzing ||
-            hasRescanProgress ||
-            hasSimilarityProgress ||
-            hasSearchStatsProgress) && (
-            <div className="absolute left-full ml-3 flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+          {statusActive && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground lg:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  if (statusText) toast(statusText);
+                }}
+                className="flex items-center gap-1"
+                aria-label={statusText}
+              >
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                {activeProgress && activeProgress.total > 0 && (
+                  <span className="tabular-nums select-none">
+                    {activeProgress.done}/{activeProgress.total}
+                  </span>
+                )}
+              </button>
+              {scanning && onCancelScan && (
+                <button
+                  type="button"
+                  onClick={onCancelScan}
+                  className="flex items-center hover:text-foreground"
+                  aria-label={t("common.cancel")}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+          {statusActive && (
+            <div className="absolute left-full ml-3 hidden items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap lg:flex">
               <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-              <span className="tabular-nums select-none">
-                {checkingDuplicates
-                  ? t("header.progress.checkingDuplicates")
-                  : scanProgress && scanProgress.total > 0
-                    ? (() => {
-                        const names =
-                          scanningFolderNames && scanningFolderNames.size > 0
-                            ? Array.from(scanningFolderNames.values()).join(
-                                ", ",
-                              )
-                            : null;
-                        const eta = etaSuffix("scan");
-                        return names
-                          ? t("header.progress.scanFolders", {
-                              names,
-                              done: scanProgress.done,
-                              total: scanProgress.total,
-                            }) + eta
-                          : t("header.progress.scanImages", {
-                              done: scanProgress.done,
-                              total: scanProgress.total,
-                            }) + eta;
-                      })()
-                    : hasRescanProgress && rescanProgress
-                      ? t("header.progress.rescan", {
-                          done: rescanProgress.done,
-                          total: rescanProgress.total,
-                        }) + etaSuffix("rescan")
-                      : hashProgress && hashProgress.total > 0
-                        ? t("header.progress.hashes", {
-                            done: hashProgress.done,
-                            total: hashProgress.total,
-                          }) + etaSuffix("hash")
-                        : hasSimilarityProgress && similarityProgress
-                          ? t("header.progress.similarity") +
-                            etaSuffix("similarity")
-                          : hasSearchStatsProgress && searchStatsProgress
-                            ? t("header.progress.searchStats", {
-                                done: searchStatsProgress.done,
-                                total: searchStatsProgress.total,
-                              }) + etaSuffix("searchStats")
-                            : scanPhase
-                              ? t(`header.progress.phase.${scanPhase}`)
-                              : t("header.progress.working")}
-              </span>
+              <span className="tabular-nums select-none">{statusText}</span>
               {scanning && onCancelScan && (
                 <button
                   onClick={onCancelScan}
@@ -1033,22 +1187,26 @@ export const Header = memo(function Header({
           )}
         </div>
 
-        <HeaderSearchSection
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          advancedFilters={advancedFilters}
-          onAdvancedFiltersChange={onAdvancedFiltersChange}
-          availableResolutions={availableResolutions}
-          availableModels={availableModels}
-        />
-        <HeaderPanelButtons
-          activePanel={activePanel}
-          onPanelChange={onPanelChange}
-          onStartTour={onStartTour}
-          devMode={devMode}
-          announcementDeferred={announcementDeferred}
-          onAnnouncementReopen={onAnnouncementReopen}
-        />
+        <div className="order-2 ml-auto flex shrink-0 items-center sm:order-3 sm:ml-0">
+          <HeaderPanelButtons
+            activePanel={activePanel}
+            onPanelChange={onPanelChange}
+            onStartTour={onStartTour}
+            devMode={devMode}
+            announcementDeferred={announcementDeferred}
+            onAnnouncementReopen={onAnnouncementReopen}
+          />
+        </div>
+        <div className="order-3 flex basis-full sm:order-2 sm:basis-auto sm:flex-1">
+          <HeaderSearchSection
+            searchQuery={searchQuery}
+            onSearchChange={onSearchChange}
+            advancedFilters={advancedFilters}
+            onAdvancedFiltersChange={onAdvancedFiltersChange}
+            availableResolutions={availableResolutions}
+            availableModels={availableModels}
+          />
+        </div>
       </div>
     </header>
   );

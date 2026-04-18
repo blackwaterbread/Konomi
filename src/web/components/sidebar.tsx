@@ -68,6 +68,8 @@ import type { Subfolder } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
 import { AvailableFoldersDialog } from "@/components/available-folders-dialog";
 import { useApi } from "@/api";
+import { useLongPress } from "@/lib/long-press";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -145,6 +147,7 @@ interface SidebarProps {
   categoryActions: SidebarCategoryActions;
   isAnalyzing?: boolean;
   onCheckingDuplicatesChange?: (checking: boolean) => void;
+  onClose?: () => void;
 }
 
 export interface SidebarHandle {
@@ -310,14 +313,17 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
     setOpen(true);
   }, [openRequest]);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (!next && isSubmitting) return;
-    if (!next) {
-      setEntries([]);
-      setSubmitErrors([]);
-    }
-    setOpen(next);
-  }, [isSubmitting]);
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next && isSubmitting) return;
+      if (!next) {
+        setEntries([]);
+        setSubmitErrors([]);
+      }
+      setOpen(next);
+    },
+    [isSubmitting],
+  );
 
   const handleBrowse = useCallback(async () => {
     if (isSubmitting) return;
@@ -619,6 +625,12 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   const { t } = useTranslation();
   const { appInfo } = useApi();
   const isElectron = appInfo.isElectron;
+  const isMobile = useIsMobile();
+  const { handlers: longPressHandlers } = useLongPress(() => {}, {
+    haptic: true,
+    ms: 450,
+    touchOnly: true,
+  });
   /*
   간편하게 폴더/카테고리 Sidebar에서 Input 입력으로 이름 바꿀 수 있는 기능이었는데 이런저런 이유로 비활성화
   그리고 이거 요상한 버그가 있는데 카테고리 Input에 이름 바꾸면 위에 Folder까지 리렌더링 되는데, 
@@ -734,14 +746,14 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          draggable={!isEditing && depth === 0}
+          draggable={!isMobile && !isEditing && depth === 0}
           onDragStart={(e) => {
-            if (isEditing || depth !== 0) return;
+            if (isMobile || isEditing || depth !== 0) return;
             onDragStart?.(folder.id);
             e.dataTransfer.effectAllowed = "move";
           }}
           onDragOver={(e) => {
-            if (isEditing || depth !== 0) return;
+            if (isMobile || isEditing || depth !== 0) return;
             e.preventDefault();
             const rect = e.currentTarget.getBoundingClientRect();
             const pos =
@@ -749,7 +761,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
             onDragOver?.(folder.id, pos);
           }}
           onDrop={(e) => {
-            if (depth !== 0) return;
+            if (isMobile || depth !== 0) return;
             e.preventDefault();
             const rect = e.currentTarget.getBoundingClientRect();
             const pos =
@@ -757,8 +769,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
             onDrop?.(folder.id, pos);
           }}
           onDragEnd={() => onDragEnd?.()}
+          {...longPressHandlers}
           className={cn(
-            "group relative flex items-center gap-2 py-1.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            "group relative flex items-center gap-2 py-2 sm:py-1.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
             paddingClass,
             dragTargetPosition === "before" &&
               "before:absolute before:left-2 before:right-2 before:top-0 before:h-0.5 before:bg-primary before:rounded-full",
@@ -770,19 +783,19 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
           {/* 왼쪽 아이콘: 자식 있으면 chevron, root이면 grip, 그 외 spacer */}
           {hasChildren ? (
             <button
-              className="h-3.5 w-3.5 shrink-0 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
+              className="h-7 w-7 sm:h-3.5 sm:w-3.5 shrink-0 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleCollapse?.(folder.id);
               }}
             >
               {isCollapsed ? (
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
               ) : (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
               )}
             </button>
-          ) : depth === 0 ? (
+          ) : depth === 0 && !isMobile ? (
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 cursor-grab active:cursor-grabbing" />
           ) : (
             <span className="h-3.5 w-3.5 shrink-0" />
@@ -822,8 +835,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-5 w-5",
-                  eyeHoverOnly && "opacity-0 group-hover:opacity-100",
+                  "h-9 w-9 sm:h-5 sm:w-5",
+                  eyeHoverOnly &&
+                    "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100",
                   isPartial || isSelected
                     ? "text-primary"
                     : "text-muted-foreground hover:text-primary",
@@ -832,9 +846,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                 title={t("sidebar.folders.toggleAll")}
               >
                 {isPartial ? (
-                  <EyeClosed className="h-3 w-3" />
+                  <EyeClosed className="h-4 w-4 sm:h-3 sm:w-3" />
                 ) : (
-                  <Eye className="h-3 w-3" />
+                  <Eye className="h-4 w-4 sm:h-3 sm:w-3" />
                 )}
               </Button>
               {hasChildren && (
@@ -842,7 +856,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    "h-5 w-5",
+                    "h-9 w-9 sm:h-5 sm:w-5",
                     isRootVisible !== false
                       ? "text-primary"
                       : "text-muted-foreground hover:text-primary",
@@ -853,14 +867,14 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                   }}
                   title={t("sidebar.folders.toggleRoot")}
                 >
-                  <Folder className="h-2.5 w-2.5" />
+                  <Folder className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
                 </Button>
               )}
               {isElectron && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                  className="h-9 w-9 sm:h-5 sm:w-5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-muted-foreground hover:text-destructive"
                   onClick={() =>
                     onDeleteRequest({
                       id: folder.id,
@@ -870,7 +884,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                   disabled={scanning}
                 >
                   <span className="relative inline-flex items-center justify-center">
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                     {scanning && (
                       <span className="absolute inset-0 flex items-center justify-center -translate-x-[0.75px] translate-y-[0.75px]">
                         <span className="block h-[140%] w-px bg-current rotate-45" />
@@ -999,17 +1013,23 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   const { t } = useTranslation();
   const { appInfo } = useApi();
   const isElectron = appInfo.isElectron;
+  const { handlers: longPressHandlers } = useLongPress(() => {}, {
+    haptic: true,
+    ms: 450,
+    touchOnly: true,
+  });
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group flex items-center gap-2 pl-5 pr-2 py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            "group flex items-center gap-2 pl-5 pr-2 py-1.5 sm:py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
             isVisible
               ? "text-muted-foreground hover:text-foreground"
               : "text-muted-foreground/40 hover:text-muted-foreground",
           )}
           onClick={() => onToggle?.(subfolder.path, subfolder.folderId)}
+          {...longPressHandlers}
         >
           <span className="h-3.5 w-3.5 shrink-0" />
           <Folder className="h-3.5 w-3.5 shrink-0" />
@@ -1020,9 +1040,9 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
             variant="ghost"
             size="icon"
             className={cn(
-              "h-5 w-5",
+              "h-9 w-9 sm:h-5 sm:w-5",
               isVisible
-                ? "opacity-0 group-hover:opacity-100 text-primary"
+                ? "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-primary"
                 : "text-muted-foreground/40 hover:text-primary",
             )}
             onClick={(e) => {
@@ -1030,7 +1050,7 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
               onToggle?.(subfolder.path, subfolder.folderId);
             }}
           >
-            <Eye className="h-3 w-3" />
+            <Eye className="h-4 w-4 sm:h-3 sm:w-3" />
           </Button>
         </div>
       </ContextMenuTrigger>
@@ -1102,7 +1122,13 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
   onDragEnd,
 }: SidebarCategoryRowProps) {
   const { t } = useTranslation();
-  const isDraggable = !category.isBuiltin;
+  const isMobile = useIsMobile();
+  const isDraggable = !category.isBuiltin && !isMobile;
+  const { handlers: longPressHandlers } = useLongPress(() => {}, {
+    haptic: true,
+    ms: 450,
+    touchOnly: true,
+  });
 
   // Category inline rename notes:
   // Add your comments here.
@@ -1149,7 +1175,7 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
   const isEditing = editingName !== null;
   const currentEditingName = editingName ?? category.name;
   const isContextRenameEnabled = !category.isBuiltin;
-  const isInteractiveDraggable = !category.isBuiltin && !isEditing;
+  const isInteractiveDraggable = !category.isBuiltin && !isEditing && !isMobile;
 
   const handleStartEditing = useCallback(() => {
     if (!isContextRenameEnabled) return;
@@ -1189,8 +1215,9 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
             onDrop(category.id);
           }}
           onDragEnd={onDragEnd}
+          {...longPressHandlers}
           className={cn(
-            "group flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
+            "group flex items-center gap-2 px-2 py-2 sm:py-1.5 rounded-md transition-colors",
             "cursor-pointer",
             isDraggable && "cursor-grab active:cursor-grabbing",
             isDragTarget && "ring-1 ring-primary/40",
@@ -1205,7 +1232,7 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
             }
           }}
         >
-          {category.isBuiltin ? (
+          {category.isBuiltin || isMobile ? (
             <span className="h-3.5 w-3.5 shrink-0" />
           ) : (
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
@@ -1262,40 +1289,40 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+              className="h-9 w-9 sm:h-5 sm:w-5 text-muted-foreground hover:text-foreground"
               title={t("sidebar.categories.reroll")}
               onClick={(e) => {
                 e.stopPropagation();
                 onRandomRefresh();
               }}
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="h-4 w-4 sm:h-3 sm:w-3" />
             </Button>
           )}
           {!category.isBuiltin && !isEditing && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+            <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 hover-none:opacity-100">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                className="h-9 w-9 sm:h-5 sm:w-5 text-muted-foreground hover:text-foreground"
                 title={t("sidebar.categories.addByPrompt")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddByPrompt(category.id);
                 }}
               >
-                <Plus className="h-3 w-3" />
+                <Plus className="h-4 w-4 sm:h-3 sm:w-3" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                className="h-9 w-9 sm:h-5 sm:w-5 text-muted-foreground hover:text-destructive"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(category.id);
                 }}
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-4 w-4 sm:h-3 sm:w-3" />
               </Button>
             </div>
           )}
@@ -1736,6 +1763,7 @@ export const Sidebar = memo(
       categoryActions,
       isAnalyzing,
       onCheckingDuplicatesChange,
+      onClose,
     },
     ref,
   ) {
@@ -2105,7 +2133,20 @@ export const Sidebar = memo(
 
     return (
       <>
-        <aside className="w-full h-full border-r border-border bg-sidebar flex flex-col">
+        <aside className="w-full h-full border-r border-border bg-sidebar flex flex-col pt-safe">
+          {onClose && (
+            <div className="flex items-center justify-end px-2 pt-2 sm:hidden">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10"
+                onClick={onClose}
+                aria-label={t("common.close")}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+          )}
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-6">
               {/* Views */}

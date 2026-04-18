@@ -29,8 +29,7 @@ const ko = {
         finalizing: "거의 다 마무리 됐습니다.",
       },
       detail: {
-        updatingDatabase:
-          "데이터베이스를 최신 버전으로 업데이트하고 있습니다.",
+        updatingDatabase: "데이터베이스를 최신 버전으로 업데이트하고 있습니다.",
         scanFolders: "{{folderLabel}} 확인 중 {{done}}/{{total}}",
         scanImages: "이미지 확인 중 {{done}}/{{total}}",
         checkingDuplicates: "중복 파일 확인 중 {{done}}/{{total}}",
@@ -47,11 +46,13 @@ const ko = {
     close: "닫기",
     loading: "로딩 중...",
     none: "없음",
+    more: "더 보기",
   },
   availableFolders: {
     title: "폴더 추가",
     description: "Docker 볼륨에 마운트된 폴더는 자동으로 등록되어 스캔됩니다.",
-    instruction: "새 폴더를 추가하려면 Docker 설정에서 해당 폴더를 /images 하위에 마운트한 뒤 서버를 재시작하세요.",
+    instruction:
+      "새 폴더를 추가하려면 Docker 설정에서 해당 폴더를 /images 하위에 마운트한 뒤 서버를 재시작하세요.",
   },
   header: {
     searchPlaceholder: "프롬프트로 이미지 검색...",
@@ -154,6 +155,11 @@ const ko = {
       unavailable: "-",
       viewWorkflow: "워크플로우",
     },
+    mobileTabs: {
+      info: "정보",
+      similar: "유사",
+      filmstrip: "필름스트립",
+    },
   },
   gallery: {
     totalImages: "총 {{count}}개의 이미지",
@@ -175,6 +181,7 @@ const ko = {
     changeCategoryForSelection: "카테고리 일괄 변경",
     rescanSelection: "메타데이터 재스캔",
     deleteSelection: "선택 삭제",
+    moreActions: "추가 작업",
     firstPage: "첫 페이지",
     previousPage: "이전 페이지",
     nextPage: "다음 페이지",
@@ -467,6 +474,13 @@ const ko = {
     promptSearch: {
       placeholder: "프롬프트 태그 검색...",
     },
+    mobileTabs: {
+      ariaLabel: "생성 패널 탭",
+      params: "입력",
+      result: "결과",
+      groups: "그룹",
+      settings: "구성",
+    },
     sections: {
       model: "모델",
       prompt: "프롬프트",
@@ -552,6 +566,7 @@ const ko = {
       emptyState: "프롬프트를 입력하거나 이미지를 드롭하세요",
       recent: "최근 생성",
       noRecent: "없음",
+      pickFile: "파일 선택",
     },
     size: {
       title: "크기",
@@ -838,9 +853,11 @@ const ko = {
         "detail.delete": "이미지 삭제",
         "generator.generate": "생성 실행",
       },
+      mobileNotice: "키보드가 연결된 데스크톱/태블릿에서만 편집할 수 있습니다.",
     },
   },
   sidebar: {
+    label: "사이드바",
     views: {
       all: "모든 이미지",
       recent: "최근",

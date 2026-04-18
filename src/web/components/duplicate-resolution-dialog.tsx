@@ -40,8 +40,9 @@ export function DuplicateResolutionDialog({
   const showItems = Boolean(
     currentItem && (items.length === 1 || bulkDecision === "manual"),
   );
-  const sectionMinHeightClass = "min-h-[30rem]";
-  const sectionMessageMinHeightClass = "min-h-[calc(30rem-1.5rem)]";
+  const sectionMinHeightClass = "min-h-[22rem] sm:min-h-[30rem]";
+  const sectionMessageMinHeightClass =
+    "min-h-[calc(22rem-1.5rem)] sm:min-h-[calc(30rem-1.5rem)]";
   const previewSide = t("duplicateResolution.previewSide");
   const currentPreview = currentItem
     ? toDuplicatePreview(
@@ -83,6 +84,7 @@ export function DuplicateResolutionDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="max-w-5xl"
+          mobileSheet
           closeDisabled={resolving || mode === "watch"}
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
@@ -113,7 +115,7 @@ export function DuplicateResolutionDialog({
                 <p className="text-xs font-semibold text-foreground/80 select-none">
                   {t("duplicateResolution.bulkLabel")}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant={
                       bulkDecision === "existing" ? "default" : "outline"
@@ -233,7 +235,7 @@ export function DuplicateResolutionDialog({
                         )}
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant={
                             (choices[currentItem.id] ?? "existing") ===
@@ -330,7 +332,7 @@ export function DuplicateResolutionDialog({
           if (!resolving) setConfirmDeleteOpen(nextOpen);
         }}
       >
-        <DialogContent>
+        <DialogContent mobileSheet>
           <DialogHeader>
             <DialogTitle>
               {t("duplicateResolution.confirmDelete.title")}
@@ -359,6 +361,7 @@ export function DuplicateResolutionDialog({
       <Dialog open={preview !== null} onOpenChange={onPreviewOpenChange}>
         <DialogContent
           className="max-w-6xl w-[96vw]"
+          mobileSheet
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >

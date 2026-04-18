@@ -53,7 +53,9 @@ import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useKeybindings } from "@/hooks/useKeybindings";
 import { useGalleryFocus } from "@/hooks/useGalleryFocus";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
+import { cn } from "@/lib/utils";
 import type { Folder } from "@preload/index.d";
 import { useTranslation } from "react-i18next";
 
@@ -268,6 +270,9 @@ export default function App({
     panelTransitioning,
     sidebarWidth,
     handleResizeStart,
+    sidebarOpen,
+    toggleSidebar,
+    closeSidebar,
     initialLanguageScreenOpen,
     showFeatureTour,
     handleStartTour,
@@ -279,6 +284,8 @@ export default function App({
     pendingSimilarityRecalcRef,
     runAnalysisNow,
   });
+
+  const isMobile = useIsMobile();
 
   useAutoUpdate();
   const { bindings, updateBinding, resetBinding, resetAllBindings } =
@@ -425,6 +432,15 @@ export default function App({
       !!categoryDialog.image ||
       (categoryDialog.bulkImageIds?.length ?? 0) > 0,
   });
+
+  const handleTourSidebarVisibilityRequest = useCallback(
+    (visible: boolean) => {
+      if (!isMobile) return;
+      if (visible && !sidebarOpen) toggleSidebar();
+      else if (!visible && sidebarOpen) closeSidebar();
+    },
+    [isMobile, sidebarOpen, toggleSidebar, closeSidebar],
+  );
 
   const handleTourAction = useCallback((action: string) => {
     if (action === "open-prompt-group-panel") {
@@ -596,6 +612,7 @@ export default function App({
           setAnnouncementDeferred(false);
           setAnnouncementKey((k) => k + 1);
         }}
+        onToggleSidebar={toggleSidebar}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -624,9 +641,39 @@ export default function App({
           className={`absolute inset-0 flex overflow-hidden${activePanel === "generator" ? " hidden" : ""}`}
           inert={activePanel === "generator" ? true : undefined}
         >
+          {/* Mobile drawer backdrop */}
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            tabIndex={-1}
+            onClick={closeSidebar}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/50 sm:hidden",
+              sidebarOpen ? "block" : "hidden",
+            )}
+          />
           <div
-            className="relative flex-none h-full"
-            style={{ width: sidebarWidth }}
+            className={cn(
+              "bg-background h-full relative",
+              // Mobile (<640): drawer over viewport
+              "fixed inset-y-0 left-0 z-50 w-[80vw] max-w-xs shadow-xl transition-transform duration-200",
+              sidebarOpen ? "translate-x-0" : "-translate-x-full",
+              // Tablet+ (sm:): static inline column, no transform
+              "sm:static sm:z-auto sm:w-56 sm:max-w-none sm:shadow-none sm:translate-x-0 sm:transition-none sm:flex-none",
+              // Desktop (lg:): honor user width via CSS var
+              "lg:w-(--sidebar-width)",
+            )}
+            style={
+              {
+                "--sidebar-width": `${sidebarWidth}px`,
+              } as React.CSSProperties
+            }
+            role={isMobile && sidebarOpen ? "dialog" : undefined}
+            aria-modal={isMobile && sidebarOpen ? true : undefined}
+            aria-label={
+              isMobile && sidebarOpen ? t("sidebar.label") : undefined
+            }
+            inert={isMobile && !sidebarOpen ? true : undefined}
           >
             <Sidebar
               ref={sidebarRef}
@@ -637,9 +684,10 @@ export default function App({
               categoryActions={sidebarCategoryActions}
               isAnalyzing={isAnalyzing}
               onCheckingDuplicatesChange={setCheckingDuplicates}
+              onClose={closeSidebar}
             />
             <div
-              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors z-10"
+              className="hidden lg:block absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 transition-colors z-10"
               onMouseDown={handleResizeStart}
             />
           </div>
@@ -841,6 +889,7 @@ export default function App({
         onClose={handleTourClose}
         onPanelChange={setActivePanel}
         onAction={handleTourAction}
+        onSidebarVisibilityRequest={handleTourSidebarVisibilityRequest}
       />
 
       <InitialLanguageScreen

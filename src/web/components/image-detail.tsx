@@ -28,6 +28,10 @@ import {
   Trash2,
   ImagePlus,
   RotateCw,
+  MoreVertical,
+  Info as InfoIcon,
+  Layers,
+  Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -50,10 +54,23 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BottomSheet,
+  type BottomSheetState,
+} from "@/components/ui/bottom-sheet";
 import { cn } from "@/lib/utils";
 import { parsePromptTokens, isGroupRef, type PromptToken } from "@/lib/token";
 import { useLocaleFormatters } from "@/lib/formatters";
 import { rowToImageData } from "@/lib/image-utils";
+import { useIsMobile } from "@/hooks/useBreakpoint";
+import { useSwipe } from "@/lib/swipe";
 import type { ImageData } from "./image-card";
 import type { ImageListQuery } from "@preload/index.d";
 import { TokenContainer } from "./token-container";
@@ -191,7 +208,7 @@ const HeaderBar = memo(function HeaderBar({
   const { t } = useTranslation();
 
   return (
-    <div className="relative flex items-center justify-between border-b border-border/60 bg-background/80 px-5 py-2.5 backdrop-blur-sm shrink-0">
+    <div className="relative hidden sm:flex items-center justify-between border-b border-border/60 bg-background/80 px-5 py-2.5 backdrop-blur-sm shrink-0">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -1103,6 +1120,7 @@ const Filmstrip = memo(function Filmstrip({
   currentId,
   onSelect,
   onPageChange,
+  variant = "overlay",
 }: {
   baseQuery: Omit<ImageListQuery, "page">;
   page: number;
@@ -1110,8 +1128,10 @@ const Filmstrip = memo(function Filmstrip({
   currentId: string | null;
   onSelect: (img: ImageData) => void;
   onPageChange?: (page: number) => void;
+  variant?: "overlay" | "inline";
 }) {
   const [hovered, setHovered] = useState(false);
+  const isInline = variant === "inline";
   const scrollRef = useRef<HTMLDivElement>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const imagePageMapRef = useRef<Map<string, number>>(new Map());
@@ -1184,23 +1204,38 @@ const Filmstrip = memo(function Filmstrip({
 
   const hasImages = images.length > 0;
 
+  const revealed = isInline || (hovered && hasImages);
+
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-20"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={cn(
+        isInline
+          ? "relative h-full w-full"
+          : "absolute bottom-0 left-0 right-0 z-20",
+      )}
+      onMouseEnter={isInline ? undefined : () => setHovered(true)}
+      onMouseLeave={isInline ? undefined : () => setHovered(false)}
     >
       {/* Filmstrip panel */}
       <div
         className={cn(
           "transition-all duration-200 ease-out",
-          hovered && hasImages
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-full pointer-events-none",
+          isInline ? "h-full" : "",
+          !isInline &&
+            (revealed
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-full pointer-events-none"),
         )}
-        style={{ height: FILMSTRIP_HEIGHT }}
+        style={isInline ? undefined : { height: FILMSTRIP_HEIGHT }}
       >
-        <div className="relative h-full bg-background/80 backdrop-blur-md border-t border-border/40">
+        <div
+          className={cn(
+            "relative h-full",
+            isInline
+              ? ""
+              : "bg-background/80 backdrop-blur-md border-t border-border/40",
+          )}
+        >
           {/* Left/right fade gradients */}
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-background/80 to-transparent" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-background/80 to-transparent" />
@@ -1300,6 +1335,7 @@ export function ImageDetail({
   const { t } = useTranslation();
   const { appInfo } = useApi();
   const isElectron = appInfo.isElectron;
+  const isMobile = useIsMobile();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [fitMode, setFitMode] = useState<"fit" | "actual">("fit");
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1307,6 +1343,10 @@ export function ImageDetail({
   const [displaySrc, setDisplaySrc] = useState<string | null>(null);
   // similarPage state is now managed by useSimilarImages hook via onSimilarPageChange
   const [anchorId, setAnchorId] = useState<string | null>(null);
+  const [sheetState, setSheetState] = useState<BottomSheetState>("peek");
+  const [sheetTab, setSheetTab] = useState<"info" | "similar" | "filmstrip">(
+    "info",
+  );
   const panelOpenedRef = useRef(false);
   const detailImgRef = useRef<HTMLImageElement>(null);
 
@@ -1427,6 +1467,13 @@ export function ImageDetail({
     onNext();
   }, [onNext, nextImage, hasNext, onAnchorChange]);
 
+  const swipe = useSwipe({
+    onSwipeLeft: handleNext,
+    onSwipeRight: handlePrev,
+    threshold: 60,
+    restraint: 100,
+  });
+
   const handleFitModeToggle = useCallback(() => {
     setFitMode((m) => (m === "fit" ? "actual" : "fit"));
   }, []);
@@ -1508,10 +1555,142 @@ export function ImageDetail({
         onTheaterMode={handleEnterTheater}
       />
 
+      {/* Mobile Top Bar */}
+      <div className="flex sm:hidden items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-3 py-2 backdrop-blur-sm shrink-0 pt-safe">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={onClose}
+          aria-label={t("common.close")}
+        >
+          <X className="h-5 w-5" />
+        </Button>
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
+          <span className="truncate text-xs font-medium text-foreground">
+            {image.path.split(/[\\/]/).pop() ?? ""}
+          </span>
+          <span className="truncate text-[10px] text-muted-foreground/70">
+            {image.model ? `${image.model} · ` : ""}
+            {image.width} × {image.height}
+          </span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground",
+            image.isFavorite && "text-favorite hover:text-favorite",
+          )}
+          onClick={() => onToggleFavorite(image.id)}
+          aria-label={
+            image.isFavorite
+              ? t("imageDetail.actions.removeFavorite")
+              : t("imageDetail.actions.addFavorite")
+          }
+        >
+          <Heart
+            className={cn("h-5 w-5", image.isFavorite && "fill-favorite")}
+          />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={t("common.more")}
+            >
+              <MoreVertical className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => handleCopy("prompt", image.prompt)}
+            >
+              <Copy className="h-4 w-4" />
+              {t("imageDetail.actions.copyPrompt")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleFitModeToggle}>
+              {fitMode === "fit" ? (
+                <Maximize2 className="h-4 w-4" />
+              ) : (
+                <Minimize2 className="h-4 w-4" />
+              )}
+              {fitMode === "fit"
+                ? t("imageDetail.actions.actualSize")
+                : t("imageDetail.actions.fitToScreen")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleEnterTheater}>
+              <MonitorPlay className="h-4 w-4" />
+              {t("imageDetail.actions.theaterMode")}
+            </DropdownMenuItem>
+            {image.source === "comfyui" && (
+              <DropdownMenuItem onSelect={handleViewWorkflow}>
+                <Workflow className="h-4 w-4" />
+                {t("imageDetail.info.viewWorkflow")}
+              </DropdownMenuItem>
+            )}
+            {onSendToGenerator && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onSendToGenerator(image);
+                  onClose();
+                }}
+              >
+                <ImagePlus className="h-4 w-4" />
+                {t("imageCard.menu.sendToGenerator")}
+              </DropdownMenuItem>
+            )}
+            {onSendToSource && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onSendToSource(image);
+                  onClose();
+                }}
+              >
+                <ImagePlus className="h-4 w-4" />
+                {t("imageCard.menu.sendToSource")}
+              </DropdownMenuItem>
+            )}
+            {onChangeCategory && (
+              <DropdownMenuItem onSelect={() => onChangeCategory(image)}>
+                <Tag className="h-4 w-4" />
+                {t("imageCard.menu.changeCategory")}
+              </DropdownMenuItem>
+            )}
+            {isElectron && onReveal && (
+              <DropdownMenuItem onSelect={() => onReveal(image.path)}>
+                <ExternalLink className="h-4 w-4" />
+                {t("imageCard.menu.revealOriginal")}
+              </DropdownMenuItem>
+            )}
+            {onRescanMetadata && (
+              <DropdownMenuItem onSelect={() => onRescanMetadata(image.path)}>
+                <RotateCw className="h-4 w-4" />
+                {t("imageCard.menu.rescanMetadata")}
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => onDelete(image.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("imageCard.menu.delete")}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       {/* Body: similar | image | info */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Similar Images Panel */}
-        <div className="flex w-24 shrink-0 flex-col border-r border-border/60 bg-card/70">
+        <div className="hidden sm:flex w-24 shrink-0 flex-col border-r border-border/60 bg-card/70">
           <p className="shrink-0 pt-3 pb-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
             {t("imageDetail.similarImages")}
           </p>
@@ -1585,7 +1764,11 @@ export function ImageDetail({
         {/* Image Area */}
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <div className="relative flex-1 min-w-0 min-h-0 overflow-hidden">
+            <div
+              className="relative flex-1 min-w-0 min-h-0 overflow-hidden"
+              style={isMobile ? { touchAction: "pan-y pinch-zoom" } : undefined}
+              {...(isMobile ? swipe.handlers : {})}
+            >
               {!imgLoaded && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/70" />
@@ -1595,6 +1778,16 @@ export function ImageDetail({
                 <div
                   className="absolute inset-0 flex items-center justify-center p-3 cursor-pointer"
                   onClick={onClose}
+                  style={
+                    isMobile
+                      ? {
+                          transform: `translateX(${swipe.deltaX}px)`,
+                          transition: swipe.isSwiping
+                            ? "none"
+                            : "transform 200ms ease-out",
+                        }
+                      : undefined
+                  }
                 >
                   {displaySrc && (
                     <img
@@ -1668,8 +1861,8 @@ export function ImageDetail({
                 <ChevronRight className="h-5 w-5" />
               </button>
 
-              {/* Filmstrip */}
-              {filmstripBaseQuery && (
+              {/* Filmstrip (desktop overlay) */}
+              {filmstripBaseQuery && !isMobile && (
                 <Filmstrip
                   baseQuery={filmstripBaseQuery}
                   page={filmstripPage}
@@ -1756,8 +1949,8 @@ export function ImageDetail({
           </ContextMenuContent>
         </ContextMenu>
 
-        {/* Info Panel */}
-        <div className="w-80 shrink-0 border-l border-border/60 bg-card/70">
+        {/* Info Panel (desktop) */}
+        <div className="hidden sm:block w-80 shrink-0 border-l border-border/60 bg-card/70">
           {infoPanelPending ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/70" />
@@ -1776,6 +1969,168 @@ export function ImageDetail({
           )}
         </div>
       </div>
+
+      {/* Mobile Bottom Sheet */}
+      {isMobile && (
+        <BottomSheet
+          open={isOpen}
+          state={sheetState}
+          onStateChange={setSheetState}
+          className="sm:hidden"
+          header={
+            <div className="flex shrink-0 items-stretch border-b border-border/60">
+              {(
+                [
+                  {
+                    key: "info",
+                    icon: InfoIcon,
+                    label: t("imageDetail.mobileTabs.info"),
+                  },
+                  {
+                    key: "similar",
+                    icon: Layers,
+                    label: t("imageDetail.mobileTabs.similar"),
+                  },
+                  {
+                    key: "filmstrip",
+                    icon: Film,
+                    label: t("imageDetail.mobileTabs.filmstrip"),
+                  },
+                ] as const
+              ).map(({ key, icon: Icon, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSheetTab(key);
+                    if (sheetState === "peek") setSheetState("half");
+                  }}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors",
+                    sheetTab === key
+                      ? "text-foreground border-b-2 border-primary"
+                      : "text-muted-foreground border-b-2 border-transparent hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <div className="h-full overflow-hidden">
+            {sheetTab === "info" &&
+              (infoPanelPending ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/70" />
+                </div>
+              ) : (
+                <InfoPanel
+                  image={image}
+                  copiedKey={copiedKey}
+                  onCopy={handleCopy}
+                  onAddTagToSearch={onAddTagToSearch}
+                  onAddTagToGenerator={onAddTagToGenerator}
+                  onViewWorkflow={
+                    image.source === "comfyui" ? handleViewWorkflow : undefined
+                  }
+                />
+              ))}
+            {sheetTab === "similar" && (
+              <ScrollArea className="h-full">
+                <div className="p-3">
+                  {similarImagesLoading ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground/70">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">{t("common.loading")}</span>
+                    </div>
+                  ) : hasSimilar ? (
+                    <>
+                      <TooltipProvider delayDuration={300}>
+                        <div className="grid grid-cols-3 gap-2">
+                          {currentThumb && similarPage === 0 && (
+                            <SimilarThumb
+                              key={currentThumb.id}
+                              img={currentThumb}
+                              isCurrent={image?.id === currentThumb.id}
+                              isAnchor={true}
+                              disableTooltip={theaterMode}
+                              onSimilarImageClick={onSimilarImageClick}
+                            />
+                          )}
+                          {pagedOther.map((img) => (
+                            <SimilarThumb
+                              key={img.id}
+                              img={img}
+                              isCurrent={img.id === image?.id}
+                              reason={similarReasons?.[img.id]}
+                              score={similarScores?.[img.id]}
+                              disableTooltip={theaterMode}
+                              onSimilarImageClick={onSimilarImageClick}
+                            />
+                          ))}
+                        </div>
+                      </TooltipProvider>
+                      {totalPages > 1 && (
+                        <div className="mt-3 flex items-center justify-between">
+                          <button
+                            onClick={() =>
+                              onSimilarPageChange?.(
+                                Math.max(0, similarPage - 1),
+                              )
+                            }
+                            disabled={similarPage === 0}
+                            className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <span className="text-xs text-muted-foreground/70 tabular-nums">
+                            {similarPage + 1}/{totalPages}
+                          </span>
+                          <button
+                            onClick={() =>
+                              onSimilarPageChange?.(
+                                Math.min(totalPages - 1, similarPage + 1),
+                              )
+                            }
+                            disabled={similarPage === totalPages - 1}
+                            className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="py-8 text-center text-xs text-muted-foreground/70">
+                      {t("common.none")}
+                    </p>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+            {sheetTab === "filmstrip" && filmstripBaseQuery && (
+              <div className="h-full">
+                <Filmstrip
+                  variant="inline"
+                  baseQuery={filmstripBaseQuery}
+                  page={filmstripPage}
+                  totalPages={filmstripTotalPages}
+                  currentId={image.id}
+                  onSelect={handleFilmstripSelect}
+                  onPageChange={onGalleryPageChange}
+                />
+              </div>
+            )}
+            {sheetTab === "filmstrip" && !filmstripBaseQuery && (
+              <p className="py-8 text-center text-xs text-muted-foreground/70">
+                {t("common.none")}
+              </p>
+            )}
+          </div>
+        </BottomSheet>
+      )}
 
       {/* ComfyUI Workflow Dialog */}
       <Dialog open={workflowOpen} onOpenChange={setWorkflowOpen}>

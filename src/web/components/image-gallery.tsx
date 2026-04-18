@@ -14,6 +14,10 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  ExternalLink,
+  ImagePlus,
+  MoreHorizontal,
   SquareCheckBig,
   Tags,
   Trash2,
@@ -31,15 +35,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useApi } from "@/api";
 import { ImageCard, type ImageData } from "./image-card";
 import { OnboardingView } from "./onboarding-view";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import { useTranslation } from "react-i18next";
 
 type ViewMode = "grid" | "list";
 type SortBy = "recent" | "oldest" | "favorites" | "name";
-export type GalleryDensity = "normal" | "compact" | "dense" | "minimal" | "micro";
+export type GalleryDensity =
+  | "normal"
+  | "compact"
+  | "dense"
+  | "minimal"
+  | "micro";
 
 const GALLERY_PADDING_PX = 16;
 const GRID_VIRTUAL_OVERSCAN_ROWS = 2;
@@ -84,21 +102,24 @@ function getGalleryColumnCount(
   if (typeof galleryColumns === "number") return galleryColumns;
   if (viewportWidth >= 1024) return 4;
   if (viewportWidth >= 768) return 3;
-  return 2;
+  if (viewportWidth >= 480) return 2;
+  return 1;
 }
 
 function estimateGalleryRowHeight(
   viewportWidth: number,
   columnCount: number,
   density: GalleryDensity,
+  viewMode: ViewMode,
 ): number {
-  if (columnCount <= 1) return 80;
+  if (viewMode === "list") return 80;
   const gapPx = getGalleryGapPx(density);
+  const safeColumnCount = Math.max(1, columnCount);
   const contentWidth = Math.max(
     0,
-    viewportWidth - GALLERY_PADDING_PX * 2 - gapPx * (columnCount - 1),
+    viewportWidth - GALLERY_PADDING_PX * 2 - gapPx * (safeColumnCount - 1),
   );
-  const cardWidth = columnCount > 0 ? contentWidth / columnCount : contentWidth;
+  const cardWidth = contentWidth / safeColumnCount;
   const useSquare = density === "minimal" || density === "micro";
   const imageHeight = useSquare ? cardWidth : cardWidth * (4 / 3);
   const footerHeight =
@@ -173,7 +194,6 @@ interface ImageGalleryActions {
   onClearSearch?: () => void;
   onAddFolder?: () => void;
   onLoadAllSelectableIds?: () => Promise<number[]>;
-
 }
 
 interface ImageGalleryPagination {
@@ -345,7 +365,7 @@ const GalleryToolbar = memo(function GalleryToolbar({
         </Button>
 
         {selectionMode && (
-          <>
+          <div className="hidden sm:flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={onSelectCurrentPage}>
               {allPageSelected
                 ? t("gallery.deselectCurrentPage")
@@ -398,7 +418,183 @@ const GalleryToolbar = memo(function GalleryToolbar({
               <Trash2 className="h-4 w-4" />
               {t("gallery.deleteSelection")}
             </Button>
-          </>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+interface MobileBulkActionBarProps {
+  selectionMode: boolean;
+  selectedCount: number;
+  totalCount: number;
+  allPageSelected: boolean;
+  allFilteredSelected: boolean;
+  selectingAllResults: boolean;
+  canSelectAllResults: boolean;
+  singleSelectedImage: ImageData | null;
+  isElectron: boolean;
+  onSelectCurrentPage: () => void;
+  onSelectAllFiltered: () => void;
+  onClearSelection: () => void;
+  onBulkCategory: () => void;
+  onBulkRescanMetadata: () => void;
+  onBulkDelete: () => void;
+  onCopyPrompt: (prompt: string) => void;
+  onSendToGenerator?: (image: ImageData) => void;
+  onSendToSource?: (image: ImageData) => void;
+  onReveal: (path: string) => void;
+  onRescanMetadata?: (path: string) => void;
+}
+
+const MobileBulkActionBar = memo(function MobileBulkActionBar({
+  selectionMode,
+  selectedCount,
+  totalCount,
+  allPageSelected,
+  allFilteredSelected,
+  selectingAllResults,
+  canSelectAllResults,
+  singleSelectedImage,
+  isElectron,
+  onSelectCurrentPage,
+  onSelectAllFiltered,
+  onClearSelection,
+  onBulkCategory,
+  onBulkRescanMetadata,
+  onBulkDelete,
+  onCopyPrompt,
+  onSendToGenerator,
+  onSendToSource,
+  onReveal,
+  onRescanMetadata,
+}: MobileBulkActionBarProps) {
+  const { t } = useTranslation();
+  if (!selectionMode) return null;
+  const hasSingleActions = singleSelectedImage !== null;
+  return (
+    <div className="sm:hidden sticky bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur-sm pb-safe animate-in slide-in-from-bottom-2 duration-200">
+      <div className="flex items-center gap-2 overflow-x-auto px-3 py-2">
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums select-none">
+          {t("gallery.selectedCount", { count: selectedCount })}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={onSelectCurrentPage}
+        >
+          {allPageSelected
+            ? t("gallery.deselectCurrentPage")
+            : t("gallery.selectCurrentPage")}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={onSelectAllFiltered}
+          disabled={!canSelectAllResults}
+        >
+          {selectingAllResults && <Loader2 className="h-4 w-4 animate-spin" />}
+          {allFilteredSelected
+            ? t("gallery.deselectAllResults")
+            : t("gallery.selectAllResults", { count: totalCount })}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={onClearSelection}
+          disabled={selectedCount === 0}
+        >
+          {t("gallery.clearSelection")}
+        </Button>
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={onBulkCategory}
+          disabled={selectedCount === 0}
+        >
+          <Tags className="h-4 w-4" />
+          {t("gallery.changeCategoryForSelection")}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          onClick={onBulkRescanMetadata}
+          disabled={selectedCount === 0}
+        >
+          <RotateCw className="h-4 w-4" />
+          {t("gallery.rescanSelection")}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="shrink-0"
+          onClick={onBulkDelete}
+          disabled={selectedCount === 0}
+        >
+          <Trash2 className="h-4 w-4" />
+          {t("gallery.deleteSelection")}
+        </Button>
+        {hasSingleActions && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0 h-9 w-9"
+                aria-label={t("gallery.moreActions")}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top">
+              <DropdownMenuItem
+                onSelect={() => onCopyPrompt(singleSelectedImage.prompt)}
+              >
+                <Copy className="h-4 w-4" />
+                {t("imageCard.menu.copyPrompt")}
+              </DropdownMenuItem>
+              {onSendToGenerator && (
+                <DropdownMenuItem
+                  onSelect={() => onSendToGenerator(singleSelectedImage)}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  {t("imageCard.menu.sendToGenerator")}
+                </DropdownMenuItem>
+              )}
+              {onSendToSource && (
+                <DropdownMenuItem
+                  onSelect={() => onSendToSource(singleSelectedImage)}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  {t("imageCard.menu.sendToSource")}
+                </DropdownMenuItem>
+              )}
+              {onRescanMetadata && (
+                <DropdownMenuItem
+                  onSelect={() => onRescanMetadata(singleSelectedImage.path)}
+                >
+                  <RotateCw className="h-4 w-4" />
+                  {t("imageCard.menu.rescanMetadata")}
+                </DropdownMenuItem>
+              )}
+              {isElectron && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => onReveal(singleSelectedImage.path)}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {t("imageCard.menu.revealOriginal")}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
     </div>
@@ -453,6 +649,7 @@ interface GalleryResultsProps {
   selectedIds: Set<string>;
   selectedCount: number;
   onSelectChange: (id: string, selected: boolean) => void;
+  onLongPressSelect: (id: string) => void;
   onBulkDelete: () => void;
   onBulkCategory: () => void;
   onRescanMetadata?: (path: string) => void;
@@ -486,6 +683,7 @@ const GalleryResults = memo(function GalleryResults({
   selectedIds,
   selectedCount,
   onSelectChange,
+  onLongPressSelect,
   onBulkDelete,
   onBulkCategory,
   onRescanMetadata,
@@ -501,6 +699,7 @@ const GalleryResults = memo(function GalleryResults({
   galleryColumns,
 }: GalleryResultsProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [viewportSize, setViewportSize] = useState({
     width: 0,
     height: 0,
@@ -517,7 +716,9 @@ const GalleryResults = memo(function GalleryResults({
     () => getGalleryColumnCount(viewportSize.width, galleryColumns),
     [viewportSize.width, galleryColumns],
   );
-  const viewMode: ViewMode = columnCount <= 1 ? "list" : "grid";
+  // List mode is opt-in: user explicitly sets `galleryColumns === 1`. Mobile
+  // auto-resolving to 1 column keeps grid mode so the image body fills the row.
+  const viewMode: ViewMode = galleryColumns === 1 ? "list" : "grid";
   const density = useMemo(() => getGalleryDensity(columnCount), [columnCount]);
   const gapPx = getGalleryGapPx(density);
 
@@ -526,8 +727,14 @@ const GalleryResults = memo(function GalleryResults({
   }, [columnCount, onColumnCountChange]);
 
   const estimatedRowHeight = useMemo(
-    () => estimateGalleryRowHeight(viewportSize.width, columnCount, density),
-    [columnCount, density, viewportSize.width],
+    () =>
+      estimateGalleryRowHeight(
+        viewportSize.width,
+        columnCount,
+        density,
+        viewMode,
+      ),
+    [columnCount, density, viewportSize.width, viewMode],
   );
   const rowHeight = measuredRowHeight ?? estimatedRowHeight;
   const rowCount = Math.ceil(paged.length / columnCount);
@@ -634,8 +841,7 @@ const GalleryResults = memo(function GalleryResults({
         '[data-gallery-card-measure="true"]',
       );
       if (!measuredCard) return;
-      const nextRowHeight =
-        measuredCard.getBoundingClientRect().height + gapPx;
+      const nextRowHeight = measuredCard.getBoundingClientRect().height + gapPx;
       setMeasuredRowHeight((prev) =>
         prev !== null && Math.abs(prev - nextRowHeight) < 1
           ? prev
@@ -656,10 +862,7 @@ const GalleryResults = memo(function GalleryResults({
             <div style={{ height: topSpacerHeight }} aria-hidden="true" />
           )}
           <div
-            className={cn(
-              "grid",
-              viewMode === "list" && "grid-cols-1 w-full",
-            )}
+            className={cn("grid", viewMode === "list" && "grid-cols-1 w-full")}
             style={
               viewMode === "grid"
                 ? {
@@ -691,11 +894,13 @@ const GalleryResults = memo(function GalleryResults({
                   selectionMode={selectionMode}
                   selected={selectedIds.has(image.id)}
                   onSelectChange={onSelectChange}
+                  onLongPressSelect={onLongPressSelect}
                   selectedCount={selectedCount}
                   onBulkDelete={onBulkDelete}
                   onBulkCategory={onBulkCategory}
                   onRescanMetadata={onRescanMetadata}
                   onBulkRescanMetadata={onBulkRescanMetadata}
+                  isMobile={isMobile}
                 />
               );
 
@@ -1002,6 +1207,8 @@ export const ImageGallery = memo(function ImageGallery({
     onLoadAllSelectableIds,
   } = actions;
   const { pageSize = 50, page, totalPages, onPageChange } = pagination ?? {};
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
   const [internalPage, setInternalPage] = useState(1);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1066,6 +1273,11 @@ export const ImageGallery = memo(function ImageGallery({
   );
 
   const selectedCount = selectedIds.size;
+  const singleSelectedImage = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const [onlyId] = selectedIds;
+    return images.find((img) => img.id === onlyId) ?? null;
+  }, [images, selectedIds]);
   const allFilteredSelected = totalCount > 0 && selectedCount === totalCount;
   const allPageSelected =
     paged.length > 0 && paged.every((img) => selectedIds.has(img.id));
@@ -1085,6 +1297,15 @@ export const ImageGallery = memo(function ImageGallery({
       const next = new Set(prev);
       if (selected) next.add(id);
       else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleLongPressSelect = useCallback((id: string) => {
+    setSelectionMode(true);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
       return next;
     });
   }, []);
@@ -1237,6 +1458,7 @@ export const ImageGallery = memo(function ImageGallery({
         selectedIds={selectedIds}
         selectedCount={selectedCount}
         onSelectChange={handleSelectImage}
+        onLongPressSelect={handleLongPressSelect}
         onBulkDelete={handleBulkDelete}
         onBulkCategory={handleBulkCategory}
         onRescanMetadata={onRescanMetadata}
@@ -1256,6 +1478,29 @@ export const ImageGallery = memo(function ImageGallery({
         currentPage={currentPage}
         computedTotalPages={computedTotalPages}
         onPageChange={updatePage}
+      />
+
+      <MobileBulkActionBar
+        selectionMode={selectionMode}
+        selectedCount={selectedCount}
+        totalCount={totalCount}
+        allPageSelected={allPageSelected}
+        allFilteredSelected={allFilteredSelected}
+        selectingAllResults={selectingAllResults}
+        canSelectAllResults={canSelectAllResults}
+        singleSelectedImage={singleSelectedImage}
+        isElectron={isElectron}
+        onSelectCurrentPage={handleSelectCurrentPage}
+        onSelectAllFiltered={handleSelectAllFiltered}
+        onClearSelection={handleClearSelection}
+        onBulkCategory={handleBulkCategory}
+        onBulkRescanMetadata={handleBulkRescanMetadata}
+        onBulkDelete={handleBulkDelete}
+        onCopyPrompt={onCopyPrompt}
+        onSendToGenerator={onSendToGenerator}
+        onSendToSource={onSendToSource}
+        onReveal={onReveal}
+        onRescanMetadata={onRescanMetadata}
       />
 
       {isRefreshing && (

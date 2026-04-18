@@ -9,13 +9,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
+import { DndContext } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
+import { useDndPointerSensors } from "@/lib/dnd-sensors";
 import {
   SortableContext,
   useSortable,
@@ -684,9 +680,7 @@ function CategoryItem({
   const [addingGroup, setAddingGroup] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDndPointerSensors();
   const groupIds = useMemo(
     () => category.groups.map((g) => g.id),
     [category.groups],
@@ -990,9 +984,7 @@ export const PromptGroupPanel = memo(function PromptGroupPanel({
     onCategoriesChange(
       categories.map((category) => {
         if (category.id !== categoryId) return category;
-        const groupMap = new Map(
-          category.groups.map((g) => [g.id, g]),
-        );
+        const groupMap = new Map(category.groups.map((g) => [g.id, g]));
         return {
           ...category,
           groups: groupIds

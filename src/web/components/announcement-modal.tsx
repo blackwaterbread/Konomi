@@ -91,6 +91,7 @@ export function AnnouncementModal({
       <Dialog open onOpenChange={() => {}}>
         <DialogContent
           hideCloseButton
+          mobileSheet
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
@@ -113,6 +114,7 @@ export function AnnouncementModal({
     <Dialog open onOpenChange={() => {}}>
       <DialogContent
         hideCloseButton
+        mobileSheet
         className="sm:max-w-lg"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}

@@ -93,7 +93,7 @@ function OptionGroup<T extends number>({
           key={opt}
           onClick={() => onChange(opt)}
           className={cn(
-            "px-3 py-1.5 text-sm rounded-md border transition-colors",
+            "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
             value === opt
               ? "bg-primary text-primary-foreground border-primary"
               : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
@@ -178,7 +178,7 @@ function PageSizeSection({
               setEditing(false);
             }}
             className={cn(
-              "px-3 py-1.5 text-sm rounded-md border transition-colors",
+              "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
               value === opt && isPreset && !editing
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
@@ -191,7 +191,7 @@ function PageSizeSection({
           <button
             onClick={openEditor}
             className={cn(
-              "px-3 py-1.5 text-sm rounded-md border transition-colors",
+              "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
               !isPreset || editing
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
@@ -429,7 +429,7 @@ export function SettingsView({
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
+    <div className="flex-1 overflow-y-auto p-8 max-sm:p-5">
       <div className="max-w-lg space-y-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -472,7 +472,7 @@ export function SettingsView({
                 key={language}
                 onClick={() => onUpdate({ language })}
                 className={cn(
-                  "px-3 py-1.5 text-sm rounded-md border transition-colors",
+                  "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
                   settings.language === language
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
@@ -499,7 +499,7 @@ export function SettingsView({
                 key={theme.id}
                 onClick={() => onUpdate({ theme: theme.id })}
                 className={cn(
-                  "px-3 py-1.5 text-sm rounded-md border transition-colors",
+                  "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
                   settings.theme === theme.id
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
@@ -783,12 +783,17 @@ export function SettingsView({
           <h2 className="text-sm font-medium text-foreground select-none">
             {t("settings.keybindings.title")}
           </h2>
-          <KeybindingPanel
-            bindings={bindings}
-            onUpdate={onUpdateBinding}
-            onReset={onResetBinding}
-            onResetAll={onResetAllBindings}
-          />
+          <p className="hidden max-sm:block rounded-md border border-border/60 bg-secondary/20 px-3 py-2 text-xs text-muted-foreground select-none">
+            {t("settings.keybindings.mobileNotice")}
+          </p>
+          <div className="hidden sm:block">
+            <KeybindingPanel
+              bindings={bindings}
+              onUpdate={onUpdateBinding}
+              onReset={onResetBinding}
+              onResetAll={onResetAllBindings}
+            />
+          </div>
         </div>
 
         <Separator className="bg-border" />

@@ -20,6 +20,10 @@ import type { DraggableAttributes } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "react-i18next";
+import {
+  useLongPress,
+  mergeLongPressWithSortableListeners,
+} from "@/lib/long-press";
 import { cn } from "@/lib/utils";
 import {
   tokenToRawString,
@@ -233,11 +237,9 @@ function GroupChipCore({
       });
     };
 
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current?.contains(event.target as Node)) return;
       if (popoverRef.current?.contains(event.target as Node)) return;
-      // PromptInput 내 TokenChip 등의 중첩 popover는 document.body에
-      // portal되므로 popoverRef 밖에 위치함. 중첩 popover 클릭을 무시.
       const target = event.target as HTMLElement;
       if (target.closest?.("[data-token-chip-popover]")) return;
       setActivePopup(null);
@@ -246,12 +248,12 @@ function GroupChipCore({
     const raf = window.requestAnimationFrame(updatePosition);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("pointerdown", onPointerDown);
     return () => {
       window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [activePopup]);
 
@@ -264,6 +266,15 @@ function GroupChipCore({
     triggerRef.current = node;
     chipRef?.(node);
   };
+
+  const { handlers: longPressHandlers, didFireRef: longPressFiredRef } =
+    useLongPress(
+      () => {
+        if (!onChange) return;
+        openEditor();
+      },
+      { ms: 500, touchOnly: true, haptic: true },
+    );
 
   const hiddenStyle: CSSProperties = {
     position: "fixed",
@@ -286,6 +297,11 @@ function GroupChipCore({
         tabIndex={0}
         data-token-chip="true"
         data-token-raw={tokenToRawString(token)}
+        onClick={() => {
+          if (longPressFiredRef.current) {
+            longPressFiredRef.current = false;
+          }
+        }}
         onDoubleClick={(e) => {
           if (!onChange) return;
           e.preventDefault();
@@ -308,7 +324,14 @@ function GroupChipCore({
           }
         }}
         {...sortable?.attributes}
-        {...(activePopup !== null ? {} : sortable?.listeners)}
+        {...(activePopup !== null
+          ? {}
+          : onChange
+            ? mergeLongPressWithSortableListeners(
+                longPressHandlers,
+                sortable?.listeners,
+              )
+            : sortable?.listeners)}
         className={cn(
           "inline-flex cursor-pointer touch-none select-none items-center gap-1 rounded border px-1.5 py-1 text-xs transition-colors",
           "border-group/35 bg-group/14 text-group",
@@ -445,9 +468,9 @@ function GroupChipCore({
                   setDraftWeight(clampWeight(draftWeight - WEIGHT_STEP))
                 }
                 disabled={draftWeight <= MIN_WEIGHT}
-                className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
+                className="flex h-5 w-5 max-sm:h-9 max-sm:w-9 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
               >
-                <Minus className="h-2.5 w-2.5" />
+                <Minus className="h-2.5 w-2.5 max-sm:h-4 max-sm:w-4" />
               </button>
               <span className="w-7 text-center font-mono text-[10px] tabular-nums text-foreground/80">
                 {formatWeight(draftWeight)}
@@ -458,9 +481,9 @@ function GroupChipCore({
                   setDraftWeight(clampWeight(draftWeight + WEIGHT_STEP))
                 }
                 disabled={draftWeight >= MAX_WEIGHT}
-                className="flex h-5 w-5 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
+                className="flex h-5 w-5 max-sm:h-9 max-sm:w-9 items-center justify-center rounded border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-30"
               >
-                <Plus className="h-2.5 w-2.5" />
+                <Plus className="h-2.5 w-2.5 max-sm:h-4 max-sm:w-4" />
               </button>
             </div>
           </div>

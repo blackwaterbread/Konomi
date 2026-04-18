@@ -24,7 +24,7 @@ export const AvailableFoldersDialog = memo(function AvailableFoldersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" mobileSheet>
         <DialogHeader>
           <DialogTitle>{t("availableFolders.title")}</DialogTitle>
         </DialogHeader>

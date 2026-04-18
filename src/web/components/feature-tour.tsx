@@ -12,6 +12,7 @@ interface TourStep {
   placement: "top" | "bottom" | "left" | "right";
   panel?: "gallery" | "generator";
   action?: string;
+  needsSidebar?: boolean;
 }
 
 type TourStepKey =
@@ -53,18 +54,21 @@ const TOUR_STEP_TEMPLATES: TourStepTemplate[] = [
     targetSelector: '[data-tour="sidebar-views"]',
     placement: "right",
     panel: "gallery",
+    needsSidebar: true,
   },
   {
     key: "folders",
     targetSelector: '[data-tour="sidebar-folders"]',
     placement: "right",
     panel: "gallery",
+    needsSidebar: true,
   },
   {
     key: "categories",
     targetSelector: '[data-tour="sidebar-categories"]',
     placement: "right",
     panel: "gallery",
+    needsSidebar: true,
   },
   {
     key: "galleryToolbar",
@@ -145,6 +149,7 @@ interface FeatureTourProps {
   onClose: () => void;
   onPanelChange?: (panel: "gallery" | "generator") => void;
   onAction?: (action: string) => void;
+  onSidebarVisibilityRequest?: (visible: boolean) => void;
 }
 
 interface Rect {
@@ -156,12 +161,18 @@ interface Rect {
 
 const PADDING = 8;
 const GAP = 12;
-const POPOVER_WIDTH = 320;
+const POPOVER_WIDTH_DESKTOP = 320;
+
+function getPopoverWidth() {
+  if (typeof window === "undefined") return POPOVER_WIDTH_DESKTOP;
+  return Math.min(POPOVER_WIDTH_DESKTOP, window.innerWidth - 16);
+}
 
 function computePopoverPosition(
   spotRect: Rect,
   placement: TourStep["placement"],
   popoverHeight: number,
+  popoverWidth: number,
 ) {
   let top = 0;
   let left = 0;
@@ -169,11 +180,11 @@ function computePopoverPosition(
   switch (placement) {
     case "bottom":
       top = spotRect.top + spotRect.height + PADDING + GAP;
-      left = spotRect.left + spotRect.width / 2 - PADDING - POPOVER_WIDTH / 2;
+      left = spotRect.left + spotRect.width / 2 - PADDING - popoverWidth / 2;
       break;
     case "top":
       top = spotRect.top - PADDING - GAP - popoverHeight;
-      left = spotRect.left + spotRect.width / 2 - PADDING - POPOVER_WIDTH / 2;
+      left = spotRect.left + spotRect.width / 2 - PADDING - popoverWidth / 2;
       break;
     case "right":
       top = spotRect.top + spotRect.height / 2 - PADDING - popoverHeight / 2;
@@ -181,14 +192,14 @@ function computePopoverPosition(
       break;
     case "left":
       top = spotRect.top + spotRect.height / 2 - PADDING - popoverHeight / 2;
-      left = spotRect.left - PADDING - GAP - POPOVER_WIDTH;
+      left = spotRect.left - PADDING - GAP - popoverWidth;
       break;
   }
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   if (left < 8) left = 8;
-  if (left + POPOVER_WIDTH > vw - 8) left = vw - 8 - POPOVER_WIDTH;
+  if (left + popoverWidth > vw - 8) left = vw - 8 - popoverWidth;
   if (top < 8) top = 8;
   if (top + popoverHeight > vh - 8) top = vh - 8 - popoverHeight;
 
@@ -200,6 +211,7 @@ export function FeatureTour({
   onClose,
   onPanelChange,
   onAction,
+  onSidebarVisibilityRequest,
 }: FeatureTourProps) {
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
@@ -209,6 +221,7 @@ export function FeatureTour({
     top: number;
     left: number;
   } | null>(null);
+  const [popoverWidth, setPopoverWidth] = useState(() => getPopoverWidth());
 
   const tourSteps = useMemo(() => buildTourSteps(t), [t]);
   const currentStep = tourSteps[step];
@@ -260,9 +273,20 @@ export function FeatureTour({
 
   useEffect(() => {
     if (!open) return undefined;
-    window.addEventListener("resize", updateRect);
-    return () => window.removeEventListener("resize", updateRect);
+    const handleResize = () => {
+      setPopoverWidth(getPopoverWidth());
+      updateRect();
+    };
+    setPopoverWidth(getPopoverWidth());
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [open, updateRect]);
+
+  useEffect(() => {
+    if (!open || !currentStep) return;
+    if (!onSidebarVisibilityRequest) return;
+    onSidebarVisibilityRequest(currentStep.needsSidebar === true);
+  }, [open, currentStep, onSidebarVisibilityRequest]);
 
   useEffect(() => {
     if (!targetRect || !currentStep) {
@@ -271,9 +295,14 @@ export function FeatureTour({
     }
     const popoverHeight = popoverRef.current?.offsetHeight ?? 160;
     setPopoverPos(
-      computePopoverPosition(targetRect, currentStep.placement, popoverHeight),
+      computePopoverPosition(
+        targetRect,
+        currentStep.placement,
+        popoverHeight,
+        popoverWidth,
+      ),
     );
-  }, [targetRect, currentStep]);
+  }, [targetRect, currentStep, popoverWidth]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -322,7 +351,7 @@ export function FeatureTour({
           style={{
             top: popoverPos.top,
             left: popoverPos.left,
-            width: POPOVER_WIDTH,
+            width: popoverWidth,
             transition: "all 300ms ease",
           }}
         >

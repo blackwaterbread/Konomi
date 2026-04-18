@@ -16,12 +16,10 @@ import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useDndPointerSensors } from "@/lib/dnd-sensors";
 import {
   SortableContext,
   arrayMove,
@@ -696,9 +694,7 @@ export const PromptInput = memo(function PromptInput({
     };
   }, [draft, rawTagPrefix, groupDropdownOpen, promptTagExclusions, isRawMode]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDndPointerSensors();
 
   const serialized = useMemo(
     () => serializePrompt(tokens, draft, insertIndex),
@@ -885,6 +881,10 @@ export const PromptInput = memo(function PromptInput({
     }
 
     const updateAutocompletePosition = () => {
+      const vv = window.visualViewport;
+      const viewportTop = vv?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (vv?.height ?? window.innerHeight);
+
       if (isRawMode) {
         const textarea = rawInputRef.current;
         if (!textarea) return;
@@ -904,12 +904,14 @@ export const PromptInput = memo(function PromptInput({
           8,
           Math.min(cursorLeft, viewportWidth - width - 8),
         );
+        const maxHeight = Math.max(120, viewportBottom - cursorTop - 8);
 
         setAutocompleteStyle({
           position: "fixed",
           top: cursorTop,
           left,
           width,
+          maxHeight,
           zIndex: 3200,
         });
         return;
@@ -923,12 +925,15 @@ export const PromptInput = memo(function PromptInput({
       const desiredWidth = showGroupDropdown ? 320 : 288;
       const width = Math.min(desiredWidth, viewportWidth - 16);
       const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
+      const top = rect.bottom + 4;
+      const maxHeight = Math.max(120, viewportBottom - top - 8);
 
       setAutocompleteStyle({
         position: "fixed",
-        top: rect.bottom + 4,
+        top,
         left,
         width,
+        maxHeight,
         zIndex: 3200,
       });
     };
@@ -936,10 +941,26 @@ export const PromptInput = memo(function PromptInput({
     const raf = window.requestAnimationFrame(updateAutocompletePosition);
     window.addEventListener("resize", updateAutocompletePosition);
     window.addEventListener("scroll", updateAutocompletePosition, true);
+    window.visualViewport?.addEventListener(
+      "resize",
+      updateAutocompletePosition,
+    );
+    window.visualViewport?.addEventListener(
+      "scroll",
+      updateAutocompletePosition,
+    );
     return () => {
       window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", updateAutocompletePosition);
       window.removeEventListener("scroll", updateAutocompletePosition, true);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updateAutocompletePosition,
+      );
+      window.visualViewport?.removeEventListener(
+        "scroll",
+        updateAutocompletePosition,
+      );
     };
   }, [
     draft,

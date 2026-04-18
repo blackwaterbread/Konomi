@@ -408,7 +408,10 @@ export function AppInfoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(94vw,72rem)] max-w-4xl overflow-hidden p-0">
+      <DialogContent
+        className="w-[min(94vw,72rem)] max-w-4xl overflow-hidden p-0 max-sm:overflow-y-auto max-sm:p-0"
+        mobileSheet
+      >
         <div className="flex flex-col">
           <section className="relative overflow-hidden bg-gradient-to-br from-primary/15 via-background to-secondary/40 p-8 sm:p-10">
             <div className="pointer-events-none absolute inset-0">
@@ -532,7 +535,7 @@ export function AppInfoDialog({
       </DialogContent>
 
       <Dialog open={licenseOpen} onOpenChange={setLicenseOpen}>
-        <DialogContent className="w-[min(92vw,56rem)] max-w-3xl">
+        <DialogContent className="w-[min(92vw,56rem)] max-w-3xl" mobileSheet>
           <DialogHeader>
             <DialogTitle>{t("appInfoDialog.licenses")}</DialogTitle>
             <DialogDescription>

@@ -42,6 +42,8 @@ import {
   ArrowRightLeft,
   RefreshCw,
   Search,
+  MoreVertical,
+  Upload,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -74,6 +76,7 @@ import { PromptInput } from "@/components/prompt-input";
 import { PromptGroupPanel } from "@/components/prompt-group-panel";
 import { PromptSourcePanel } from "@/components/prompt-source-panel";
 import { useApi } from "@/api";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 type DropItem =
   | {
@@ -246,7 +249,7 @@ function PositionAdjustButton({
                     setOpen(false);
                   }}
                   className={cn(
-                    "w-5 h-5 rounded-sm transition-colors text-[8px] font-mono",
+                    "w-5 h-5 max-sm:w-10 max-sm:h-10 rounded-sm transition-colors text-[8px] max-sm:text-xs font-mono",
                     value === key
                       ? "bg-primary text-primary-foreground"
                       : "bg-secondary/60 hover:bg-secondary text-muted-foreground/40 hover:text-foreground",
@@ -391,7 +394,7 @@ const INFINITY_SYMBOL = "\u221E";
 const NAI_GEN_PERSIST_DELAY_MS = 200;
 
 const INPUT_CLS =
-  "w-full bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors";
+  "w-full bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 max-sm:py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors";
 
 interface ImportChecks {
   prompt: boolean;
@@ -454,7 +457,7 @@ function SelectBase({
     <RadixSelect value={value} onValueChange={onChange}>
       <SelectTrigger
         className={cn(
-          "w-full justify-between rounded-lg border-border/60 bg-secondary/60 px-3 py-1.5 text-sm text-foreground shadow-none transition-colors focus-visible:border-primary/60 focus-visible:bg-secondary focus-visible:ring-0 [&_svg]:size-3 [&_svg]:text-muted-foreground/60",
+          "w-full justify-between rounded-lg border-border/60 bg-secondary/60 px-3 py-1.5 max-sm:h-11 max-sm:py-2.5 text-sm text-foreground shadow-none transition-colors focus-visible:border-primary/60 focus-visible:bg-secondary focus-visible:ring-0 [&_svg]:size-3 [&_svg]:text-muted-foreground/60",
           className,
         )}
       >
@@ -777,15 +780,18 @@ function RecentThumb({
   src,
   isCurrent,
   onClick,
+  onOpenActions,
+  openActionsLabel,
 }: {
   src: string;
   isCurrent: boolean;
   onClick: () => void;
+  onOpenActions?: (src: string) => void;
+  openActionsLabel?: string;
 }) {
   const [loaded, setLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Release decoded bitmap on unmount
   useEffect(
     () => () => {
       if (imgRef.current) imgRef.current.src = "";
@@ -800,30 +806,46 @@ function RecentThumb({
   };
 
   return (
-    <button
-      draggable
-      onDragStart={handleDragStart}
-      className={cn(
-        "relative w-full aspect-square rounded-md overflow-hidden ring-2 transition-all block",
-        isCurrent
-          ? "ring-primary cursor-default"
-          : "ring-transparent hover:ring-primary/50 cursor-grab active:cursor-grabbing",
-      )}
-      onClick={onClick}
-    >
-      {!loaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
-        </div>
-      )}
-      <img
-        ref={imgRef}
-        src={src}
-        alt=""
-        className="w-full h-full object-cover"
-        onLoad={() => setLoaded(true)}
-      />
-    </button>
+    <div className="relative">
+      <button
+        draggable
+        onDragStart={handleDragStart}
+        className={cn(
+          "relative w-full aspect-square rounded-md overflow-hidden ring-2 transition-all block",
+          isCurrent
+            ? "ring-primary cursor-default"
+            : "ring-transparent hover:ring-primary/50 cursor-grab active:cursor-grabbing",
+        )}
+        onClick={onClick}
+      >
+        {!loaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+          </div>
+        )}
+        <img
+          ref={imgRef}
+          src={src}
+          alt=""
+          className="w-full h-full object-cover"
+          onLoad={() => setLoaded(true)}
+        />
+      </button>
+      {onOpenActions ? (
+        <button
+          type="button"
+          aria-label={openActionsLabel}
+          title={openActionsLabel}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenActions(src);
+          }}
+          className="hidden max-sm:flex absolute top-1 right-1 h-7 w-7 items-center justify-center rounded-full bg-background/80 backdrop-blur text-foreground/80 shadow hover:bg-background"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -2425,7 +2447,7 @@ const SizeSection = memo(function SizeSection({
           onClick={handleSwapDimensions}
           title={t("generation.size.swapTitle")}
           aria-label={t("generation.size.swapAria")}
-          className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground"
+          className="shrink-0 inline-flex h-9 w-9 max-sm:h-11 max-sm:w-11 items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground"
         >
           <ArrowRightLeft className="h-3.5 w-3.5" />
         </button>
@@ -2591,12 +2613,34 @@ const ResultViewport = memo(function ResultViewport({
   setSeedInput,
 }: ResultViewportProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [seedDropdownOpen, setSeedDropdownOpen] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const seedDropdownRef = useRef<HTMLDivElement | null>(null);
+  const seedFirstActionRef = useRef<HTMLButtonElement | null>(null);
+  const seedPrevFocusRef = useRef<HTMLElement | null>(null);
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const sheetDragRef = useRef<{ startY: number; pointerId: number } | null>(
+    null,
+  );
   const generatingRef = useLatestRef(generating);
   const showGeneratingPreview =
     generating && (pendingResultSelected || !resultSrc);
+
+  const currentSeed = resultSrc ? (recentSeeds.get(resultSrc) ?? null) : null;
+
+  const handleCopySeed = useCallback(() => {
+    if (currentSeed == null) return;
+    void navigator.clipboard.writeText(String(currentSeed));
+    setSeedDropdownOpen(false);
+    toast.success(t("generation.actions.seedCopied"));
+  }, [currentSeed, t]);
+
+  const handleImportSeed = useCallback(() => {
+    if (currentSeed == null) return;
+    setSeedInput(String(currentSeed));
+    setSeedDropdownOpen(false);
+  }, [currentSeed, setSeedInput]);
 
   useEffect(() => {
     return window.nai.onGeneratePreview((dataUrl) => {
@@ -2612,7 +2656,14 @@ const ResultViewport = memo(function ResultViewport({
 
   useEffect(() => {
     if (!seedDropdownOpen) return;
-    const handler = (event: MouseEvent) => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSeedDropdownOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    if (isMobile) {
+      return () => document.removeEventListener("keydown", onKey);
+    }
+    const onPointer = (event: Event) => {
       if (
         seedDropdownRef.current &&
         !seedDropdownRef.current.contains(event.target as Node)
@@ -2620,9 +2671,54 @@ const ResultViewport = memo(function ResultViewport({
         setSeedDropdownOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [seedDropdownOpen, isMobile]);
+
+  useEffect(() => {
+    if (!seedDropdownOpen || !isMobile) return;
+    seedPrevFocusRef.current = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const raf = window.requestAnimationFrame(() => {
+      seedFirstActionRef.current?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(raf);
+      document.body.style.overflow = prevOverflow;
+      seedPrevFocusRef.current?.focus?.();
+    };
+  }, [seedDropdownOpen, isMobile]);
+
+  useEffect(() => {
+    if (!seedDropdownOpen) setSheetDragY(0);
   }, [seedDropdownOpen]);
+
+  const handleSheetPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    sheetDragRef.current = { startY: e.clientY, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const handleSheetPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sheetDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    setSheetDragY(Math.max(0, e.clientY - drag.startY));
+  };
+  const handleSheetPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sheetDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const dy = Math.max(0, e.clientY - drag.startY);
+    sheetDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+    if (dy > 80) setSeedDropdownOpen(false);
+    else setSheetDragY(0);
+  };
 
   return (
     <div className="relative z-10 flex flex-col items-center justify-center w-full h-full">
@@ -2671,6 +2767,7 @@ const ResultViewport = memo(function ResultViewport({
             src={resultSrc}
             alt={t("generation.actions.resultAlt")}
             className="max-w-full max-h-full object-contain rounded-sm"
+            style={{ touchAction: "pinch-zoom" }}
           />
           {recentSeeds.get(resultSrc) != null && (
             <div
@@ -2679,31 +2776,22 @@ const ResultViewport = memo(function ResultViewport({
             >
               <button
                 onClick={() => setSeedDropdownOpen((open) => !open)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-background/80 backdrop-blur-sm border border-border/50 text-xs font-mono tabular-nums text-foreground/80 hover:text-foreground hover:bg-background/95 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 max-sm:px-3 max-sm:py-2 rounded-lg bg-background/80 backdrop-blur-sm border border-border/50 text-xs max-sm:text-sm font-mono tabular-nums text-foreground/80 hover:text-foreground hover:bg-background/95 transition-colors shadow-sm"
               >
-                <Hash className="h-3 w-3 shrink-0" />
+                <Hash className="h-3 w-3 max-sm:h-3.5 max-sm:w-3.5 shrink-0" />
                 {recentSeeds.get(resultSrc)}
               </button>
-              {seedDropdownOpen && (
+              {seedDropdownOpen && !isMobile && (
                 <div className="absolute bottom-full right-0 mb-1.5 w-36 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
                   <button
-                    onClick={() => {
-                      void navigator.clipboard.writeText(
-                        String(recentSeeds.get(resultSrc)),
-                      );
-                      setSeedDropdownOpen(false);
-                      toast.success(t("generation.actions.seedCopied"));
-                    }}
+                    onClick={handleCopySeed}
                     className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors"
                   >
                     <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     {t("generation.actions.copyToClipboard")}
                   </button>
                   <button
-                    onClick={() => {
-                      setSeedInput(String(recentSeeds.get(resultSrc)));
-                      setSeedDropdownOpen(false);
-                    }}
+                    onClick={handleImportSeed}
                     className="flex items-center gap-2 w-full px-3 py-2 text-xs text-foreground hover:bg-accent transition-colors"
                   >
                     <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -2711,6 +2799,65 @@ const ResultViewport = memo(function ResultViewport({
                   </button>
                 </div>
               )}
+              {seedDropdownOpen &&
+                isMobile &&
+                createPortal(
+                  <>
+                    <button
+                      type="button"
+                      aria-label={t("common.close")}
+                      onClick={() => setSeedDropdownOpen(false)}
+                      className="fixed inset-0 z-40 bg-black/50"
+                    />
+                    <div
+                      role="dialog"
+                      aria-modal="true"
+                      className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border/60 bg-background shadow-[0_-8px_24px_rgba(0,0,0,0.25)] pb-safe"
+                      style={{
+                        transform: `translateY(${sheetDragY}px)`,
+                        transition: sheetDragRef.current
+                          ? "none"
+                          : "transform 200ms ease-out",
+                      }}
+                    >
+                      <div
+                        onPointerDown={handleSheetPointerDown}
+                        onPointerMove={handleSheetPointerMove}
+                        onPointerUp={handleSheetPointerEnd}
+                        onPointerCancel={handleSheetPointerEnd}
+                        className="flex justify-center pt-2 pb-1 touch-none cursor-grab active:cursor-grabbing"
+                      >
+                        <div className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+                      </div>
+                      <div className="px-3 pb-3 pt-1">
+                        <div className="mb-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                          <Hash className="h-3.5 w-3.5 shrink-0" />
+                          <span className="font-mono tabular-nums">
+                            {currentSeed}
+                          </span>
+                        </div>
+                        <button
+                          ref={seedFirstActionRef}
+                          type="button"
+                          onClick={handleCopySeed}
+                          className="flex h-12 w-full items-center gap-3 rounded-lg px-3 text-sm text-foreground transition-colors hover:bg-accent active:bg-accent"
+                        >
+                          <Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          {t("generation.actions.copyToClipboard")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleImportSeed}
+                          className="flex h-12 w-full items-center gap-3 rounded-lg px-3 text-sm text-foreground transition-colors hover:bg-accent active:bg-accent"
+                        >
+                          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          {t("generation.actions.importSeed")}
+                        </button>
+                      </div>
+                    </div>
+                  </>,
+                  document.body,
+                )}
             </div>
           )}
         </>
@@ -2735,6 +2882,8 @@ interface RecentImagesPanelProps {
   resultSrc: string | null;
   onSelectPendingResult: () => void;
   onSelectResult: (src: string) => void;
+  onOpenRecentActions?: (src: string) => void;
+  onPickLocalFile?: (file: File) => void;
 }
 
 const RecentImagesPanel = memo(function RecentImagesPanel({
@@ -2744,9 +2893,18 @@ const RecentImagesPanel = memo(function RecentImagesPanel({
   resultSrc,
   onSelectPendingResult,
   onSelectResult,
+  onOpenRecentActions,
+  onPickLocalFile,
 }: RecentImagesPanelProps) {
   const { t } = useTranslation();
   const hasRecentItems = generating || recentImages.length > 0;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onPickLocalFile) onPickLocalFile(file);
+    e.target.value = "";
+  };
 
   return (
     <div className="w-24 shrink-0 border-l border-border/60 bg-card/70 flex flex-col">
@@ -2769,6 +2927,8 @@ const RecentImagesPanel = memo(function RecentImagesPanel({
                 src={src}
                 isCurrent={!pendingResultSelected && src === resultSrc}
                 onClick={() => onSelectResult(src)}
+                onOpenActions={onOpenRecentActions}
+                openActionsLabel={t("generation.dialogs.imageAction")}
               />
             ))}
           </div>
@@ -2778,6 +2938,25 @@ const RecentImagesPanel = memo(function RecentImagesPanel({
           </p>
         )}
       </div>
+      {onPickLocalFile ? (
+        <div className="hidden max-sm:block shrink-0 border-t border-border/60 p-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePickFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex w-full h-10 items-center justify-center gap-1 rounded-md border border-dashed border-primary/40 text-[11px] text-primary/80 hover:bg-primary/10"
+          >
+            <Upload className="h-4 w-4" />
+            <span className="truncate">{t("generation.actions.pickFile")}</span>
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 });
@@ -2792,6 +2971,8 @@ interface ResultAreaProps {
   recentImages: string[];
   onSelectPendingResult: () => void;
   onSelectResult: (src: string) => void;
+  onOpenRecentActions?: (src: string) => void;
+  onPickLocalFile?: (file: File) => void;
 }
 
 const ResultArea = memo(function ResultArea({
@@ -2804,6 +2985,8 @@ const ResultArea = memo(function ResultArea({
   recentImages,
   onSelectPendingResult,
   onSelectResult,
+  onOpenRecentActions,
+  onPickLocalFile,
 }: ResultAreaProps) {
   return (
     <>
@@ -2834,6 +3017,8 @@ const ResultArea = memo(function ResultArea({
         resultSrc={resultSrc}
         onSelectPendingResult={onSelectPendingResult}
         onSelectResult={onSelectResult}
+        onOpenRecentActions={onOpenRecentActions}
+        onPickLocalFile={onPickLocalFile}
       />
     </>
   );
@@ -2841,6 +3026,8 @@ const ResultArea = memo(function ResultArea({
 
 interface LeftPanelProps {
   panelWidth: number;
+  isMobile: boolean;
+  mobileHidden: boolean;
   selectedService: GenerationService;
   setSelectedService: Dispatch<SetStateAction<GenerationService>>;
   isDarkTheme: boolean;
@@ -3024,6 +3211,8 @@ function GenerationServiceSelector({
 
 const LeftPanel = memo(function LeftPanel({
   panelWidth,
+  isMobile,
+  mobileHidden,
   selectedService,
   setSelectedService,
   isDarkTheme,
@@ -3122,12 +3311,21 @@ const LeftPanel = memo(function LeftPanel({
 
   return (
     <div
-      className="relative flex flex-col border-r border-border shrink-0 bg-sidebar overflow-hidden"
-      style={{
-        width: panelWidth,
-        minWidth: panelWidth,
-        maxWidth: panelWidth,
-      }}
+      className={cn(
+        "relative flex flex-col bg-sidebar overflow-hidden",
+        isMobile
+          ? cn("w-full flex-1 min-h-0", mobileHidden && "hidden")
+          : "border-r border-border shrink-0",
+      )}
+      style={
+        isMobile
+          ? undefined
+          : {
+              width: panelWidth,
+              minWidth: panelWidth,
+              maxWidth: panelWidth,
+            }
+      }
     >
       <GenerationServiceSelector
         selectedService={selectedService}
@@ -3282,6 +3480,9 @@ interface RightSidePanelProps {
   visible: boolean;
   width: number;
   tab: "settings" | "prompt-group" | "reference";
+  isMobile: boolean;
+  mobileHidden: boolean;
+  mobileSettingsOnly: boolean;
   setVisible: Dispatch<SetStateAction<boolean>>;
   setTab: Dispatch<SetStateAction<"settings" | "prompt-group" | "reference">>;
   sourceImage: ImageData | null;
@@ -3302,10 +3503,172 @@ interface RightSidePanelProps {
   onResizeStart: (event: React.MouseEvent) => void;
 }
 
+interface RightSidePanelSettingsProps {
+  apiKeyInput: string;
+  setApiKeyInput: Dispatch<SetStateAction<string>>;
+  apiKeyValidated: boolean;
+  setApiKeyValidated: Dispatch<SetStateAction<boolean>>;
+  validating: boolean;
+  onValidateApiKey: () => void;
+  outputFolder: string;
+  onOutputFolderChange: (folder: string) => void;
+  onSelectOutputFolder: () => void;
+  configSaving: boolean;
+  onSaveConfig: () => void;
+}
+
+function RightSidePanelSettings({
+  apiKeyInput,
+  setApiKeyInput,
+  apiKeyValidated,
+  setApiKeyValidated,
+  validating,
+  onValidateApiKey,
+  outputFolder,
+  onOutputFolderChange,
+  onSelectOutputFolder,
+  configSaving,
+  onSaveConfig,
+}: RightSidePanelSettingsProps) {
+  const { t } = useTranslation();
+  const { appInfo } = useApi();
+  const isElectron = appInfo.isElectron;
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="divide-y divide-border/40 flex-1 overflow-y-auto">
+        <div className="px-4 py-3 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground select-none">
+              NovelAI API Key
+            </span>
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("generation.actions.apiKeyHelp")}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/60 bg-transparent text-muted-foreground transition-colors hover:border-border hover:bg-secondary/40 hover:text-foreground"
+                  >
+                    <Info className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={8}
+                  className="max-w-80 text-foreground/85 p-2"
+                >
+                  {t("generation.actions.apiKeyHelpDescription")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          {apiKeyValidated ? (
+            <div className="flex gap-1.5">
+              <input
+                type="password"
+                value={apiKeyInput}
+                readOnly
+                className={cn(
+                  INPUT_CLS,
+                  "flex-1 min-w-0 max-sm:h-10 max-sm:text-sm",
+                )}
+              />
+              <button
+                onClick={() => {
+                  setApiKeyInput("");
+                  setApiKeyValidated(false);
+                }}
+                className="shrink-0 h-8 max-sm:h-10 px-2.5 rounded-lg border border-border/60 bg-secondary/60 text-xs max-sm:text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              >
+                {t("generation.actions.replace")}
+              </button>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder="API Key"
+              className={cn(INPUT_CLS, "w-full max-sm:h-10 max-sm:text-sm")}
+            />
+          )}
+          <button
+            onClick={onValidateApiKey}
+            disabled={validating || !apiKeyInput.trim() || apiKeyValidated}
+            className={cn(
+              "mt-1.5 w-full h-8 max-sm:h-10 flex items-center justify-center gap-1.5 rounded-lg border text-xs max-sm:text-sm transition-colors disabled:opacity-40",
+              apiKeyValidated
+                ? "border-success/40 bg-success/10 text-success"
+                : "border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border",
+            )}
+          >
+            {validating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : apiKeyValidated ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : null}
+            {apiKeyValidated
+              ? t("generation.actions.loginSuccess")
+              : t("generation.actions.login")}
+          </button>
+        </div>
+
+        <div className="px-4 py-3 space-y-1.5">
+          <span className="text-xs text-muted-foreground select-none">
+            {t("generation.actions.outputFolder")}
+          </span>
+          <div className="flex gap-1.5">
+            <input
+              value={outputFolder}
+              placeholder={t("generation.actions.outputFolderPlaceholder")}
+              className={cn(
+                INPUT_CLS,
+                "flex-1 min-w-0 max-sm:h-10 max-sm:text-sm",
+              )}
+              readOnly={isElectron}
+              onChange={
+                isElectron
+                  ? undefined
+                  : (e) => onOutputFolderChange(e.target.value)
+              }
+            />
+            {isElectron && (
+              <button
+                onClick={onSelectOutputFolder}
+                className="shrink-0 h-8 w-8 max-sm:h-10 max-sm:w-10 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 py-3 pb-safe border-t border-border/40 shrink-0">
+        <button
+          onClick={onSaveConfig}
+          disabled={configSaving}
+          className="w-full h-9 max-sm:h-11 flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40"
+        >
+          {configSaving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {t("generation.actions.save")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const RightSidePanel = memo(function RightSidePanel({
   visible,
   width,
   tab,
+  isMobile,
+  mobileHidden,
+  mobileSettingsOnly,
   setVisible,
   setTab,
   sourceImage,
@@ -3326,8 +3689,106 @@ const RightSidePanel = memo(function RightSidePanel({
   onResizeStart,
 }: RightSidePanelProps) {
   const { t } = useTranslation();
-  const { appInfo } = useApi();
-  const isElectron = appInfo.isElectron;
+
+  if (isMobile) {
+    const effectiveTab = mobileSettingsOnly
+      ? "settings"
+      : tab === "settings"
+        ? "prompt-group"
+        : tab;
+    return (
+      <div
+        className={cn(
+          "w-full flex-1 min-h-0 flex flex-col h-full bg-sidebar overflow-hidden",
+          mobileHidden && "hidden",
+        )}
+      >
+        {!mobileSettingsOnly && (
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border/40 shrink-0">
+            <div className="flex-1" />
+            {(
+              [
+                {
+                  id: "prompt-group",
+                  icon: LayoutList,
+                  title: t("generation.actions.promptGroup"),
+                },
+                {
+                  id: "reference",
+                  icon: ImageIcon,
+                  title: t("generation.actions.referenceImage"),
+                },
+              ] as const
+            ).map(({ id, icon: Icon, title }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                title={title}
+                aria-label={title}
+                className={cn(
+                  "h-10 w-10 rounded flex items-center justify-center transition-colors",
+                  effectiveTab === id
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-5 w-5" />
+              </button>
+            ))}
+            {effectiveTab === "reference" && sourceImage && (
+              <button
+                onClick={() => setSourceImage(null)}
+                title={t("generation.actions.removeReferenceImage")}
+                aria-label={t("generation.actions.removeReferenceImage")}
+                className="h-10 w-10 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 ml-0.5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {effectiveTab === "prompt-group" && (
+          <div data-tour="gen-prompt-group-panel" className="flex-1 min-h-0">
+            <PromptGroupPanel
+              categories={categories}
+              onCategoriesChange={setCategories}
+            />
+          </div>
+        )}
+
+        {effectiveTab === "settings" && (
+          <RightSidePanelSettings
+            apiKeyInput={apiKeyInput}
+            setApiKeyInput={setApiKeyInput}
+            apiKeyValidated={apiKeyValidated}
+            setApiKeyValidated={setApiKeyValidated}
+            validating={validating}
+            onValidateApiKey={onValidateApiKey}
+            outputFolder={outputFolder}
+            onOutputFolderChange={onOutputFolderChange}
+            onSelectOutputFolder={onSelectOutputFolder}
+            configSaving={configSaving}
+            onSaveConfig={onSaveConfig}
+          />
+        )}
+
+        {effectiveTab === "reference" &&
+          (sourceImage ? (
+            <PromptSourcePanel image={sourceImage} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 select-none">
+              <div className="h-12 w-12 rounded-xl bg-secondary/50 border border-border/30 flex items-center justify-center">
+                <ImageIcon className="h-5 w-5 text-muted-foreground/30" />
+              </div>
+              <p className="text-xs text-muted-foreground/40 text-center px-4">
+                {t("generation.actions.sendToReferenceHint")}
+              </p>
+            </div>
+          ))}
+      </div>
+    );
+  }
 
   return visible ? (
     <>
@@ -3394,129 +3855,19 @@ const RightSidePanel = memo(function RightSidePanel({
         )}
 
         {tab === "settings" && (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="divide-y divide-border/40 flex-1 overflow-y-auto">
-              <div className="px-4 py-3 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground select-none">
-                    NovelAI API Key
-                  </span>
-                  <TooltipProvider delayDuration={0}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          aria-label={t("generation.actions.apiKeyHelp")}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/60 bg-transparent text-muted-foreground transition-colors hover:border-border hover:bg-secondary/40 hover:text-foreground"
-                        >
-                          <Info className="h-3 w-3" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="top"
-                        sideOffset={8}
-                        className="max-w-80 text-foreground/85 p-2"
-                      >
-                        {t("generation.actions.apiKeyHelpDescription")}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                {apiKeyValidated ? (
-                  <div className="flex gap-1.5">
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      readOnly
-                      className={cn(INPUT_CLS, "flex-1 min-w-0")}
-                    />
-                    <button
-                      onClick={() => {
-                        setApiKeyInput("");
-                        setApiKeyValidated(false);
-                      }}
-                      className="shrink-0 h-8 px-2.5 rounded-lg border border-border/60 bg-secondary/60 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                    >
-                      {t("generation.actions.replace")}
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder="API Key"
-                    className={cn(INPUT_CLS, "w-full")}
-                  />
-                )}
-                <button
-                  onClick={onValidateApiKey}
-                  disabled={
-                    validating || !apiKeyInput.trim() || apiKeyValidated
-                  }
-                  className={cn(
-                    "mt-1.5 w-full h-8 flex items-center justify-center gap-1.5 rounded-lg border text-xs transition-colors disabled:opacity-40",
-                    apiKeyValidated
-                      ? "border-success/40 bg-success/10 text-success"
-                      : "border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border",
-                  )}
-                >
-                  {validating ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : apiKeyValidated ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : null}
-                  {apiKeyValidated
-                    ? t("generation.actions.loginSuccess")
-                    : t("generation.actions.login")}
-                </button>
-              </div>
-
-              <div className="px-4 py-3 space-y-1.5">
-                <span className="text-xs text-muted-foreground select-none">
-                  {t("generation.actions.outputFolder")}
-                </span>
-                <div className="flex gap-1.5">
-                  <input
-                    value={outputFolder}
-                    placeholder={t(
-                      "generation.actions.outputFolderPlaceholder",
-                    )}
-                    className={cn(INPUT_CLS, "flex-1 min-w-0")}
-                    readOnly={isElectron}
-                    onChange={
-                      isElectron
-                        ? undefined
-                        : (e) => onOutputFolderChange(e.target.value)
-                    }
-                  />
-                  {isElectron && (
-                    <button
-                      onClick={onSelectOutputFolder}
-                      className="shrink-0 h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 bg-secondary/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 border-t border-border/40 shrink-0">
-              <button
-                onClick={onSaveConfig}
-                disabled={configSaving}
-                className="w-full h-9 flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40"
-              >
-                {configSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {t("generation.actions.save")}
-              </button>
-            </div>
-          </div>
+          <RightSidePanelSettings
+            apiKeyInput={apiKeyInput}
+            setApiKeyInput={setApiKeyInput}
+            apiKeyValidated={apiKeyValidated}
+            setApiKeyValidated={setApiKeyValidated}
+            validating={validating}
+            onValidateApiKey={onValidateApiKey}
+            outputFolder={outputFolder}
+            onOutputFolderChange={onOutputFolderChange}
+            onSelectOutputFolder={onSelectOutputFolder}
+            configSaving={configSaving}
+            onSaveConfig={onSaveConfig}
+          />
         )}
 
         {tab === "reference" &&
@@ -3863,6 +4214,139 @@ function DropImportModal({
   );
 }
 
+type MobileGenTab = "params" | "result" | "groups" | "settings";
+
+function MobileGenTabBar({
+  tab,
+  setTab,
+  generating,
+}: {
+  tab: MobileGenTab;
+  setTab: Dispatch<SetStateAction<MobileGenTab>>;
+  generating: boolean;
+}) {
+  const { t } = useTranslation();
+  const items: Array<{
+    id: MobileGenTab;
+    icon: typeof Sparkles;
+    label: string;
+  }> = [
+    {
+      id: "params",
+      icon: Wand2,
+      label: t("generation.mobileTabs.params"),
+    },
+    {
+      id: "result",
+      icon: Sparkles,
+      label: t("generation.mobileTabs.result"),
+    },
+    {
+      id: "groups",
+      icon: LayoutList,
+      label: t("generation.mobileTabs.groups"),
+    },
+    {
+      id: "settings",
+      icon: Settings,
+      label: t("generation.mobileTabs.settings"),
+    },
+  ];
+  return (
+    <div
+      className="lg:hidden shrink-0 border-t border-border/60 bg-sidebar pb-safe"
+      role="tablist"
+      aria-label={t("generation.mobileTabs.ariaLabel")}
+    >
+      <div className="flex w-full">
+        {items.map(({ id, icon: Icon, label }) => {
+          const active = tab === id;
+          const showProgress = id === "result" && generating;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
+                active
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <span className="relative inline-flex items-center justify-center">
+                <Icon className="h-5 w-5" />
+                {showProgress && (
+                  <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary animate-pulse" />
+                )}
+              </span>
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MobileAutoGenBadge({
+  progress,
+  generating,
+  cancelPending,
+  onCancel,
+}: {
+  progress: { current: number; total: number | null };
+  generating: boolean;
+  cancelPending: boolean;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const ratio =
+    progress.total !== null && progress.total > 0
+      ? Math.min(1, progress.current / progress.total)
+      : null;
+  return (
+    <div className="sm:hidden sticky top-0 z-20 px-3 py-2 border-b border-border/60 bg-background/95 backdrop-blur shrink-0">
+      {ratio !== null ? (
+        <div className="w-full bg-secondary rounded-full h-1">
+          <div
+            className="bg-primary h-1 rounded-full transition-all duration-300"
+            style={{ width: `${ratio * 100}%` }}
+          />
+        </div>
+      ) : (
+        <div className="w-full bg-secondary rounded-full h-1 overflow-hidden">
+          <div className="h-1 bg-primary/60 animate-pulse w-full" />
+        </div>
+      )}
+      <div className="mt-1.5 flex items-center justify-between">
+        <span className="text-xs text-muted-foreground tabular-nums flex items-center gap-1.5">
+          {generating && <Loader2 className="h-3 w-3 animate-spin" />}
+          {progress.current} / {progress.total ?? "??"}
+        </span>
+        <button
+          type="button"
+          disabled={cancelPending}
+          onClick={onCancel}
+          className={cn(
+            "flex items-center gap-1 text-xs transition-colors",
+            cancelPending
+              ? "text-muted-foreground/40 cursor-not-allowed"
+              : "text-muted-foreground hover:text-destructive",
+          )}
+        >
+          <X className="h-3 w-3" />
+          {cancelPending
+            ? t("generation.actions.stopPending")
+            : t("generation.actions.stop")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const GenerationView = memo(
   forwardRef<GenerationViewHandle, GenerationViewProps>(function GenerationView(
     { outputFolder, onOutputFolderChange, isDarkTheme, tourActive },
@@ -3965,13 +4449,23 @@ export const GenerationView = memo(
       startWidth: number;
     } | null>(null);
     const rightPanelWidthRef = useRef(rightPanelWidth);
+
+    const isMobile = useIsMobile();
+    const [mobileTab, setMobileTab] = useState<MobileGenTab>("params");
+
     const openRightPanelTab = useCallback(
       (tab: "settings" | "prompt-group" | "reference") => {
         setRightPanelVisible(true);
         setRightPanelTab(tab);
+        if (tab === "settings") setMobileTab("settings");
+        else setMobileTab("groups");
       },
       [],
     );
+
+    useEffect(() => {
+      if (isMobile && generating) setMobileTab("result");
+    }, [isMobile, generating]);
 
     // Fill demo params when tour is active
     const tourPrevParamsRef = useRef<{
@@ -5066,7 +5560,10 @@ export const GenerationView = memo(
 
     return (
       <div
-        className="relative flex flex-1 overflow-hidden"
+        className={cn(
+          "relative flex flex-1 overflow-hidden",
+          isMobile && "flex-col",
+        )}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -5074,6 +5571,8 @@ export const GenerationView = memo(
       >
         <LeftPanel
           panelWidth={panelWidth}
+          isMobile={isMobile}
+          mobileHidden={isMobile && mobileTab !== "params"}
           selectedService={selectedService}
           setSelectedService={setSelectedService}
           isDarkTheme={isDarkTheme}
@@ -5140,10 +5639,12 @@ export const GenerationView = memo(
           onRefreshAnlas={fetchAnlas}
         />
         {/* Left panel resize handle */}
-        <div
-          onMouseDown={handleResizeStart}
-          className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
-        />
+        {!isMobile && (
+          <div
+            onMouseDown={handleResizeStart}
+            className="w-1 shrink-0 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors"
+          />
+        )}
 
         {isNovelAIService ? (
           <>
@@ -5151,6 +5652,11 @@ export const GenerationView = memo(
               visible={rightPanelVisible}
               width={rightPanelWidth}
               tab={rightPanelTab}
+              isMobile={isMobile}
+              mobileHidden={
+                isMobile && mobileTab !== "groups" && mobileTab !== "settings"
+              }
+              mobileSettingsOnly={isMobile && mobileTab === "settings"}
               setVisible={setRightPanelVisible}
               setTab={setRightPanelTab}
               sourceImage={sourceImage}
@@ -5171,20 +5677,59 @@ export const GenerationView = memo(
               onResizeStart={handleRightResizeStart}
             />
 
-            <ResultArea
-              generating={generating}
-              pendingResultSelected={pendingResultSelected}
-              error={error}
-              resultSrc={resultSrc}
-              recentSeeds={recentSeeds}
-              setSeedInput={setSeedInput}
-              recentImages={recentImages}
-              onSelectPendingResult={() => setPendingResultSelected(true)}
-              onSelectResult={(src) => {
-                setPendingResultSelected(false);
-                setResultSrc(src);
-              }}
-            />
+            <div
+              className={cn(
+                "flex flex-1 relative overflow-hidden min-h-0",
+                isMobile && "flex-col w-full",
+                isMobile && mobileTab !== "result" && "hidden",
+              )}
+            >
+              {isMobile && autoGenProgress ? (
+                <MobileAutoGenBadge
+                  progress={autoGenProgress}
+                  generating={generating}
+                  cancelPending={autoCancelPending}
+                  onCancel={handleCancelAutoGenerate}
+                />
+              ) : null}
+              <ResultArea
+                generating={generating}
+                pendingResultSelected={pendingResultSelected}
+                error={error}
+                resultSrc={resultSrc}
+                recentSeeds={recentSeeds}
+                setSeedInput={setSeedInput}
+                recentImages={recentImages}
+                onSelectPendingResult={() => setPendingResultSelected(true)}
+                onSelectResult={(src) => {
+                  setPendingResultSelected(false);
+                  setResultSrc(src);
+                }}
+                onOpenRecentActions={(src) => {
+                  try {
+                    const url = new URL(src, window.location.origin);
+                    const path = url.searchParams.get("path");
+                    if (!path) return;
+                    replaceDropItem(createPathDropItem(path));
+                    setImportError(null);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                onPickLocalFile={(file) => {
+                  replaceDropItem(createFileDropItem(file));
+                  setImportError(null);
+                }}
+              />
+            </div>
+
+            {isMobile && (
+              <MobileGenTabBar
+                tab={mobileTab}
+                setTab={setMobileTab}
+                generating={generating}
+              />
+            )}
 
             {dragOver && (
               <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center bg-primary/5 border-2 border-dashed border-primary/40">

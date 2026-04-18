@@ -162,7 +162,10 @@ export function CategoryDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="w-[min(95vw,56rem)] max-w-3xl overflow-hidden p-0">
+      <DialogContent
+        className="w-[min(95vw,56rem)] max-w-3xl overflow-hidden p-0 max-sm:overflow-y-auto max-sm:p-0"
+        mobileSheet
+      >
         <div className="flex flex-col">
           <section className="border-b border-border/60 px-6 py-4 sm:px-7">
             <DialogHeader className="mb-0 space-y-1.5">

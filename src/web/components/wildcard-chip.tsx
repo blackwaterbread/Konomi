@@ -145,7 +145,7 @@ function WildcardChipCore({
       });
     };
 
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current?.contains(event.target as Node)) return;
       if (popoverRef.current?.contains(event.target as Node)) return;
       setPopoverOpen(false);
@@ -154,13 +154,13 @@ function WildcardChipCore({
     const raf = window.requestAnimationFrame(updatePosition);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("pointerdown", onPointerDown);
 
     return () => {
       window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [popoverOpen]);
 
@@ -257,9 +257,9 @@ function WildcardChipCore({
                 onClick={() => handleDeleteOption(index)}
                 title={t("common.delete")}
                 aria-label={t("common.delete")}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover/opt:opacity-100"
+                className="flex h-5 w-5 max-sm:h-9 max-sm:w-9 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 max-sm:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover/opt:opacity-100"
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-3 w-3 max-sm:h-4 max-sm:w-4" />
               </button>
             </div>
           ))
@@ -282,7 +282,7 @@ function WildcardChipCore({
             }
           }}
           placeholder={t("wildcardChip.addOptionPlaceholder")}
-          className="flex-1 min-w-0 h-7 rounded border border-border/60 bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
+          className="flex-1 min-w-0 h-7 max-sm:h-10 rounded border border-border/60 bg-background px-2 text-xs max-sm:text-sm text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
         />
         <button
           type="button"
@@ -290,9 +290,9 @@ function WildcardChipCore({
           disabled={!newOptionDraft.trim()}
           title={t("wildcardChip.addOption")}
           aria-label={t("wildcardChip.addOption")}
-          className="flex h-7 w-7 items-center justify-center rounded border border-primary/30 bg-primary/15 text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
+          className="flex h-7 w-7 max-sm:h-10 max-sm:w-10 items-center justify-center rounded border border-primary/30 bg-primary/15 text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-3.5 w-3.5 max-sm:h-4 max-sm:w-4" />
         </button>
       </div>
 

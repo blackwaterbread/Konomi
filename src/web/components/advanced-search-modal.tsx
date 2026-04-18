@@ -120,7 +120,7 @@ export function AdvancedSearchModal({
 
   const chipClass = (active: boolean) =>
     cn(
-      "px-2.5 py-1 text-xs rounded-md border transition-colors cursor-pointer",
+      "px-2.5 py-1 text-xs rounded-md border transition-colors cursor-pointer max-sm:px-3 max-sm:py-1.5 max-sm:text-sm",
       active
         ? "bg-primary text-primary-foreground border-primary"
         : "bg-secondary text-secondary-foreground border-border hover:border-primary/50",
@@ -133,7 +133,7 @@ export function AdvancedSearchModal({
         if (!o) onClose();
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" mobileSheet>
         <DialogHeader>
           <DialogTitle>{t("advancedSearch.title")}</DialogTitle>
         </DialogHeader>
@@ -168,7 +168,7 @@ export function AdvancedSearchModal({
                 placeholder={t("advancedSearch.widthPlaceholder")}
                 value={manualWidth}
                 onChange={(e) => setManualWidth(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs max-sm:h-10 max-sm:text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") addManualResolution();
                 }}
@@ -179,7 +179,7 @@ export function AdvancedSearchModal({
                 placeholder={t("advancedSearch.heightPlaceholder")}
                 value={manualHeight}
                 onChange={(e) => setManualHeight(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs max-sm:h-10 max-sm:text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") addManualResolution();
                 }}
@@ -187,7 +187,7 @@ export function AdvancedSearchModal({
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-8 shrink-0 max-sm:h-10"
                 onClick={addManualResolution}
               >
                 {t("advancedSearch.add")}
@@ -224,7 +224,7 @@ export function AdvancedSearchModal({
                     setManualModel(e.target.value);
                     setSuggestionIndex(-1);
                   }}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs max-sm:h-10 max-sm:text-sm"
                   onKeyDown={handleModelKeyDown}
                 />
                 {modelSuggestions.length > 0 && (
@@ -253,7 +253,7 @@ export function AdvancedSearchModal({
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-8 shrink-0 max-sm:h-10"
                 onClick={() => addManualModel()}
               >
                 {t("advancedSearch.add")}
@@ -286,7 +286,7 @@ export function AdvancedSearchModal({
                 placeholder={t("advancedSearch.seedPlaceholder")}
                 value={manualSeed}
                 onChange={(e) => setManualSeed(e.target.value)}
-                className="h-8 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="h-8 text-xs max-sm:h-10 max-sm:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") addManualSeed();
                 }}
@@ -294,7 +294,7 @@ export function AdvancedSearchModal({
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-8 shrink-0 max-sm:h-10"
                 onClick={addManualSeed}
               >
                 {t("advancedSearch.add")}
@@ -326,7 +326,7 @@ export function AdvancedSearchModal({
                 placeholder={t("advancedSearch.excludeTagPlaceholder")}
                 value={manualExcludeTag}
                 onChange={(e) => setManualExcludeTag(e.target.value)}
-                className="h-8 text-xs"
+                className="h-8 text-xs max-sm:h-10 max-sm:text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") addManualExcludeTag();
                 }}
@@ -334,7 +334,7 @@ export function AdvancedSearchModal({
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-8 shrink-0 max-sm:h-10"
                 onClick={addManualExcludeTag}
               >
                 {t("advancedSearch.add")}

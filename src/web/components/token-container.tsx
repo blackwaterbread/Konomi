@@ -8,13 +8,9 @@ import {
   type ClipboardEvent,
   type ReactNode,
 } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
+import { DndContext } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
+import { useDndPointerSensors } from "@/lib/dnd-sensors";
 import {
   SortableContext,
   arrayMove,
@@ -45,9 +41,7 @@ const SortableTokenContainerShell = memo(function SortableTokenContainerShell({
   onDragEnd,
   children,
 }: SortableTokenContainerShellProps) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useDndPointerSensors();
 
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -179,7 +173,10 @@ export const TokenContainer = memo(function TokenContainer({
         const raw = tokenToRawString(token);
         const isHighlighted =
           normalizedFilter.length > 0 &&
-          token.text.toLowerCase().replace(/_/g, " ").includes(normalizedFilter);
+          token.text
+            .toLowerCase()
+            .replace(/_/g, " ")
+            .includes(normalizedFilter);
         return (
           <TokenChip
             key={key}

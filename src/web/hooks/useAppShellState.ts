@@ -7,6 +7,7 @@ import type {
 } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 export type ActivePanel = "gallery" | "generator" | "settings" | "tagSearch" | "debug";
 
@@ -32,6 +33,9 @@ interface UseAppShellStateResult {
   panelTransitioning: boolean;
   sidebarWidth: number;
   handleResizeStart: (event: ReactMouseEvent) => void;
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
+  closeSidebar: () => void;
   tourOpen: boolean;
   initialLanguageScreenOpen: boolean;
   showFeatureTour: boolean;
@@ -39,6 +43,8 @@ interface UseAppShellStateResult {
   handleTourClose: () => void;
   handleInitialLanguageContinue: () => void;
 }
+
+const DESKTOP_MIN_WIDTH = 1024;
 
 function getStoredSidebarWidth() {
   try {
@@ -57,6 +63,7 @@ export function useAppShellState({
   runAnalysisNow,
 }: UseAppShellStateOptions): UseAppShellStateResult {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [activePanel, setActivePanel] = useState<ActivePanel>("gallery");
   const [panelTransitioning, setPanelTransitioning] = useState(false);
   const [tourOpen, setTourOpen] = useState(
@@ -68,6 +75,7 @@ export function useAppShellState({
       localStorage.getItem(INITIAL_LANGUAGE_SCREEN_COMPLETED_KEY) !== "true",
   );
   const [sidebarWidth, setSidebarWidth] = useState(getStoredSidebarWidth);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -75,6 +83,12 @@ export function useAppShellState({
 
   const handleResizeStart = useCallback(
     (event: ReactMouseEvent) => {
+      if (
+        typeof window !== "undefined" &&
+        window.innerWidth < DESKTOP_MIN_WIDTH
+      ) {
+        return;
+      }
       isDragging.current = true;
       dragStartX.current = event.clientX;
       dragStartWidth.current = sidebarWidth;
@@ -83,6 +97,32 @@ export function useAppShellState({
     },
     [sidebarWidth],
   );
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen((prev) => !prev);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarOpen || !isMobile) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarOpen, isMobile]);
+
+  useEffect(() => {
+    if (!sidebarOpen || !isMobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [sidebarOpen, isMobile]);
 
   useEffect(() => {
     const persistSidebarWidth = () => {
@@ -126,6 +166,10 @@ export function useAppShellState({
       window.removeEventListener("beforeunload", persistSidebarWidth);
     };
   }, []);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [activePanel]);
 
   const handlePanelChange = useCallback(
     async (nextPanel: ActivePanel) => {
@@ -199,6 +243,9 @@ export function useAppShellState({
     panelTransitioning,
     sidebarWidth,
     handleResizeStart,
+    sidebarOpen,
+    toggleSidebar,
+    closeSidebar,
     tourOpen,
     initialLanguageScreenOpen,
     showFeatureTour: tourOpen && !initialLanguageScreenOpen,

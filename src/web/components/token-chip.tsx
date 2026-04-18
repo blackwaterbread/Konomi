@@ -34,6 +34,10 @@ import {
   type PromptEmphasisSyntaxIssueKind,
 } from "@/lib/prompt-emphasis-syntax";
 import { getPromptWeightToneClass } from "@/lib/prompt-weight-style";
+import {
+  useLongPress,
+  mergeLongPressWithSortableListeners,
+} from "@/lib/long-press";
 import { cn } from "@/lib/utils";
 import type { PromptToken, TokenWeightExpression } from "@/lib/token";
 import type {
@@ -356,7 +360,7 @@ function TokenChipCore({
       setEditorOpenState(false, "cancel");
     };
 
-    const onPointerDown = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
       if (selectingTagSuggestionRef.current) return;
       const node = rootRef.current;
       const popoverNode = popoverRef.current;
@@ -371,13 +375,13 @@ function TokenChipCore({
     const raf = window.requestAnimationFrame(updatePopoverPosition);
     window.addEventListener("resize", updatePopoverPosition);
     window.addEventListener("scroll", updatePopoverPosition, true);
-    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onEscape);
     return () => {
       window.cancelAnimationFrame(raf);
       window.removeEventListener("resize", updatePopoverPosition);
       window.removeEventListener("scroll", updatePopoverPosition, true);
-      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onEscape);
     };
   }, [
@@ -692,6 +696,15 @@ function TokenChipCore({
     setEditorOpenState(true);
   };
 
+  const { handlers: longPressHandlers, didFireRef: longPressFiredRef } =
+    useLongPress(
+      () => {
+        if (!isEditable) return;
+        setEditorOpenState(true);
+      },
+      { ms: 500, touchOnly: true, haptic: true },
+    );
+
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     onTokenKeyDown?.(e);
     if (e.defaultPrevented) return;
@@ -874,7 +887,13 @@ function TokenChipCore({
           data-token-chip="true"
           data-token-raw={raw}
           title={syntaxWarningMessage ?? undefined}
-          onClick={handleTrigger}
+          onClick={() => {
+            if (longPressFiredRef.current) {
+              longPressFiredRef.current = false;
+              return;
+            }
+            handleTrigger();
+          }}
           onDoubleClick={() => {
             if (isEditable) onInlineEditOpenChange?.(true);
           }}
@@ -882,7 +901,14 @@ function TokenChipCore({
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           {...sortable?.attributes}
-          {...(resolvedEditorOpen ? {} : sortable?.listeners)}
+          {...(resolvedEditorOpen
+            ? {}
+            : isEditable
+              ? mergeLongPressWithSortableListeners(
+                  longPressHandlers,
+                  sortable?.listeners,
+                )
+              : sortable?.listeners)}
           className={cn(
             chipClass,
             "inline-flex items-center gap-1 cursor-pointer touch-none",
@@ -1029,20 +1055,22 @@ function TokenChipCore({
                     type="button"
                     onClick={() => stepWeight(-0.1)}
                     disabled={draftWeight <= MIN_WEIGHT}
-                    className="h-5 w-5 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                    className="h-5 w-5 max-sm:h-9 max-sm:w-9 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                    aria-label={t("tokenChip.editor.emphasis") + " -"}
                   >
-                    <Minus className="h-2.5 w-2.5" />
+                    <Minus className="h-2.5 w-2.5 max-sm:h-4 max-sm:w-4" />
                   </button>
-                  <span className="text-[10px] font-mono text-foreground/80 w-7 text-center tabular-nums">
+                  <span className="text-[10px] max-sm:text-xs font-mono text-foreground/80 w-7 max-sm:w-10 text-center tabular-nums">
                     {formatWeight(draftWeight)}
                   </span>
                   <button
                     type="button"
                     onClick={() => stepWeight(0.1)}
                     disabled={draftWeight >= MAX_WEIGHT}
-                    className="h-5 w-5 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                    className="h-5 w-5 max-sm:h-9 max-sm:w-9 flex items-center justify-center rounded border border-border/50 text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-30 transition-colors"
+                    aria-label={t("tokenChip.editor.emphasis") + " +"}
                   >
-                    <Plus className="h-2.5 w-2.5" />
+                    <Plus className="h-2.5 w-2.5 max-sm:h-4 max-sm:w-4" />
                   </button>
                 </div>
               </div>
@@ -1055,7 +1083,7 @@ function TokenChipCore({
                 onChange={(e) =>
                   setDraftWeight(clampWeight(Number(e.target.value)))
                 }
-                className="h-1.5 w-full cursor-pointer accent-primary"
+                className="h-1.5 max-sm:h-2.5 w-full cursor-pointer accent-primary"
               />
             </div>
 
@@ -1101,7 +1129,7 @@ function TokenChipCore({
                 <button
                   type="button"
                   className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded border transition-colors",
+                    "flex h-7 w-7 max-sm:h-10 max-sm:w-10 items-center justify-center rounded border transition-colors",
                     popoverCopied
                       ? "border-primary/50 text-primary"
                       : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -1123,7 +1151,7 @@ function TokenChipCore({
                 {onDelete ? (
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    className="flex h-7 w-7 max-sm:h-10 max-sm:w-10 items-center justify-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                     onClick={() => {
                       void navigator.clipboard.writeText(previewRawToken);
                       setEditorOpenState(false);
@@ -1132,13 +1160,13 @@ function TokenChipCore({
                     title={t("promptInput.context.cut")}
                     aria-label={t("promptInput.context.cut")}
                   >
-                    <Scissors className="h-3.5 w-3.5" />
+                    <Scissors className="h-3.5 w-3.5 max-sm:h-4 max-sm:w-4" />
                   </button>
                 ) : null}
                 {onDelete ? (
                   <button
                     type="button"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    className="flex h-7 w-7 max-sm:h-10 max-sm:w-10 items-center justify-center rounded border border-destructive/40 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
                     onClick={() => {
                       setEditorOpenState(false);
                       onDelete();
@@ -1146,21 +1174,21 @@ function TokenChipCore({
                     title={t("common.delete")}
                     aria-label={t("common.delete")}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5 max-sm:h-4 max-sm:w-4" />
                   </button>
                 ) : null}
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  className="h-7 rounded border border-border px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  className="h-7 max-sm:h-10 rounded border border-border px-2 max-sm:px-3 text-[11px] max-sm:text-xs text-muted-foreground hover:text-foreground"
                   onClick={cancelEditing}
                 >
                   {t("common.cancel")}
                 </button>
                 <button
                   type="button"
-                  className="h-7 rounded border border-primary/50 bg-primary/10 px-2 text-[11px] text-primary hover:bg-primary/20"
+                  className="h-7 max-sm:h-10 rounded border border-primary/50 bg-primary/10 px-2 max-sm:px-3 text-[11px] max-sm:text-xs text-primary hover:bg-primary/20"
                   onClick={() => applyEditing(false)}
                 >
                   {t("tokenChip.editor.apply")}

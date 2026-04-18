@@ -46,11 +46,14 @@ const en = {
     close: "Close",
     loading: "Loading...",
     none: "None",
+    more: "More",
   },
   availableFolders: {
     title: "Add Folders",
-    description: "Folders mounted as Docker volumes are auto-registered and scanned.",
-    instruction: "To add a new folder, mount it under /images in your Docker configuration and restart the server.",
+    description:
+      "Folders mounted as Docker volumes are auto-registered and scanned.",
+    instruction:
+      "To add a new folder, mount it under /images in your Docker configuration and restart the server.",
   },
   header: {
     searchPlaceholder: "Search images by prompt...",
@@ -153,6 +156,11 @@ const en = {
       unavailable: "-",
       viewWorkflow: "Workflow",
     },
+    mobileTabs: {
+      info: "Info",
+      similar: "Similar",
+      filmstrip: "Filmstrip",
+    },
   },
   gallery: {
     totalImages: "{{count}} images total",
@@ -174,6 +182,7 @@ const en = {
     changeCategoryForSelection: "Change Category",
     rescanSelection: "Rescan Metadata",
     deleteSelection: "Delete Selected",
+    moreActions: "More actions",
     firstPage: "First page",
     previousPage: "Previous page",
     nextPage: "Next page",
@@ -467,6 +476,13 @@ const en = {
     promptSearch: {
       placeholder: "Search prompt tags...",
     },
+    mobileTabs: {
+      ariaLabel: "Generation panel tabs",
+      params: "Input",
+      result: "Result",
+      groups: "Groups",
+      settings: "Config",
+    },
     sections: {
       model: "Model",
       prompt: "Prompt",
@@ -552,6 +568,7 @@ const en = {
       emptyState: "Enter a prompt or drop an image",
       recent: "Recent",
       noRecent: "None",
+      pickFile: "Pick file",
     },
     size: {
       title: "Size",
@@ -843,9 +860,11 @@ const en = {
         "detail.delete": "Delete image",
         "generator.generate": "Generate",
       },
+      mobileNotice: "Keyboard shortcuts can only be edited on desktop or tablet devices with a keyboard attached.",
     },
   },
   sidebar: {
+    label: "Sidebar",
     views: {
       all: "All Images",
       recent: "Recent",
