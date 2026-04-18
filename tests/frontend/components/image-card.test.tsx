@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ImageCard } from "@/components/image-card";
@@ -20,7 +21,7 @@ function renderImageCard(overrides: Record<string, unknown> = {}) {
     onChangeCategory: vi.fn(),
     ...overrides,
   };
-  return render(<ImageCard {...(props as never)} />);
+  return render(<ImageCard {...(props as ComponentProps<typeof ImageCard>)} />);
 }
 
 describe("ImageCard platform branches", () => {

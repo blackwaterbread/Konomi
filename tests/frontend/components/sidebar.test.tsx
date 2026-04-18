@@ -433,7 +433,9 @@ describe("Sidebar", () => {
 
     // When analyzing, a disabled spinner button replaces the enabled add button
     const disabledButtons = screen.getAllByRole("button").filter(
-      (btn) => btn.disabled && btn.querySelector(".animate-spin") !== null,
+      (btn) =>
+        (btn as HTMLButtonElement).disabled
+        && btn.querySelector(".animate-spin") !== null,
     );
     expect(disabledButtons.length).toBeGreaterThan(0);
   });

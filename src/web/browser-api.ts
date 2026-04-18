@@ -11,7 +11,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 async function parseBody<T>(res: Response): Promise<T> {
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 async function rpc<T = unknown>(url: string, body?: unknown): Promise<T> {
