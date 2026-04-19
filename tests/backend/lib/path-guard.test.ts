@@ -70,4 +70,48 @@ describe("path-guard", () => {
     await registerTransientPath(imagePath);
     await expect(isManagedImagePath(imagePath)).resolves.toBe(true);
   });
+
+  it("rejects unsupported extensions even inside managed roots", async () => {
+    const root = createTempDir();
+    const textFile = path.join(root, "note.txt");
+    fs.writeFileSync(textFile, "hello");
+    requestMock.mockResolvedValue([{ id: 1, name: "root", path: root }]);
+
+    const { isManagedImagePath } = await loadPathGuard();
+
+    await expect(isManagedImagePath(textFile)).resolves.toBe(false);
+  });
+
+  it("rejects image paths that are not under any managed root", async () => {
+    const root = createTempDir();
+    const outside = createTempDir();
+    const outsideImage = path.join(outside, "stray.png");
+    fs.writeFileSync(outsideImage, "png");
+    requestMock.mockResolvedValue([{ id: 1, name: "root", path: root }]);
+
+    const { isManagedImagePath } = await loadPathGuard();
+
+    await expect(isManagedImagePath(outsideImage)).resolves.toBe(false);
+  });
+
+  it("denies transient paths after the 15-minute TTL elapses", async () => {
+    const outside = createTempDir();
+    const imagePath = path.join(outside, "generated.png");
+    fs.writeFileSync(imagePath, "png");
+    requestMock.mockResolvedValue([]);
+
+    const { isManagedImagePath, registerTransientPath } = await loadPathGuard();
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      await registerTransientPath(imagePath);
+      await expect(isManagedImagePath(imagePath)).resolves.toBe(true);
+
+      vi.setSystemTime(new Date("2026-01-01T00:15:01Z"));
+      await expect(isManagedImagePath(imagePath)).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
