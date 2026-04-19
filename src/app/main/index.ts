@@ -401,7 +401,7 @@ function generateThumb(
         width: result.width,
         height: result.height,
       });
-      return Promise.resolve(bmp.toJPEG(80));
+      return Promise.resolve(bmp.toJPEG(92));
     }
     // null = image already small enough
     return Promise.resolve(null);
@@ -414,6 +414,6 @@ function generateThumb(
   const size = img.getSize();
   if (size.width <= maxWidth) return Promise.resolve(null);
 
-  const resized = img.resize({ width: maxWidth, quality: "good" });
-  return Promise.resolve(resized.toJPEG(80));
+  const resized = img.resize({ width: maxWidth, quality: "best" });
+  return Promise.resolve(resized.toJPEG(92));
 }
