@@ -135,8 +135,8 @@ export function BottomSheet({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
-        <div className="flex justify-center pt-2 pb-1">
-          <div className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+        <div className="flex justify-center py-3">
+          <div className="h-1.5 w-12 rounded-full bg-muted-foreground/40" />
         </div>
         {header}
       </div>

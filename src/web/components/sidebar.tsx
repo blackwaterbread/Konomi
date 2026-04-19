@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import infoImageUrl from "@/assets/images/info.webp";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import type { Subfolder } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
@@ -2135,7 +2136,20 @@ export const Sidebar = memo(
       <>
         <aside className="w-full h-full border-r border-border bg-sidebar flex flex-col pt-safe">
           {onClose && (
-            <div className="flex items-center justify-end px-2 pt-2 sm:hidden">
+            <div className="flex items-center justify-between px-3 pt-2 sm:hidden">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-primary/10 shrink-0">
+                  <img
+                    src={infoImageUrl}
+                    alt="Konomi"
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
+                </div>
+                <span className="text-xl font-extrabold text-foreground select-none">
+                  Konomi
+                </span>
+              </div>
               <Button
                 variant="ghost"
                 size="icon"

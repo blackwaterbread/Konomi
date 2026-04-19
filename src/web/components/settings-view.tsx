@@ -595,8 +595,51 @@ export function SettingsView({
           </p>
           <div className="rounded-md border border-border/60 p-3 space-y-3">
             <div className="space-y-2">
+              {/* Mobile: segmented control */}
               <div
-                className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                className="flex sm:hidden rounded-md border border-border overflow-hidden"
+                role="radiogroup"
+                aria-label={t("settings.similarity.modeAria")}
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!settings.useAdvancedSimilarityThresholds}
+                  onClick={() => handleSimilarityModeChange(false)}
+                  className={cn(
+                    "flex-1 px-3 py-2 text-sm font-medium transition-colors",
+                    !settings.useAdvancedSimilarityThresholds
+                      ? "bg-primary/10 text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/40",
+                  )}
+                >
+                  {t("settings.similarity.mode.basic.title")}
+                </button>
+                <div className="w-px bg-border" />
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.useAdvancedSimilarityThresholds}
+                  onClick={() => handleSimilarityModeChange(true)}
+                  className={cn(
+                    "flex-1 px-3 py-2 text-sm font-medium transition-colors",
+                    settings.useAdvancedSimilarityThresholds
+                      ? "bg-primary/10 text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/40",
+                  )}
+                >
+                  {t("settings.similarity.mode.advanced.title")}
+                </button>
+              </div>
+              <p className="block sm:hidden text-xs text-muted-foreground">
+                {settings.useAdvancedSimilarityThresholds
+                  ? t("settings.similarity.mode.advanced.description")
+                  : t("settings.similarity.mode.basic.description")}
+              </p>
+
+              {/* Desktop: card layout */}
+              <div
+                className="hidden sm:grid grid-cols-2 gap-2"
                 role="radiogroup"
                 aria-label={t("settings.similarity.modeAria")}
               >

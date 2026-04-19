@@ -3092,6 +3092,8 @@ interface LeftPanelProps {
   anlas: number | null;
   anlasLoading: boolean;
   onRefreshAnlas: () => void;
+  advancedOpen: boolean;
+  onAdvancedOpenChange: (open: boolean) => void;
 }
 
 // 원래 NAI/WebUI/Midjourney 생성 같이 가져가려고 했는데 이런저런 이유로 NAI만 남긴 흔적임
@@ -3277,6 +3279,8 @@ const LeftPanel = memo(function LeftPanel({
   anlas,
   anlasLoading,
   onRefreshAnlas,
+  advancedOpen,
+  onAdvancedOpenChange,
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const isNovelAIService = selectedService === "novelai";
@@ -3390,22 +3394,56 @@ const LeftPanel = memo(function LeftPanel({
                   promptGroups={promptGroups}
                   highlightFilter={promptSearchFilter}
                 />
-                <CharacterPromptsSection
-                  characterPrompts={characterPrompts}
-                  setCharacterPrompts={setCharacterPrompts}
-                  aiChoice={aiChoice}
-                  setAiChoice={setAiChoice}
-                  promptGroups={promptGroups}
-                  highlightFilter={promptSearchFilter}
-                />
-                <ReferenceSections
-                  i2iRef={i2iRef}
-                  setI2iRef={setI2iRef}
-                  vibes={vibes}
-                  setVibes={setVibes}
-                  preciseRef={preciseRef}
-                  setPreciseRef={setPreciseRef}
-                />
+                {isMobile ? (
+                  <details
+                    className="group"
+                    open={advancedOpen}
+                    onToggle={(e) => onAdvancedOpenChange(e.currentTarget.open)}
+                  >
+                    <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground select-none">
+                      <span>{t("generation.advancedSections")}</span>
+                      <span className="text-[10px] group-open:hidden">▼</span>
+                      <span className="text-[10px] hidden group-open:inline">▲</span>
+                    </summary>
+                    <div className="space-y-5 mt-2">
+                      <CharacterPromptsSection
+                        characterPrompts={characterPrompts}
+                        setCharacterPrompts={setCharacterPrompts}
+                        aiChoice={aiChoice}
+                        setAiChoice={setAiChoice}
+                        promptGroups={promptGroups}
+                        highlightFilter={promptSearchFilter}
+                      />
+                      <ReferenceSections
+                        i2iRef={i2iRef}
+                        setI2iRef={setI2iRef}
+                        vibes={vibes}
+                        setVibes={setVibes}
+                        preciseRef={preciseRef}
+                        setPreciseRef={setPreciseRef}
+                      />
+                    </div>
+                  </details>
+                ) : (
+                  <>
+                    <CharacterPromptsSection
+                      characterPrompts={characterPrompts}
+                      setCharacterPrompts={setCharacterPrompts}
+                      aiChoice={aiChoice}
+                      setAiChoice={setAiChoice}
+                      promptGroups={promptGroups}
+                      highlightFilter={promptSearchFilter}
+                    />
+                    <ReferenceSections
+                      i2iRef={i2iRef}
+                      setI2iRef={setI2iRef}
+                      vibes={vibes}
+                      setVibes={setVibes}
+                      preciseRef={preciseRef}
+                      setPreciseRef={setPreciseRef}
+                    />
+                  </>
+                )}
                 <SizeSection
                   width={width}
                   setWidth={setWidth}
@@ -4369,6 +4407,7 @@ export const GenerationView = memo(
     const [anlas, setAnlas] = useState<number | null>(null);
     const [anlasLoading, setAnlasLoading] = useState(false);
     const [categories, setCategories] = useState<PromptCategory[]>([]);
+    const [advancedOpen, setAdvancedOpen] = useState(false);
 
     const [prompt, setPrompt] = useState(
       () => loadLastGenParams()?.prompt ?? "",
@@ -5505,6 +5544,13 @@ export const GenerationView = memo(
         }
         if (importChecks.seed && meta.seed) setSeedInput(String(meta.seed));
 
+        if (
+          (importChecks.characters || importChecks.charactersAppend) &&
+          meta.characterPrompts.length > 0
+        ) {
+          setAdvancedOpen(true);
+        }
+
         replaceDropItem(null);
       } catch (e: unknown) {
         setImportError(e instanceof Error ? e.message : String(e));
@@ -5637,6 +5683,8 @@ export const GenerationView = memo(
           anlas={anlas}
           anlasLoading={anlasLoading}
           onRefreshAnlas={fetchAnlas}
+          advancedOpen={advancedOpen}
+          onAdvancedOpenChange={setAdvancedOpen}
         />
         {/* Left panel resize handle */}
         {!isMobile && (

@@ -161,6 +161,10 @@ const en = {
       similar: "Similar",
       filmstrip: "Filmstrip",
     },
+    mobileSheet: {
+      expand: "Expand",
+      collapse: "Collapse",
+    },
   },
   gallery: {
     totalImages: "{{count}} images total",
@@ -488,6 +492,7 @@ const en = {
       prompt: "Prompt",
       characters: "Characters",
     },
+    advancedSections: "Advanced (Characters / References)",
     advanced: {
       sampler: "Sampler",
       noise: "Noise",

@@ -38,6 +38,12 @@ function renderImageGallery(overrides: ImageGalleryOverrides = {}) {
       onBulkChangeCategory: vi.fn(),
       onBulkDelete: vi.fn(),
     },
+    searchQuery: "",
+    onSearchChange: vi.fn(),
+    advancedFilters: [],
+    onAdvancedFiltersChange: vi.fn(),
+    availableResolutions: [],
+    availableModels: [],
   };
   const props: ComponentProps<typeof ImageGallery> = {
     ...baseProps,
@@ -65,13 +71,14 @@ function renderImageGallery(overrides: ImageGalleryOverrides = {}) {
 describe("ImageGallery", () => {
   // ── Toolbar ─────────────────────────────────────────────────────────────
 
-  it("shows a Reset button when searchQuery is set and calls onClearSearch when clicked", async () => {
+  it("shows a Reset button when searchQuery is set and calls onSearchChange('') when clicked", async () => {
     const user = userEvent.setup();
-    const onClearSearch = vi.fn();
+    const onSearchChange = vi.fn();
 
     renderImageGallery({
-      gallery: { searchQuery: "sparkles", totalCount: 0 },
-      actions: { onClearSearch },
+      searchQuery: "sparkles",
+      onSearchChange,
+      gallery: { totalCount: 0 },
     });
 
     const resetBtn = screen.getByRole("button", { name: "Reset" });
@@ -79,11 +86,11 @@ describe("ImageGallery", () => {
 
     await user.click(resetBtn);
 
-    expect(onClearSearch).toHaveBeenCalledTimes(1);
+    expect(onSearchChange).toHaveBeenCalledWith("");
   });
 
   it("does not show the Reset button when searchQuery is empty", () => {
-    renderImageGallery({ gallery: { searchQuery: "", totalCount: 5 } });
+    renderImageGallery({ searchQuery: "", gallery: { totalCount: 5 } });
     expect(
       screen.queryByRole("button", { name: "Reset" }),
     ).not.toBeInTheDocument();

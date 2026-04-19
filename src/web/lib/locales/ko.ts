@@ -160,6 +160,10 @@ const ko = {
       similar: "유사",
       filmstrip: "필름스트립",
     },
+    mobileSheet: {
+      expand: "펼치기",
+      collapse: "접기",
+    },
   },
   gallery: {
     totalImages: "총 {{count}}개의 이미지",
@@ -486,6 +490,7 @@ const ko = {
       prompt: "프롬프트",
       characters: "캐릭터",
     },
+    advancedSections: "고급 설정 (캐릭터 / 레퍼런스)",
     advanced: {
       sampler: "샘플러",
       noise: "노이즈",

@@ -1566,13 +1566,9 @@ export function ImageDetail({
         >
           <X className="h-5 w-5" />
         </Button>
-        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
+        <div className="flex min-w-0 flex-1 items-center">
           <span className="truncate text-xs font-medium text-foreground">
             {image.path.split(/[\\/]/).pop() ?? ""}
-          </span>
-          <span className="truncate text-[10px] text-muted-foreground/70">
-            {image.model ? `${image.model} · ` : ""}
-            {image.width} × {image.height}
           </span>
         </div>
         <Button
@@ -1979,6 +1975,14 @@ export function ImageDetail({
           className="sm:hidden"
           header={
             <div className="flex shrink-0 items-stretch border-b border-border/60">
+              <button
+                type="button"
+                className="flex items-center justify-center w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setSheetState(sheetState === "peek" ? "half" : "peek")}
+                aria-label={sheetState === "peek" ? t("imageDetail.mobileSheet.expand") : t("imageDetail.mobileSheet.collapse")}
+              >
+                <ChevronDown className={cn("h-4 w-4 transition-transform", sheetState === "peek" && "rotate-180")} />
+              </button>
               {(
                 [
                   {
@@ -2002,8 +2006,12 @@ export function ImageDetail({
                   key={key}
                   type="button"
                   onClick={() => {
-                    setSheetTab(key);
-                    if (sheetState === "peek") setSheetState("half");
+                    if (sheetTab === key && sheetState !== "peek") {
+                      setSheetState("peek");
+                    } else {
+                      setSheetTab(key);
+                      if (sheetState === "peek") setSheetState("half");
+                    }
                   }}
                   className={cn(
                     "flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-colors",

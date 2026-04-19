@@ -46,6 +46,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useApi } from "@/api";
 import { ImageCard, type ImageData } from "./image-card";
 import { OnboardingView } from "./onboarding-view";
+import {
+  GallerySearchSection,
+  type GallerySearchSectionProps,
+} from "./gallery-search-section";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { useTranslation } from "react-i18next";
@@ -166,7 +170,6 @@ interface ImageGalleryState {
   images: ImageData[];
   sortBy: SortBy;
   totalCount: number;
-  searchQuery?: string;
   hasFolders?: boolean;
   isInitializing?: boolean;
   isRefreshing?: boolean;
@@ -191,7 +194,6 @@ interface ImageGalleryActions {
   onSendToSource?: (image: ImageData) => void;
   onAddTagToSearch?: (tag: string) => void;
   onAddTagToGenerator?: (tag: string) => void;
-  onClearSearch?: () => void;
   onAddFolder?: () => void;
   onLoadAllSelectableIds?: () => Promise<number[]>;
 }
@@ -203,7 +205,7 @@ interface ImageGalleryPagination {
   onPageChange?: (page: number) => void;
 }
 
-interface ImageGalleryProps {
+interface ImageGalleryProps extends GallerySearchSectionProps {
   gallery: ImageGalleryState;
   actions: ImageGalleryActions;
   pagination?: ImageGalleryPagination;
@@ -217,9 +219,8 @@ interface ImageGalleryProps {
   onApplyPendingRefresh?: () => void;
 }
 
-interface GalleryToolbarProps {
+interface GalleryToolbarProps extends GallerySearchSectionProps {
   totalCount: number;
-  searchQuery?: string;
   selectionMode: boolean;
   selectedCount: number;
   sortBy: SortBy;
@@ -227,7 +228,6 @@ interface GalleryToolbarProps {
   allFilteredSelected: boolean;
   selectingAllResults: boolean;
   canSelectAllResults: boolean;
-  onClearSearch?: () => void;
   onSortChange: (sort: SortBy) => void;
   onToggleSelectionMode: () => void;
   onSelectCurrentPage: () => void;
@@ -243,6 +243,11 @@ interface GalleryToolbarProps {
 const GalleryToolbar = memo(function GalleryToolbar({
   totalCount,
   searchQuery,
+  onSearchChange,
+  advancedFilters,
+  onAdvancedFiltersChange,
+  availableResolutions,
+  availableModels,
   selectionMode,
   selectedCount,
   sortBy,
@@ -250,7 +255,6 @@ const GalleryToolbar = memo(function GalleryToolbar({
   allFilteredSelected,
   selectingAllResults,
   canSelectAllResults,
-  onClearSearch,
   onSortChange,
   onToggleSelectionMode,
   onSelectCurrentPage,
@@ -264,12 +268,84 @@ const GalleryToolbar = memo(function GalleryToolbar({
 }: GalleryToolbarProps) {
   const { t } = useTranslation();
   const isCustomColumns = typeof galleryColumns === "number";
+  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+
+  const sortSelect = (
+    <Select value={sortBy} onValueChange={onSortChange}>
+      <SelectTrigger className="w-36 bg-secondary border-border">
+        <SlidersHorizontal className="h-4 w-4 mr-2 text-muted-foreground" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="bg-popover border-border">
+        <SelectItem value="recent">{t("gallery.sort.recent")}</SelectItem>
+        <SelectItem value="oldest">{t("gallery.sort.oldest")}</SelectItem>
+        <SelectItem value="name">{t("gallery.sort.name")}</SelectItem>
+        <SelectItem value="favorites">
+          {t("gallery.sort.favorites")}
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+
+  const columnsControl = onGalleryColumnsChange ? (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+        disabled={isCustomColumns && galleryColumns <= 1}
+        onClick={() => {
+          const current = isCustomColumns ? galleryColumns : 4;
+          const next = Math.max(1, current - 1);
+          onGalleryColumnsChange(next);
+        }}
+        title={t("gallery.columnSize.larger")}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </Button>
+      <span
+        className="text-xs text-muted-foreground select-none tabular-nums w-8 text-center cursor-pointer hover:text-foreground transition-colors"
+        title={t("gallery.columnSize.reset")}
+        onClick={() => onGalleryColumnsChange("auto")}
+      >
+        {isCustomColumns
+          ? galleryColumns === 1
+            ? t("gallery.columnSize.list")
+            : galleryColumns
+          : t("gallery.columnSize.auto")}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+        disabled={isCustomColumns && galleryColumns >= 25}
+        onClick={() => {
+          const current = isCustomColumns ? galleryColumns : 4;
+          const next = Math.min(25, current + 1);
+          onGalleryColumnsChange(next);
+        }}
+        title={t("gallery.columnSize.smaller")}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  ) : null;
 
   return (
     <div
       className="flex flex-col gap-3 p-4 border-b border-border bg-background"
       data-tour="gallery-toolbar"
     >
+      {/* Search row */}
+      <GallerySearchSection
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
+        advancedFilters={advancedFilters}
+        onAdvancedFiltersChange={onAdvancedFiltersChange}
+        availableResolutions={availableResolutions}
+        availableModels={availableModels}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground select-none">
@@ -277,82 +353,60 @@ const GalleryToolbar = memo(function GalleryToolbar({
           </span>
           {searchQuery && (
             <button
-              onClick={onClearSearch}
+              onClick={() => onSearchChange("")}
               className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
             >
               {t("gallery.resetSearch")}
             </button>
           )}
           {selectionMode && (
-            <span className="text-sm text-muted-foreground select-none">
+            <span className="hidden sm:inline text-sm text-muted-foreground select-none">
               {t("gallery.selectedCount", { count: selectedCount })}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <Select value={sortBy} onValueChange={onSortChange}>
-            <SelectTrigger className="w-36 bg-secondary border-border">
-              <SlidersHorizontal className="h-4 w-4 mr-2 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover border-border">
-              <SelectItem value="recent">{t("gallery.sort.recent")}</SelectItem>
-              <SelectItem value="oldest">{t("gallery.sort.oldest")}</SelectItem>
-              <SelectItem value="name">{t("gallery.sort.name")}</SelectItem>
-              <SelectItem value="favorites">
-                {t("gallery.sort.favorites")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Desktop: sort + columns always visible */}
+        <div className="hidden sm:flex items-center gap-3">
+          {sortSelect}
+          {columnsControl}
+        </div>
 
-          {onGalleryColumnsChange && (
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                disabled={isCustomColumns && galleryColumns <= 1}
-                onClick={() => {
-                  const current = isCustomColumns ? galleryColumns : 4;
-                  const next = Math.max(1, current - 1);
-                  onGalleryColumnsChange(next);
-                }}
-                title={t("gallery.columnSize.larger")}
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </Button>
-              <span
-                className="text-xs text-muted-foreground select-none tabular-nums w-8 text-center cursor-pointer hover:text-foreground transition-colors"
-                title={t("gallery.columnSize.reset")}
-                onClick={() => onGalleryColumnsChange("auto")}
-              >
-                {isCustomColumns
-                  ? galleryColumns === 1
-                    ? t("gallery.columnSize.list")
-                    : galleryColumns
-                  : t("gallery.columnSize.auto")}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                disabled={isCustomColumns && galleryColumns >= 25}
-                onClick={() => {
-                  const current = isCustomColumns ? galleryColumns : 4;
-                  const next = Math.min(25, current + 1);
-                  onGalleryColumnsChange(next);
-                }}
-                title={t("gallery.columnSize.smaller")}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+        {/* Mobile: more toggle + selection mode */}
+        <div className="flex sm:hidden items-center gap-2 ml-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setToolbarExpanded((v) => !v)}
+            aria-label={t("gallery.moreActions")}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={selectionMode ? "secondary" : "outline"}
+            size="sm"
+            className="h-8"
+            onClick={onToggleSelectionMode}
+          >
+            <SquareCheckBig className="h-4 w-4" />
+            {selectionMode && selectedCount > 0 && (
+              <span className="ml-1 text-xs tabular-nums">{selectedCount}</span>
+            )}
+          </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Mobile expanded: sort + columns */}
+      {toolbarExpanded && (
+        <div className="flex sm:hidden items-center gap-3 flex-wrap">
+          {sortSelect}
+          {columnsControl}
+        </div>
+      )}
+
+      {/* Desktop selection mode row */}
+      <div className="hidden sm:flex flex-wrap items-center gap-2">
         <Button
           variant={selectionMode ? "secondary" : "outline"}
           size="sm"
@@ -1172,12 +1226,17 @@ export const ImageGallery = memo(function ImageGallery({
   galleryColumns,
   onGalleryColumnsChange,
   onApplyPendingRefresh,
+  searchQuery: searchQueryProp,
+  onSearchChange,
+  advancedFilters,
+  onAdvancedFiltersChange,
+  availableResolutions,
+  availableModels,
 }: ImageGalleryProps) {
   const {
     images,
     sortBy,
     totalCount,
-    searchQuery,
     hasFolders = true,
     isInitializing = false,
     isRefreshing = false,
@@ -1202,7 +1261,6 @@ export const ImageGallery = memo(function ImageGallery({
     onSendToSource,
     onAddTagToSearch,
     onAddTagToGenerator,
-    onClearSearch,
     onAddFolder,
     onLoadAllSelectableIds,
   } = actions;
@@ -1384,7 +1442,12 @@ export const ImageGallery = memo(function ImageGallery({
     >
       <GalleryToolbar
         totalCount={totalCount}
-        searchQuery={searchQuery}
+        searchQuery={searchQueryProp}
+        onSearchChange={onSearchChange}
+        advancedFilters={advancedFilters}
+        onAdvancedFiltersChange={onAdvancedFiltersChange}
+        availableResolutions={availableResolutions}
+        availableModels={availableModels}
         selectionMode={selectionMode}
         selectedCount={selectedCount}
         sortBy={sortBy}
@@ -1392,7 +1455,6 @@ export const ImageGallery = memo(function ImageGallery({
         allFilteredSelected={allFilteredSelected}
         selectingAllResults={selectingAllResults}
         canSelectAllResults={canSelectAllResults}
-        onClearSearch={onClearSearch}
         onSortChange={onSortChange}
         onToggleSelectionMode={handleToggleSelectionMode}
         onSelectCurrentPage={handleSelectCurrentPage}

@@ -118,57 +118,64 @@ export const PromptSearchView = memo(function PromptSearchView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder={t("promptSearch.namePlaceholder")}
-            value={nameFilter}
-            onChange={(e) => setNameFilter(e.target.value)}
-            className="pl-10 pr-8 bg-secondary border-border"
-          />
-          {nameFilter && (
-            <button
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => setNameFilter("")}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+      <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+        {/* Row 1: search input (full width on mobile, constrained on desktop) */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder={t("promptSearch.namePlaceholder")}
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              className="pl-10 pr-8 bg-secondary border-border"
+            />
+            {nameFilter && (
+              <button
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setNameFilter("")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Desktop-only: close button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden sm:flex shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+          >
+            {t("common.close")}
+          </Button>
         </div>
 
-        <Select value={sortBy} onValueChange={handleSortChange}>
-          <SelectTrigger className="w-[140px] bg-secondary">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name">{t("promptSearch.sortName")}</SelectItem>
-            <SelectItem value="count">{t("promptSearch.sortCount")}</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Row 2: sort + order + count */}
+        <div className="flex items-center gap-2">
+          <Select value={sortBy} onValueChange={handleSortChange}>
+            <SelectTrigger className="w-35 bg-secondary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">{t("promptSearch.sortName")}</SelectItem>
+              <SelectItem value="count">{t("promptSearch.sortCount")}</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-          onClick={toggleOrder}
-        >
-          <ArrowUpDown className="h-4 w-4" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground"
+            onClick={toggleOrder}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+          </Button>
 
-        <span className="text-xs text-muted-foreground whitespace-nowrap ml-auto select-none tabular-nums">
-          {t("promptSearch.totalCount", { total: formatNumber(totalCount) })}
-        </span>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground ml-2"
-          onClick={onClose}
-        >
-          {t("common.close")}
-        </Button>
+          <span className="text-xs text-muted-foreground whitespace-nowrap ml-auto select-none tabular-nums">
+            {t("promptSearch.totalCount", { total: formatNumber(totalCount) })}
+          </span>
+        </div>
       </div>
 
       {/* Tag table */}

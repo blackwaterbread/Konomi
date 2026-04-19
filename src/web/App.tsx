@@ -587,24 +587,12 @@ export default function App({
   return (
     <div className="h-screen bg-background flex flex-col">
       <Header
-        searchQuery={searchQuery}
-        onSearchChange={useCallback(
-          (q: string) => {
-            handleSearchChange(q);
-            clearSelection();
-          },
-          [handleSearchChange, clearSelection],
-        )}
         activePanel={activePanel}
         onPanelChange={handleHeaderPanelChange}
         scanning={scanning}
         checkingDuplicates={checkingDuplicates}
         isAnalyzing={isAnalyzing}
         onCancelScan={handleCancelScan}
-        advancedFilters={advancedFilters}
-        onAdvancedFiltersChange={setAdvancedFilters}
-        availableResolutions={availableResolutions}
-        availableModels={availableModels}
         onStartTour={handleStartTour}
         devMode={devMode}
         announcementDeferred={announcementDeferred}
@@ -749,6 +737,18 @@ export default function App({
                 updateSettings({ galleryColumns: v })
               }
               onApplyPendingRefresh={applyPendingRefresh}
+              searchQuery={searchQuery}
+              onSearchChange={useCallback(
+                (q: string) => {
+                  handleSearchChange(q);
+                  clearSelection();
+                },
+                [handleSearchChange, clearSelection],
+              )}
+              advancedFilters={advancedFilters}
+              onAdvancedFiltersChange={setAdvancedFilters}
+              availableResolutions={availableResolutions}
+              availableModels={availableModels}
             />
           </div>
         </div>
