@@ -17,6 +17,8 @@
     "typecheck": "bun run typecheck:node && bun run typecheck:web",
     "test:backend": "node ./scripts/run-electron-node.mjs ./node_modules/vitest/vitest.mjs run --config vitest.backend.config.ts",
     "test:backend:watch": "node ./scripts/run-electron-node.mjs ./node_modules/vitest/vitest.mjs --config vitest.backend.config.ts",
+    "test:server": "vitest run --config vitest.server.config.ts",
+    "test:server:watch": "vitest --config vitest.server.config.ts",
     "test:frontend": "vitest run --config vitest.frontend.config.ts",
     "test:frontend:watch": "vitest --config vitest.frontend.config.ts",
     "start": "electron-vite preview -c src/app/electron.vite.config.ts",
