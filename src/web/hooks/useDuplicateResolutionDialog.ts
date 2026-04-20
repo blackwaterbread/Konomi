@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import i18n from "@/lib/i18n";
+import { imageUrl } from "@/lib/image-utils";
 import type {
   Folder,
   FolderDuplicateGroup,
@@ -73,8 +74,7 @@ type FolderRescanPendingInfo = {
   path: string;
 };
 
-const toLocalSrc = (filePath: string) =>
-  `/api/files/image?path=${encodeURIComponent(filePath)}`;
+const toLocalSrc = (filePath: string) => imageUrl(filePath);
 
 const normalizeFolderPath = (folderPath: string): string => {
   const normalized = folderPath.replace(/\\/g, "/").replace(/\/+$/, "").trim();
