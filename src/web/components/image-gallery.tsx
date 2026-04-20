@@ -665,9 +665,12 @@ const GalleryFocusWrapper = memo(function GalleryFocusWrapper({
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const prevFocusedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
-    if (isFocused && ref.current) {
+    const prev = prevFocusedRef.current;
+    prevFocusedRef.current = isFocused;
+    if (prev === false && isFocused && ref.current) {
       ref.current.scrollIntoView({ block: "nearest" });
     }
   }, [isFocused]);
@@ -1306,6 +1309,10 @@ export const ImageGallery = memo(function ImageGallery({
   useEffect(() => {
     resetSelectionState();
   }, [resetSelectionState, selectionScopeKey]);
+
+  useEffect(() => {
+    resetSelectionState();
+  }, [resetSelectionState, currentPage]);
 
   useEffect(() => {
     if (currentPage <= computedTotalPages) return;
