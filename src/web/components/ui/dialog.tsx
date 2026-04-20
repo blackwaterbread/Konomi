@@ -43,7 +43,7 @@ function hasDialogDescription(node: React.ReactNode): boolean {
 }
 
 const DIALOG_CENTERED_CLASSES =
-  "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-xl data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
+  "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full rounded-xl data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95";
 
 const DIALOG_MOBILE_SHEET_CLASSES =
   // mobile: pinned to bottom as a sheet
@@ -51,8 +51,8 @@ const DIALOG_MOBILE_SHEET_CLASSES =
   "max-sm:w-full max-sm:max-w-none max-sm:rounded-t-2xl max-sm:rounded-b-none " +
   "max-sm:max-h-[90vh] max-sm:overflow-y-auto max-sm:p-5 max-sm:pb-safe " +
   "max-sm:data-[state=closed]:slide-out-to-bottom max-sm:data-[state=open]:slide-in-from-bottom " +
-  // desktop: centered dialog (restore explicit sm: classes)
-  "sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-md sm:rounded-xl " +
+  // desktop: centered dialog
+  "sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:rounded-xl " +
   "sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95";
 
 function DialogContent(rawProps: DialogContentProps) {
@@ -80,7 +80,7 @@ function DialogContent(rawProps: DialogContentProps) {
           ? { "aria-describedby": ariaDescribedBy }
           : {})}
         className={cn(
-          "fixed z-50 bg-background border border-border shadow-xl p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          "fixed z-50 bg-background border border-border shadow-xl p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 max-w-md",
           mobileSheet ? DIALOG_MOBILE_SHEET_CLASSES : DIALOG_CENTERED_CLASSES,
           className,
         )}
