@@ -140,12 +140,12 @@ describe("ImageGallery", () => {
 
     await user.click(screen.getByRole("button", { name: "Select" }));
     await user.click(
-      screen.getByRole("button", { name: "Select Current Page" }),
+      screen.getAllByRole("button", { name: "Select Current Page" })[0],
     );
 
-    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getAllByText("1 selected")[0]).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Clear Selection" }));
+    await user.click(screen.getAllByRole("button", { name: "Clear Selection" })[0]);
 
     await waitFor(() =>
       expect(screen.queryByText("1 selected")).not.toBeInTheDocument(),
@@ -160,11 +160,11 @@ describe("ImageGallery", () => {
 
     await user.click(screen.getByRole("button", { name: "Select" }));
     await user.click(
-      screen.getByRole("button", { name: "Select Current Page" }),
+      screen.getAllByRole("button", { name: "Select Current Page" })[0],
     );
 
     expect(
-      screen.getByRole("button", { name: "Deselect Current Page" }),
+      screen.getAllByRole("button", { name: "Deselect Current Page" })[0],
     ).toBeInTheDocument();
   });
 
@@ -240,15 +240,15 @@ describe("ImageGallery", () => {
 
     await user.click(screen.getByRole("button", { name: "Select" }));
     await user.click(
-      screen.getByRole("button", { name: "Select Current Page" }),
+      screen.getAllByRole("button", { name: "Select Current Page" })[0],
     );
-    await user.click(screen.getByRole("button", { name: "Change Category" }));
+    await user.click(screen.getAllByRole("button", { name: "Change Category" })[0]);
 
     const pageNumericIds = pageImages.map((img) => parseInt(img.id, 10));
     expect(onBulkChangeCategory).toHaveBeenLastCalledWith(pageNumericIds);
 
     await user.click(
-      screen.getByRole("button", { name: "Select All Results (3)" }),
+      screen.getAllByRole("button", { name: "Select All Results (3)" })[0],
     );
 
     await waitFor(() =>
@@ -256,11 +256,11 @@ describe("ImageGallery", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Deselect All Results" }),
+        screen.getAllByRole("button", { name: "Deselect All Results" })[0],
       ).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByRole("button", { name: "Change Category" }));
+    await user.click(screen.getAllByRole("button", { name: "Change Category" })[0]);
 
     expect(onBulkChangeCategory).toHaveBeenLastCalledWith(allIds);
   });

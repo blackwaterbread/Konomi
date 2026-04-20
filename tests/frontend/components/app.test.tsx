@@ -49,58 +49,18 @@ vi.mock("@/lib/i18n", async () => {
 
 vi.mock("@/components/header", () => ({
   Header: ({
-    searchQuery,
     activePanel,
-    onSearchChange,
     onPanelChange,
     onCancelScan,
-    advancedFilters,
-    onAdvancedFiltersChange,
     onStartTour,
   }: {
-    searchQuery: string;
     activePanel: string;
-    onSearchChange: (query: string) => void;
     onPanelChange: (panel: "gallery" | "generator" | "settings") => void;
     onCancelScan?: () => void;
-    advancedFilters: Array<
-      | { type: "resolution"; width: number; height: number }
-      | { type: "model"; value: string }
-    >;
-    onAdvancedFiltersChange: (
-      filters: Array<
-        | { type: "resolution"; width: number; height: number }
-        | { type: "model"; value: string }
-      >,
-    ) => void;
     onStartTour: () => void;
   }) => (
     <div>
-      <div data-testid="header-search-query">{searchQuery}</div>
-      <div data-testid="header-filter-count">
-        {String(advancedFilters.length)}
-      </div>
       <div data-testid="header-active-panel">{activePanel}</div>
-      <button type="button" onClick={() => onSearchChange("sunset beach")}>
-        Search Sunset
-      </button>
-      <button type="button" onClick={() => onSearchChange("")}>
-        Clear Search From Header
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          onAdvancedFiltersChange([
-            { type: "resolution", width: 832, height: 1216 },
-            { type: "model", value: "nai-diffusion-4-5-full" },
-          ])
-        }
-      >
-        Apply Header Filters
-      </button>
-      <button type="button" onClick={() => onAdvancedFiltersChange([])}>
-        Clear Header Filters
-      </button>
       <button type="button" onClick={() => onPanelChange("gallery")}>
         Open Gallery
       </button>
@@ -153,6 +113,10 @@ vi.mock("@/components/sidebar", () => ({
 vi.mock("@/components/image-gallery", () => ({
   ImageGallery: ({
     actions,
+    searchQuery,
+    onSearchChange,
+    advancedFilters,
+    onAdvancedFiltersChange,
   }: {
     actions: {
       onSendToGenerator?: (image: ImageData) => void;
@@ -164,6 +128,10 @@ vi.mock("@/components/image-gallery", () => ({
       onChangeCategory?: (image: ImageData) => void;
       onBulkChangeCategory?: (ids: number[]) => void;
     };
+    searchQuery?: string;
+    onSearchChange?: (q: string) => void;
+    advancedFilters?: Array<{ type: string; [key: string]: unknown }>;
+    onAdvancedFiltersChange?: (filters: Array<{ type: string; [key: string]: unknown }>) => void;
   }) => {
     const image: ImageData = {
       id: "11",
@@ -204,6 +172,30 @@ vi.mock("@/components/image-gallery", () => ({
 
     return (
       <div data-testid="image-gallery">
+        <div data-testid="gallery-search-query">{searchQuery ?? ""}</div>
+        <div data-testid="gallery-filter-count">
+          {String((advancedFilters ?? []).length)}
+        </div>
+        <button type="button" onClick={() => onSearchChange?.("sunset beach")}>
+          Gallery Search Sunset
+        </button>
+        <button type="button" onClick={() => onSearchChange?.("")}>
+          Gallery Clear Search
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onAdvancedFiltersChange?.([
+              { type: "resolution", width: 832, height: 1216 },
+              { type: "model", value: "nai-diffusion-4-5-full" },
+            ])
+          }
+        >
+          Gallery Apply Filters
+        </button>
+        <button type="button" onClick={() => onAdvancedFiltersChange?.([])}>
+          Gallery Clear Filters
+        </button>
         <button
           type="button"
           onClick={() => actions.onSendToGenerator?.(image)}
@@ -933,13 +925,13 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(screen.getByTestId("header-search-query")).toHaveTextContent("");
-    expect(screen.getByTestId("header-filter-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("gallery-search-query")).toHaveTextContent("");
+    expect(screen.getByTestId("gallery-filter-count")).toHaveTextContent("0");
 
-    await user.click(screen.getByRole("button", { name: "Search Sunset" }));
+    await user.click(screen.getByRole("button", { name: "Gallery Search Sunset" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("header-search-query")).toHaveTextContent(
+      expect(screen.getByTestId("gallery-search-query")).toHaveTextContent(
         "sunset beach",
       ),
     );
@@ -952,11 +944,11 @@ describe("App", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "Apply Header Filters" }),
+      screen.getByRole("button", { name: "Gallery Apply Filters" }),
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("header-filter-count")).toHaveTextContent("2"),
+      expect(screen.getByTestId("gallery-filter-count")).toHaveTextContent("2"),
     );
     expect(useGalleryImagesMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -967,17 +959,17 @@ describe("App", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "Clear Search From Header" }),
+      screen.getByRole("button", { name: "Gallery Clear Search" }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Clear Header Filters" }),
+      screen.getByRole("button", { name: "Gallery Clear Filters" }),
     );
 
     await waitFor(() =>
-      expect(screen.getByTestId("header-search-query")).toHaveTextContent(""),
+      expect(screen.getByTestId("gallery-search-query")).toHaveTextContent(""),
     );
     await waitFor(() =>
-      expect(screen.getByTestId("header-filter-count")).toHaveTextContent("0"),
+      expect(screen.getByTestId("gallery-filter-count")).toHaveTextContent("0"),
     );
   });
 

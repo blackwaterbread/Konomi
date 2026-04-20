@@ -34,14 +34,14 @@ export const contextMenuMock = {
     onSelect?: () => void;
     className?: string;
   }) => (
-    <button
-      type="button"
-      disabled={disabled}
+    <div
+      role="menuitem"
+      aria-disabled={disabled}
       className={className}
-      onClick={() => onSelect?.()}
+      onClick={() => !disabled && onSelect?.()}
     >
       {children}
-    </button>
+    </div>
   ),
   ContextMenuSeparator: () => <hr />,
   ContextMenuSub: ({ children }: Children) => <div>{children}</div>,

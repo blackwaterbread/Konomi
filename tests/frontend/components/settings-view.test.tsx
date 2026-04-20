@@ -102,7 +102,7 @@ describe("SettingsView", () => {
       onUpdate,
     });
 
-    await user.click(screen.getByRole("radio", { name: /Advanced Mode/i }));
+    await user.click(screen.getAllByRole("radio", { name: /Advanced Mode/i })[0]);
 
     expect(onUpdate).toHaveBeenCalledWith({
       useAdvancedSimilarityThresholds: true,

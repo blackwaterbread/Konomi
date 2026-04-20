@@ -29,7 +29,7 @@ describe("ImageCard platform branches", () => {
     renderImageCard();
 
     expect(
-      screen.queryByRole("button", { name: "Reveal Original" }),
+      screen.queryByRole("menuitem", { name: "Reveal Original" }),
     ).not.toBeInTheDocument();
   });
 
@@ -38,7 +38,7 @@ describe("ImageCard platform branches", () => {
     renderImageCard();
 
     expect(
-      screen.getByRole("button", { name: "Reveal Original" }),
+      screen.getByRole("menuitem", { name: "Reveal Original" }),
     ).toBeInTheDocument();
   });
 });

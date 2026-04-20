@@ -273,7 +273,7 @@ describe("ImageDetail platform branches", () => {
     renderPagedImageDetail();
 
     expect(
-      screen.queryByRole("button", { name: "Reveal Original" }),
+      screen.queryByRole("menuitem", { name: "Reveal Original" }),
     ).not.toBeInTheDocument();
   });
 
@@ -282,7 +282,7 @@ describe("ImageDetail platform branches", () => {
     renderPagedImageDetail({ onReveal: vi.fn() });
 
     expect(
-      screen.getByRole("button", { name: "Reveal Original" }),
+      screen.getByRole("menuitem", { name: "Reveal Original" }),
     ).toBeInTheDocument();
   });
 
@@ -291,7 +291,7 @@ describe("ImageDetail platform branches", () => {
     renderPagedImageDetail();
 
     expect(
-      screen.queryByRole("button", { name: "Reveal Original" }),
+      screen.queryByRole("menuitem", { name: "Reveal Original" }),
     ).not.toBeInTheDocument();
   });
 });
