@@ -1,7 +1,7 @@
 {
   "name": "konomi",
   "workspaces": ["src/core", "src/app", "src/web", "src/server"],
-  "version": "0.14.2",
+  "version": "0.14.3",
   "packageManager": "bun@1.2.20",
   "description": "AI image gallery with metadata parsing, search, and generation support",
   "main": "./out/main/index.js",
