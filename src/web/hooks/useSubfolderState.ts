@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export type Subfolder = {
   path: string;
@@ -93,6 +93,13 @@ export function useSubfolderState() {
             !allowEmpty &&
             paths.length === 0 &&
             (prev.get(id)?.length ?? 0) > 0
+          ) {
+            continue;
+          }
+          const prevPaths = prev.get(id)?.map((s) => s.path) ?? [];
+          if (
+            prevPaths.length === paths.length &&
+            prevPaths.every((p, i) => p === paths[i])
           ) {
             continue;
           }
@@ -230,7 +237,10 @@ export function useSubfolderState() {
     [deselected],
   );
 
+  const emptyFiltersRef = useRef<SubfolderFilter[]>([]);
+
   const subfolderFilters = useMemo<SubfolderFilter[]>(() => {
+    if (deselected.size === 0) return emptyFiltersRef.current;
     const filters: SubfolderFilter[] = [];
     for (const [folderId, deselectedPaths] of deselected) {
       if (deselectedPaths.size === 0) continue;
