@@ -167,9 +167,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("folder:create", (_, name: string, path: string) =>
     bridge.request("folder:create", { name, path }),
   );
-  ipcMain.handle("folder:findDuplicates", (_, path: string) =>
-    bridge.request("folder:findDuplicates", { path }),
-  );
+  ipcMain.handle("folder:findDuplicates", async (_, path: string) => {
+    const groups = await bridge.request<{ previewPath: string }[]>(
+      "folder:findDuplicates",
+      { path },
+    );
+    await Promise.all(groups.map((g) => registerTransientPath(g.previewPath)));
+    return groups;
+  });
   ipcMain.handle(
     "folder:resolveDuplicates",
     (
