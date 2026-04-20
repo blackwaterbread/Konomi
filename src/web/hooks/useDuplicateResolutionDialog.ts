@@ -180,7 +180,7 @@ export function useDuplicateResolutionDialog({
   handleFolderAddWithDuplicateCheck: (
     name: string,
     path: string,
-  ) => Promise<void>;
+  ) => Promise<number | null>;
   handleFolderRescanWithDuplicateCheck: (folder: Folder) => Promise<void>;
   folderAddResolvedSeq: number;
   checkingDuplicates: boolean;
@@ -204,6 +204,9 @@ export function useDuplicateResolutionDialog({
   const [pageIndex, setPageIndex] = useState(0);
   const [preview, setPreview] = useState<DuplicatePreview | null>(null);
   const [folderAddResolvedSeq, setFolderAddResolvedSeq] = useState(0);
+  const pendingFolderAddResolveRef = useRef<
+    ((id: number | null) => void) | null
+  >(null);
   const [checkingDuplicates, setCheckingDuplicatesRaw] = useState(false);
   const setCheckingDuplicates = useCallback(
     (value: boolean) => {
@@ -226,6 +229,11 @@ export function useDuplicateResolutionDialog({
     setBulkDecision("existing");
     setPageIndex(0);
     setPreview(null);
+
+    if (pendingFolderAddResolveRef.current) {
+      pendingFolderAddResolveRef.current(null);
+      pendingFolderAddResolveRef.current = null;
+    }
 
     // Drain queued watch duplicates that arrived while dialog was busy.
     // setTimeout ensures the close state commits before we reopen.
@@ -275,7 +283,7 @@ export function useDuplicateResolutionDialog({
   }, []);
 
   const handleFolderAddWithDuplicateCheck = useCallback(
-    async (name: string, path: string) => {
+    async (name: string, path: string): Promise<number | null> => {
       setCheckingDuplicates(true);
       // Show folder in sidebar immediately while checking duplicates
       const subdirs = await window.folder
@@ -291,22 +299,26 @@ export function useDuplicateResolutionDialog({
           )
         ) {
           toast.error(i18n.t("duplicateResolution.pathAlreadyAdded"));
-          return;
+          return null;
         }
 
         const duplicates = await window.folder.findDuplicates(path);
         if (duplicates.length > 0) {
-          openFolderAddDialog(name, path, duplicates, subdirs);
-          return;
+          return new Promise<number | null>((resolve) => {
+            pendingFolderAddResolveRef.current = resolve;
+            openFolderAddDialog(name, path, duplicates, subdirs);
+          });
         }
 
         const folder = await addFolder(name, path);
         seedSubfolders?.(folder.id, subdirs);
         onFolderAdded?.(folder.id);
+        return folder.id;
       } catch (e: unknown) {
         toast.error(
           e instanceof Error ? e.message : i18n.t("error.folderAddFailed"),
         );
+        return null;
       } finally {
         setCheckingDuplicates(false);
         setPendingFolder(null);
@@ -406,6 +418,8 @@ export function useDuplicateResolutionDialog({
         seedSubfolders?.(createdFolder.id, folderAddPendingInfo.subdirectories);
         onFolderAdded?.(createdFolder.id);
         setFolderAddResolvedSeq((prev) => prev + 1);
+        pendingFolderAddResolveRef.current?.(createdFolder.id);
+        pendingFolderAddResolveRef.current = null;
       }
 
       resetDialogState();

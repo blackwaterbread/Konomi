@@ -1786,7 +1786,6 @@ export const Sidebar = memo(
     } = folderState;
     const {
       createFolder,
-      addFolders,
       deleteFolder,
       renameFolder,
       reorderFolders,
@@ -1796,7 +1795,6 @@ export const Sidebar = memo(
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
-      onFoldersAdded,
       onFolderCancelled,
       onFolderRescan,
       onSubfolderToggle,
@@ -1968,16 +1966,25 @@ export const Sidebar = memo(
 
     const handleMultiFolderSubmit = useCallback(
       async (paths: string[]) => {
-        const { added, errors } = await addFolders(paths);
-        if (added.length > 0) {
-          onFoldersAdded?.(added.map((f) => f.id));
+        let addedCount = 0;
+        for (const folderPath of paths) {
+          const name =
+            folderPath
+              .replace(/\\/g, "/")
+              .replace(/\/+$/, "")
+              .split("/")
+              .pop() || folderPath;
+          const folderId = await handleFolderAddWithDuplicateCheck(name, folderPath);
+          if (folderId !== null) addedCount++;
+        }
+        if (addedCount > 0) {
           toast.success(
-            t("sidebar.folders.addedMultiple", { count: added.length }),
+            t("sidebar.folders.addedMultiple", { count: addedCount }),
           );
         }
-        return { errors };
+        return { errors: [] };
       },
-      [addFolders, onFoldersAdded, t],
+      [handleFolderAddWithDuplicateCheck, t],
     );
 
     useImperativeHandle(
