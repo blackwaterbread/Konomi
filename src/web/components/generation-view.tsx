@@ -64,6 +64,7 @@ import novelAiLogomarkAlt from "@/assets/images/novelai_logomark_alt.png";
 import novelAiLogomarkDark from "@/assets/images/novelai_logomark_dark.png";
 
 import { cn } from "@/lib/utils";
+import { imageUrl } from "@/lib/image-utils";
 import type {
   NaiConfig,
   GenerateParams,
@@ -4681,7 +4682,7 @@ export const GenerationView = memo(
       [],
     );
     const createPathDropItem = useCallback((path: string): DropItem => {
-      const previewUrl = `/api/files/image?path=${encodeURIComponent(path)}`;
+      const previewUrl = imageUrl(path);
       return {
         kind: "path",
         path,
@@ -5148,7 +5149,7 @@ export const GenerationView = memo(
             }),
           };
           const filePath = await window.nai.generate(params);
-          const src = `/api/files/image?path=${encodeURIComponent(filePath)}`;
+          const src = imageUrl(filePath);
           const shouldShowNewResult =
             pendingResultSelectedRef.current || !resultSrcRef.current;
           if (shouldShowNewResult) {
@@ -5289,7 +5290,7 @@ export const GenerationView = memo(
             }),
           };
           const filePath = await window.nai.generate(params);
-          const src = `/api/files/image?path=${encodeURIComponent(filePath)}`;
+          const src = imageUrl(filePath);
           const shouldShowNewResult =
             pendingResultSelectedRef.current || !resultSrcRef.current;
           if (shouldShowNewResult) {
