@@ -2248,6 +2248,7 @@ export const PromptInput = memo(function PromptInput({
             onBlur={() => {
               setTimeout(() => {
                 setGroupDropdownOpen(false);
+                setTagSuggestionOpen(false);
               }, 150);
             }}
             onContextMenu={openRawContextMenu}
