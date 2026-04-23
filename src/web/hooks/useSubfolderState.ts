@@ -4,6 +4,7 @@ export type Subfolder = {
   path: string;
   name: string;
   folderId: number;
+  depth: number;
 };
 
 export type SubfolderFilter = {
@@ -51,22 +52,24 @@ export function useSubfolderState() {
   const [deselected, setDeselected] = useState<Map<number, Set<string>>>(() =>
     readDeselected(),
   );
+  const [collapsedSubfolderPaths, setCollapsedSubfolderPaths] = useState<Set<string>>(new Set());
 
   const loadSubfolders = useCallback(async (folderId: number) => {
-    const paths = await window.folder.listSubdirectories(folderId);
+    const entries = await window.folder.listSubdirectories(folderId);
     setSubfoldersByFolder((prev) => {
       // DB에 아직 이미지가 없으면 빈 배열이 돌아오는데,
       // 이미 seed된 데이터가 있으면 보존한다 (스캔 완료 후 다시 갱신됨)
-      if (paths.length === 0 && (prev.get(folderId)?.length ?? 0) > 0) {
+      if (entries.length === 0 && (prev.get(folderId)?.length ?? 0) > 0) {
         return prev;
       }
       const next = new Map(prev);
       next.set(
         folderId,
-        paths.map((p) => ({
-          path: p,
-          name: p.replace(/\\/g, "/").split("/").pop() ?? p,
+        entries.map((e) => ({
+          path: e.path,
+          name: e.path.replace(/\\/g, "/").split("/").pop() ?? e.path,
           folderId,
+          depth: e.depth,
         })),
       );
       return next;
@@ -78,38 +81,39 @@ export function useSubfolderState() {
       const allowEmpty = options?.allowEmpty ?? false;
       const results = await Promise.all(
         folderIds.map(async (id) => {
-          const paths = await window.folder.listSubdirectories(id);
-          return { id, paths };
+          const entries = await window.folder.listSubdirectories(id);
+          return { id, entries };
         }),
       );
       setSubfoldersByFolder((prev) => {
         let changed = false;
         const next = new Map(prev);
-        for (const { id, paths } of results) {
+        for (const { id, entries } of results) {
           // Initial load: preserve existing entries when DB returns empty
           // (scan still in progress). Image:removed callers pass allowEmpty
           // so the last subfolder can clear when its images are deleted.
           if (
             !allowEmpty &&
-            paths.length === 0 &&
+            entries.length === 0 &&
             (prev.get(id)?.length ?? 0) > 0
           ) {
             continue;
           }
           const prevPaths = prev.get(id)?.map((s) => s.path) ?? [];
           if (
-            prevPaths.length === paths.length &&
-            prevPaths.every((p, i) => p === paths[i])
+            prevPaths.length === entries.length &&
+            prevPaths.every((p, i) => p === entries[i].path)
           ) {
             continue;
           }
           changed = true;
           next.set(
             id,
-            paths.map((p) => ({
-              path: p,
-              name: p.replace(/\\/g, "/").split("/").pop() ?? p,
+            entries.map((e) => ({
+              path: e.path,
+              name: e.path.replace(/\\/g, "/").split("/").pop() ?? e.path,
               folderId: id,
+              depth: e.depth,
             })),
           );
         }
@@ -209,13 +213,22 @@ export function useSubfolderState() {
         const next = new Map(prev);
         next.set(
           folderId,
-          subdirs.map((s) => ({ path: s.path, name: s.name, folderId })),
+          subdirs.map((s) => ({ path: s.path, name: s.name, folderId, depth: 1 })),
         );
         return next;
       });
     },
     [],
   );
+
+  const toggleSubfolderCollapse = useCallback((path: string) => {
+    setCollapsedSubfolderPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   const clearFolderSubfolders = useCallback((folderId: number) => {
     setSubfoldersByFolder((prev) => {
@@ -269,5 +282,7 @@ export function useSubfolderState() {
     refreshSubfolders,
     loadSubfolders,
     subfolderFilters,
+    collapsedSubfolderPaths,
+    toggleSubfolderCollapse,
   };
 }

@@ -201,7 +201,7 @@ declare global {
       delete: (id: number) => Promise<void>;
       rename: (id: number, name: string) => Promise<Folder>;
       revealInExplorer: (idOrPath: number | string) => Promise<void>;
-      listSubdirectories: (id: number) => Promise<string[]>;
+      listSubdirectories: (id: number) => Promise<{ path: string; depth: number }[]>;
       listSubdirectoriesByPath: (
         folderPath: string,
       ) => Promise<{ name: string; path: string }[]>;

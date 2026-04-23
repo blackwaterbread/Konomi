@@ -42,6 +42,8 @@ export function useFolderController(
     refreshSubfolders,
     loadSubfolders,
     subfolderFilters,
+    collapsedSubfolderPaths,
+    toggleSubfolderCollapse,
   } = useSubfolderState();
 
   const folderCount = hasLoaded ? folders.length : initialFolderCount;
@@ -233,6 +235,8 @@ export function useFolderController(
     refreshSubfolders,
     loadSubfolders,
     subfolderFilters,
+    collapsedSubfolderPaths,
+    toggleSubfolderCollapse,
     galleryReady,
     initialize,
   };

@@ -93,6 +93,7 @@ interface SidebarFolderState {
   scanningFolderIds?: Set<number>;
   scanning?: boolean;
   subfoldersByFolder?: Map<number, Subfolder[]>;
+  collapsedSubfolderPaths?: Set<string>;
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
@@ -117,6 +118,7 @@ interface SidebarFolderActions {
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
   onSubfolderToggle?: (path: string, folderId: number) => void;
+  onSubfolderToggleCollapse?: (path: string) => void;
   onRootToggle?: (folderId: number) => void;
   seedSubfolders?: (
     folderId: number,
@@ -996,19 +998,27 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
   );
 });
 
+const SUBFOLDER_DEPTH_PADDING = ["pl-5 pr-2", "pl-8 pr-2", "pl-11 pr-2"] as const;
+
 interface SidebarSubfolderRowProps {
   subfolder: Subfolder;
   isVisible: boolean;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
   isolateDisabled?: boolean;
   onToggle?: (path: string, folderId: number) => void;
+  onToggleCollapse?: (path: string) => void;
   onIsolate?: (folderId: number, subfolderPath: string) => void;
 }
 
 const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   subfolder,
   isVisible,
+  hasChildren = false,
+  isCollapsed = false,
   isolateDisabled,
   onToggle,
+  onToggleCollapse,
   onIsolate,
 }: SidebarSubfolderRowProps) {
   const { t } = useTranslation();
@@ -1019,12 +1029,14 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
     ms: 450,
     touchOnly: true,
   });
+  const paddingClass = SUBFOLDER_DEPTH_PADDING[Math.min(subfolder.depth - 1, 2)];
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group flex items-center gap-2 pl-5 pr-2 py-1.5 sm:py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            "group flex items-center gap-2 py-1.5 sm:py-0.5 rounded-md cursor-pointer hover:bg-sidebar-accent",
+            paddingClass,
             isVisible
               ? "text-muted-foreground hover:text-foreground"
               : "text-muted-foreground/40 hover:text-muted-foreground",
@@ -1032,7 +1044,23 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
           onClick={() => onToggle?.(subfolder.path, subfolder.folderId)}
           {...longPressHandlers}
         >
-          <span className="h-3.5 w-3.5 shrink-0" />
+          {hasChildren ? (
+            <button
+              className="h-7 w-7 sm:h-3.5 sm:w-3.5 shrink-0 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCollapse?.(subfolder.path);
+              }}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+              ) : (
+                <ChevronDown className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+              )}
+            </button>
+          ) : (
+            <span className="h-3.5 w-3.5 shrink-0" />
+          )}
           <Folder className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1 min-w-0 text-sm truncate">
             {subfolder.name}
@@ -1416,6 +1444,10 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
   );
 });
 
+function normalizeSep(p: string) {
+  return p.replace(/\\/g, "/");
+}
+
 interface SidebarFoldersSectionProps {
   folders: FolderRecord[];
   selectedFolderIds?: Set<number>;
@@ -1429,6 +1461,7 @@ interface SidebarFoldersSectionProps {
   isAnalyzing?: boolean;
   pendingFolder?: PendingFolder | null;
   subfoldersByFolder?: Map<number, Subfolder[]>;
+  collapsedSubfolderPaths?: Set<string>;
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
@@ -1448,6 +1481,7 @@ interface SidebarFoldersSectionProps {
   onDrop: (id: number, position: "before" | "after") => void;
   onDragEnd: () => void;
   onSubfolderToggle?: (path: string, folderId: number) => void;
+  onSubfolderToggleCollapse?: (path: string) => void;
   onRootToggle?: (folderId: number) => void;
 }
 
@@ -1464,6 +1498,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isAnalyzing,
   pendingFolder,
   subfoldersByFolder,
+  collapsedSubfolderPaths,
   isSubfolderVisible,
   isRootVisible,
   isFolderPartial,
@@ -1483,6 +1518,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   onDrop,
   onDragEnd,
   onSubfolderToggle,
+  onSubfolderToggleCollapse,
   onRootToggle,
 }: SidebarFoldersSectionProps) {
   const { t } = useTranslation();
@@ -1584,18 +1620,36 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                 />
                 {hasChildren && !isCollapsed && (
                   <div className="mt-1">
-                    {subfolders.map((sf) => (
-                      <SidebarSubfolderRow
-                        key={sf.path}
-                        subfolder={sf}
-                        isVisible={
-                          isSubfolderVisible?.(sf.path, sf.folderId) ?? true
-                        }
-                        isolateDisabled={scanning || isAnalyzing}
-                        onToggle={onSubfolderToggle}
-                        onIsolate={onSubfolderIsolate}
-                      />
-                    ))}
+                    {subfolders
+                      .filter((sf) => {
+                        const normPath = normalizeSep(sf.path);
+                        return !subfolders.some(
+                          (ancestor) =>
+                            (collapsedSubfolderPaths?.has(ancestor.path) ?? false) &&
+                            normPath.startsWith(normalizeSep(ancestor.path) + "/"),
+                        );
+                      })
+                      .map((sf) => {
+                        const normPath = normalizeSep(sf.path) + "/";
+                        const sfHasChildren = subfolders.some((other) =>
+                          normalizeSep(other.path).startsWith(normPath),
+                        );
+                        return (
+                          <SidebarSubfolderRow
+                            key={sf.path}
+                            subfolder={sf}
+                            isVisible={
+                              isSubfolderVisible?.(sf.path, sf.folderId) ?? true
+                            }
+                            hasChildren={sfHasChildren}
+                            isCollapsed={collapsedSubfolderPaths?.has(sf.path) ?? false}
+                            isolateDisabled={scanning || isAnalyzing}
+                            onToggle={onSubfolderToggle}
+                            onToggleCollapse={onSubfolderToggleCollapse}
+                            onIsolate={onSubfolderIsolate}
+                          />
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -1780,6 +1834,7 @@ export const Sidebar = memo(
       scanningFolderIds,
       scanning,
       subfoldersByFolder,
+      collapsedSubfolderPaths,
       isSubfolderVisible,
       isRootVisible,
       isFolderPartial,
@@ -1798,6 +1853,7 @@ export const Sidebar = memo(
       onFolderCancelled,
       onFolderRescan,
       onSubfolderToggle,
+      onSubfolderToggleCollapse,
       onRootToggle,
       seedSubfolders,
     } = folderActions;
@@ -2276,6 +2332,7 @@ export const Sidebar = memo(
                 isAnalyzing={isAnalyzing}
                 pendingFolder={pendingFolder}
                 subfoldersByFolder={subfoldersByFolder}
+                collapsedSubfolderPaths={collapsedSubfolderPaths}
                 isSubfolderVisible={isSubfolderVisible}
                 isRootVisible={isRootVisible}
                 isFolderPartial={isFolderPartial}
@@ -2295,6 +2352,7 @@ export const Sidebar = memo(
                 onDrop={handleFolderDrop}
                 onDragEnd={handleFolderDragEnd}
                 onSubfolderToggle={onSubfolderToggle}
+                onSubfolderToggleCollapse={onSubfolderToggleCollapse}
                 onRootToggle={onRootToggle}
               />
 

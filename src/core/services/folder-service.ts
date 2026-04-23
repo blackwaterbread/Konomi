@@ -59,7 +59,7 @@ export function createFolderService(deps: FolderServiceDeps) {
       return folderRepo.findById(id);
     },
 
-    async getSubfolderPaths(folderId: number): Promise<string[]> {
+    async getSubfolderPaths(folderId: number): Promise<{ path: string; depth: number }[]> {
       const folder = await folderRepo.findById(folderId);
       if (!folder) return [];
 
@@ -71,18 +71,22 @@ export function createFolderService(deps: FolderServiceDeps) {
       const prefix = folderNorm.endsWith(sep) ? folderNorm : folderNorm + sep;
 
       const images = await imageRepo.getPathsByFolderId(folderId);
-      const subfolderSet = new Set<string>();
+      const subfolderMap = new Map<string, number>();
       for (const img of images) {
         const imgNorm =
           process.platform === "win32" ? img.path.toLowerCase() : img.path;
         if (!imgNorm.startsWith(prefix)) continue;
         const rel = imgNorm.slice(prefix.length);
-        const firstSep = rel.indexOf(sep);
-        if (firstSep === -1) continue;
-        subfolderSet.add(prefix + rel.slice(0, firstSep));
+        const parts = rel.split(sep);
+        for (let i = 1; i < parts.length; i++) {
+          const subPath = prefix + parts.slice(0, i).join(sep);
+          if (!subfolderMap.has(subPath)) subfolderMap.set(subPath, i);
+        }
       }
 
-      return [...subfolderSet].sort();
+      return [...subfolderMap.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([path, depth]) => ({ path, depth }));
     },
 
     async getStats(id: number): Promise<FolderStats | null> {

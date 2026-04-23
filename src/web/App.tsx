@@ -102,6 +102,8 @@ export default function App({
     seedSubfolders,
     refreshSubfolders,
     subfolderFilters,
+    collapsedSubfolderPaths,
+    toggleSubfolderCollapse,
     galleryReady,
     initialize: initializeFolders,
   } = useFolderController(initialFolderCount, initialFolders);
@@ -493,6 +495,7 @@ export default function App({
       isSubfolderVisible,
       isRootVisible,
       isFolderPartial,
+      collapsedSubfolderPaths,
     }),
     [
       activeScanFolderIds,
@@ -505,6 +508,7 @@ export default function App({
       isSubfolderVisible,
       isRootVisible,
       isFolderPartial,
+      collapsedSubfolderPaths,
     ],
   );
 
@@ -525,6 +529,7 @@ export default function App({
       onFolderCancelled: handleFolderCancelled,
       onFolderRescan: handleFolderRescan,
       onSubfolderToggle: toggleSubfolder,
+      onSubfolderToggleCollapse: toggleSubfolderCollapse,
       onRootToggle: toggleRoot,
       seedSubfolders,
     }),
@@ -545,6 +550,7 @@ export default function App({
       isolateFolder,
       isolateSubfolder,
       toggleSubfolder,
+      toggleSubfolderCollapse,
       toggleRoot,
     ],
   );
