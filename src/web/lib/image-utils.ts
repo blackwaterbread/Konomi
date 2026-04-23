@@ -16,7 +16,7 @@ export function parseTokens(json: string | undefined): PromptToken[] {
 
 const GALLERY_THUMB_WIDTH = 400;
 
-const THUMB_WIDTH_MAP: Record<string, number> = {
+const THUMB_WIDTH_MAP: Record<"low" | "normal" | "high", number> = {
   low: 200,
   normal: 400,
   high: 800,
@@ -25,7 +25,7 @@ const THUMB_WIDTH_MAP: Record<string, number> = {
 export function thumbWidthForQuality(
   quality: "low" | "normal" | "high",
 ): number {
-  return THUMB_WIDTH_MAP[quality] ?? GALLERY_THUMB_WIDTH;
+  return THUMB_WIDTH_MAP[quality];
 }
 
 function isElectronEnv(): boolean {
@@ -42,7 +42,8 @@ export function imageUrl(filePath: string, thumbWidth?: number): string {
       ? `konomi://local/${encoded}?w=${thumbWidth}`
       : `konomi://local/${encoded}`;
   }
-  return `/api/files/image?path=${encodeURIComponent(filePath)}`;
+  const base = `/api/files/image?path=${encodeURIComponent(filePath)}`;
+  return thumbWidth ? `${base}&w=${thumbWidth}` : base;
 }
 
 export function rowToImageData(row: ImageRow, thumbWidth?: number): ImageData {

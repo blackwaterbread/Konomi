@@ -22,6 +22,7 @@ export function useGalleryImages(
   },
 ) {
   const enabled = options?.enabled ?? true;
+  const thumbWidth = options?.thumbWidth;
   const [images, setImages] = useState<ImageData[]>([]);
   const [totalImageCount, setTotalImageCount] = useState(0);
   const [galleryPage, setGalleryPage] = useState(1);
@@ -87,7 +88,7 @@ export function useGalleryImages(
       setIsLoading(false);
       setHasLoadedOnce(true);
       startTransition(() => {
-        setImages(result.rows.map((row) => rowToImageData(row, options?.thumbWidth)));
+        setImages(result.rows.map((row) => rowToImageData(row, thumbWidth)));
         setTotalImageCount(result.totalCount);
         setGalleryTotalPages(result.totalPages);
       });
@@ -105,7 +106,7 @@ export function useGalleryImages(
       setHasLoadedOnce(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- overlayActiveRef is a stable ref
-  }, [enabled, galleryPage, listBaseQuery]);
+  }, [enabled, galleryPage, listBaseQuery, thumbWidth]);
 
   const incrementPendingNew = useCallback((count: number) => {
     if (!enabledRef.current) return;

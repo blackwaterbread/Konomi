@@ -37,7 +37,7 @@ export const DEFAULTS: Settings = {
 
 const KEY = "konomi-settings";
 
-type LegacyStoredSettings = Partial<Settings> & {
+type LegacyStoredSettings = Omit<Partial<Settings>, "thumbnailQuality"> & {
   jaccardThreshold?: number;
   thumbnailQuality?: string;
 };

@@ -46,6 +46,11 @@ export function useSimilarImages({
     }
   }, [isDetailOpen]);
 
+  // Drop cached anchor when thumb width changes so URLs rebuild on next fetch
+  useEffect(() => {
+    anchorImageRef.current = null;
+  }, [thumbWidth]);
+
   // Phase 1: When anchor changes, fetch reasons (lightweight) and build sorted ID list
   useEffect(() => {
     if (!anchorId || !isDetailOpen) {
@@ -208,7 +213,7 @@ export function useSimilarImages({
     return () => {
       cancelled = true;
     };
-  }, [anchorId, sortedCandidateIds, similarPage, pageSize]);
+  }, [anchorId, sortedCandidateIds, similarPage, pageSize, thumbWidth]);
 
   const totalPages =
     sortedCandidateIds.length > 0
