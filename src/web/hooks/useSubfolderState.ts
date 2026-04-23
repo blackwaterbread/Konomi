@@ -17,6 +17,10 @@ export type SubfolderFilter = {
 const VISIBILITY_KEY = "konomi-subfolder-visibility";
 const ROOT_SENTINEL = "__root__";
 
+export function normalizeSubfolderPath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
 function readDeselected(): Map<number, Set<string>> {
   try {
     const raw = localStorage.getItem(VISIBILITY_KEY);
@@ -52,7 +56,9 @@ export function useSubfolderState() {
   const [deselected, setDeselected] = useState<Map<number, Set<string>>>(() =>
     readDeselected(),
   );
-  const [collapsedSubfolderPaths, setCollapsedSubfolderPaths] = useState<Set<string>>(new Set());
+  const [collapsedSubfolderPaths, setCollapsedSubfolderPaths] = useState<
+    Set<string>
+  >(new Set());
 
   const loadSubfolders = useCallback(async (folderId: number) => {
     const entries = await window.folder.listSubdirectories(folderId);
@@ -85,6 +91,7 @@ export function useSubfolderState() {
           return { id, entries };
         }),
       );
+      const disappearedPaths: string[] = [];
       setSubfoldersByFolder((prev) => {
         let changed = false;
         const next = new Map(prev);
@@ -107,6 +114,13 @@ export function useSubfolderState() {
             continue;
           }
           changed = true;
+          const incomingSet = new Set(
+            entries.map((e) => normalizeSubfolderPath(e.path)),
+          );
+          for (const p of prevPaths) {
+            const norm = normalizeSubfolderPath(p);
+            if (!incomingSet.has(norm)) disappearedPaths.push(norm);
+          }
           next.set(
             id,
             entries.map((e) => ({
@@ -119,6 +133,17 @@ export function useSubfolderState() {
         }
         return changed ? next : prev;
       });
+      if (disappearedPaths.length > 0) {
+        setCollapsedSubfolderPaths((prev) => {
+          if (prev.size === 0) return prev;
+          let changed = false;
+          const next = new Set(prev);
+          for (const p of disappearedPaths) {
+            if (next.delete(p)) changed = true;
+          }
+          return changed ? next : prev;
+        });
+      }
       setSubfolderReady(true);
     },
     [],
@@ -211,9 +236,17 @@ export function useSubfolderState() {
       if (subdirs.length === 0) return;
       setSubfoldersByFolder((prev) => {
         const next = new Map(prev);
+        // Seed callers currently only pass first-level directories; the
+        // subsequent scan refresh overwrites this with the full tree
+        // including real depth values from the backend.
         next.set(
           folderId,
-          subdirs.map((s) => ({ path: s.path, name: s.name, folderId, depth: 1 })),
+          subdirs.map((s) => ({
+            path: s.path,
+            name: s.name,
+            folderId,
+            depth: 1,
+          })),
         );
         return next;
       });
@@ -222,16 +255,22 @@ export function useSubfolderState() {
   );
 
   const toggleSubfolderCollapse = useCallback((path: string) => {
+    const normalized = normalizeSubfolderPath(path);
     setCollapsedSubfolderPaths((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
       return next;
     });
   }, []);
 
   const clearFolderSubfolders = useCallback((folderId: number) => {
+    let clearedPaths: string[] = [];
     setSubfoldersByFolder((prev) => {
+      const removed = prev.get(folderId);
+      if (removed) {
+        clearedPaths = removed.map((s) => normalizeSubfolderPath(s.path));
+      }
       const next = new Map(prev);
       next.delete(folderId);
       return next;
@@ -243,6 +282,17 @@ export function useSubfolderState() {
       writeDeselected(next);
       return next;
     });
+    if (clearedPaths.length > 0) {
+      setCollapsedSubfolderPaths((prev) => {
+        if (prev.size === 0) return prev;
+        let changed = false;
+        const next = new Set(prev);
+        for (const p of clearedPaths) {
+          if (next.delete(p)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
   }, []);
 
   const hasSubfolderOverrides = useCallback(

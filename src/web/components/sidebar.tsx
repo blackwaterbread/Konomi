@@ -27,6 +27,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
 } from "react";
 import { toast } from "sonner";
 import {
@@ -65,7 +66,10 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import infoImageUrl from "@/assets/images/info.webp";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
-import type { Subfolder } from "@/hooks/useSubfolderState";
+import {
+  normalizeSubfolderPath,
+  type Subfolder,
+} from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
 import { AvailableFoldersDialog } from "@/components/available-folders-dialog";
 import { useApi } from "@/api";
@@ -1046,6 +1050,13 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
         >
           {hasChildren ? (
             <button
+              type="button"
+              aria-label={
+                isCollapsed
+                  ? t("sidebar.folders.expand")
+                  : t("sidebar.folders.collapse")
+              }
+              aria-expanded={!isCollapsed}
               className="h-7 w-7 sm:h-3.5 sm:w-3.5 shrink-0 flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1444,10 +1455,6 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
   );
 });
 
-function normalizeSep(p: string) {
-  return p.replace(/\\/g, "/");
-}
-
 interface SidebarFoldersSectionProps {
   folders: FolderRecord[];
   selectedFolderIds?: Set<number>;
@@ -1620,36 +1627,59 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                 />
                 {hasChildren && !isCollapsed && (
                   <div className="mt-1">
-                    {subfolders
-                      .filter((sf) => {
-                        const normPath = normalizeSep(sf.path);
-                        return !subfolders.some(
-                          (ancestor) =>
-                            (collapsedSubfolderPaths?.has(ancestor.path) ?? false) &&
-                            normPath.startsWith(normalizeSep(ancestor.path) + "/"),
-                        );
-                      })
-                      .map((sf) => {
-                        const normPath = normalizeSep(sf.path) + "/";
-                        const sfHasChildren = subfolders.some((other) =>
-                          normalizeSep(other.path).startsWith(normPath),
-                        );
-                        return (
+                    {(() => {
+                      const normPaths = subfolders.map((sf) =>
+                        normalizeSubfolderPath(sf.path),
+                      );
+                      // hasChildren: derive once from parent-of-each-path set
+                      // rather than scanning siblings per row.
+                      const parentPaths = new Set<string>();
+                      for (const p of normPaths) {
+                        const idx = p.lastIndexOf("/");
+                        if (idx > 0) parentPaths.add(p.slice(0, idx));
+                      }
+                      // Collapsed prefixes in this folder. localeCompare sort
+                      // doesn't guarantee descendants are adjacent (e.g. "/foo"
+                      // + "/foo bar" + "/foo/x"), so descendant checks compare
+                      // against every collapsed prefix.
+                      const collapsedPrefixes: string[] = [];
+                      for (const p of normPaths) {
+                        if (collapsedSubfolderPaths?.has(p) === true) {
+                          collapsedPrefixes.push(p + "/");
+                        }
+                      }
+                      const rows: ReactElement[] = [];
+                      for (let i = 0; i < subfolders.length; i++) {
+                        const sf = subfolders[i];
+                        const normPath = normPaths[i];
+                        let hiddenByCollapse = false;
+                        for (const prefix of collapsedPrefixes) {
+                          if (normPath.startsWith(prefix)) {
+                            hiddenByCollapse = true;
+                            break;
+                          }
+                        }
+                        if (hiddenByCollapse) continue;
+                        const isRowCollapsed =
+                          collapsedSubfolderPaths?.has(normPath) === true;
+                        rows.push(
                           <SidebarSubfolderRow
                             key={sf.path}
                             subfolder={sf}
                             isVisible={
                               isSubfolderVisible?.(sf.path, sf.folderId) ?? true
                             }
-                            hasChildren={sfHasChildren}
-                            isCollapsed={collapsedSubfolderPaths?.has(sf.path) ?? false}
+                            hasChildren={parentPaths.has(normPath)}
+                            isCollapsed={isRowCollapsed}
                             isolateDisabled={scanning || isAnalyzing}
                             onToggle={onSubfolderToggle}
                             onToggleCollapse={onSubfolderToggleCollapse}
                             onIsolate={onSubfolderIsolate}
-                          />
+                          />,
                         );
-                      })}
+                      }
+                      return rows;
+                    })()}
                   </div>
                 )}
               </div>
