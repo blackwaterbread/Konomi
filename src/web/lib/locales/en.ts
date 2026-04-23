@@ -734,6 +734,14 @@ const en = {
       confirm: "Apply",
       cancel: "Cancel",
     },
+    thumbnailQuality: {
+      title: "Thumbnail Quality",
+      description:
+        "Sets the resolution of gallery thumbnails. Higher quality is sharper but uses more memory.",
+      low: "Low (200px)",
+      normal: "Normal (400px)",
+      high: "High (800px)",
+    },
     recentRange: {
       title: "Recent Range",
       description: "The time range shown in the recent view.",

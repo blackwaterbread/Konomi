@@ -10,6 +10,7 @@ export function useSimilarImages({
   getVisualThreshold,
   getPromptThreshold,
   pageSize = 10,
+  thumbWidth,
 }: {
   anchorId: string | null;
   isDetailOpen: boolean;
@@ -17,6 +18,7 @@ export function useSimilarImages({
   getVisualThreshold: () => number;
   getPromptThreshold: () => number | undefined;
   pageSize?: number;
+  thumbWidth?: number;
 }) {
   // Sorted candidate IDs (excluding anchor) — lightweight, kept in full
   const [sortedCandidateIds, setSortedCandidateIds] = useState<number[]>([]);
@@ -176,7 +178,7 @@ export function useSimilarImages({
       .then((rows) => {
         if (cancelled) return;
         const dataMap = new Map(
-          rows.map((r) => [String(r.id), rowToImageData(r)]),
+          rows.map((r) => [String(r.id), rowToImageData(r, thumbWidth)]),
         );
 
         // Cache anchor

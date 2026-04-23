@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ImageListQuery } from "@preload/index.d";
 import { useGalleryImages } from "@/hooks/useGalleryImages";
+import { thumbWidthForQuality } from "@/lib/image-utils";
 import i18n from "@/lib/i18n";
+import type { Settings } from "@/hooks/useSettings";
 
 type SortBy = "recent" | "oldest" | "favorites" | "name";
 
@@ -24,6 +26,7 @@ interface UseGalleryControllerOptions {
   excludeTags: string[];
   folderCount: number | null;
   subfolderFilters?: ImageListQuery["subfolderFilters"];
+  thumbnailQuality?: Settings["thumbnailQuality"];
   enabled?: boolean;
 }
 
@@ -38,6 +41,7 @@ export function useGalleryController({
   excludeTags,
   folderCount,
   subfolderFilters,
+  thumbnailQuality = "normal",
   enabled = true,
 }: UseGalleryControllerOptions) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -101,7 +105,11 @@ export function useGalleryController({
     releaseSelfRemoved,
     applyPendingRefresh,
     schedulePageRefresh,
-  } = useGalleryImages(listBaseQuery, { enabled, overlayActiveRef: galleryOverlayActiveRef });
+  } = useGalleryImages(listBaseQuery, {
+    enabled,
+    overlayActiveRef: galleryOverlayActiveRef,
+    thumbWidth: thumbWidthForQuality(thumbnailQuality),
+  });
 
   const gallerySelectionScopeKey = useMemo(
     () =>

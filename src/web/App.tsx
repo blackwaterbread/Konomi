@@ -56,6 +56,7 @@ import { useGalleryFocus } from "@/hooks/useGalleryFocus";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import type { AdvancedFilter } from "@/lib/advanced-filter";
 import { cn } from "@/lib/utils";
+import { thumbWidthForQuality } from "@/lib/image-utils";
 import type { Folder } from "@preload/index.d";
 import { useTranslation } from "react-i18next";
 
@@ -199,6 +200,7 @@ export default function App({
     excludeTags,
     folderCount,
     subfolderFilters,
+    thumbnailQuality: settings.thumbnailQuality,
     enabled: galleryReady,
   });
 
@@ -333,6 +335,7 @@ export default function App({
     getVisualThreshold,
     getPromptThreshold,
     pageSize: settings.similarPageSize,
+    thumbWidth: thumbWidthForQuality(settings.thumbnailQuality),
   });
   const rescanningRef = useRef(false);
 

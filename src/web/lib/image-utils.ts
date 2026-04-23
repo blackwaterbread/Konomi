@@ -16,6 +16,18 @@ export function parseTokens(json: string | undefined): PromptToken[] {
 
 const GALLERY_THUMB_WIDTH = 400;
 
+const THUMB_WIDTH_MAP: Record<string, number> = {
+  low: 200,
+  normal: 400,
+  high: 800,
+};
+
+export function thumbWidthForQuality(
+  quality: "low" | "normal" | "high",
+): number {
+  return THUMB_WIDTH_MAP[quality] ?? GALLERY_THUMB_WIDTH;
+}
+
 function isElectronEnv(): boolean {
   return (
     typeof window !== "undefined" && window.appInfo?.isElectron === true
@@ -33,11 +45,11 @@ export function imageUrl(filePath: string, thumbWidth?: number): string {
   return `/api/files/image?path=${encodeURIComponent(filePath)}`;
 }
 
-export function rowToImageData(row: ImageRow): ImageData {
+export function rowToImageData(row: ImageRow, thumbWidth?: number): ImageData {
   return {
     id: String(row.id),
     path: row.path,
-    src: imageUrl(row.path, GALLERY_THUMB_WIDTH),
+    src: imageUrl(row.path, thumbWidth ?? GALLERY_THUMB_WIDTH),
     fullSrc: imageUrl(row.path),
     prompt: row.prompt,
     negativePrompt: row.negativePrompt,

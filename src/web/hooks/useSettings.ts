@@ -14,6 +14,8 @@ export interface Settings {
   language: AppLanguage;
   /** Gallery column count — "auto" uses responsive breakpoints, number overrides to fixed columns (2–8). */
   galleryColumns: "auto" | number;
+  /** Gallery thumbnail quality — controls the resize width for cached JPEG thumbnails. */
+  thumbnailQuality: "low" | "normal" | "high";
   /** Gallery virtualization — disabled by default (causes scroll jank from mount/unmount overhead at typical page sizes). Toggle in Debug Panel > Actions. */
   enableVirtualization: boolean;
 }
@@ -27,6 +29,7 @@ export const DEFAULTS: Settings = {
   promptSimilarityThreshold: 0.6,
   similarPageSize: 10,
   galleryColumns: "auto",
+  thumbnailQuality: "normal",
   theme: "dark",
   language: "system",
   enableVirtualization: false,
@@ -36,6 +39,7 @@ const KEY = "konomi-settings";
 
 type LegacyStoredSettings = Partial<Settings> & {
   jaccardThreshold?: number;
+  thumbnailQuality?: string;
 };
 
 function migrateStoredSettings(raw: LegacyStoredSettings): Partial<Settings> {
@@ -58,6 +62,13 @@ function migrateStoredSettings(raw: LegacyStoredSettings): Partial<Settings> {
     migrated.galleryColumns = raw.galleryColumns;
   }
   if (typeof raw.theme === "string") migrated.theme = raw.theme as ThemeId;
+  if (
+    raw.thumbnailQuality === "low" ||
+    raw.thumbnailQuality === "normal" ||
+    raw.thumbnailQuality === "high"
+  ) {
+    migrated.thumbnailQuality = raw.thumbnailQuality;
+  }
   if (isAppLanguage((raw as { language?: unknown }).language)) {
     migrated.language = raw.language;
   }

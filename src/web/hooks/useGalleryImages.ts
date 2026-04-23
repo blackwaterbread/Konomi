@@ -15,7 +15,11 @@ const EMPTY_IMAGES: ImageData[] = [];
 
 export function useGalleryImages(
   listBaseQuery: Omit<ImageListQuery, "page">,
-  options?: { enabled?: boolean; overlayActiveRef?: React.RefObject<boolean> },
+  options?: {
+    enabled?: boolean;
+    overlayActiveRef?: React.RefObject<boolean>;
+    thumbWidth?: number;
+  },
 ) {
   const enabled = options?.enabled ?? true;
   const [images, setImages] = useState<ImageData[]>([]);
@@ -83,7 +87,7 @@ export function useGalleryImages(
       setIsLoading(false);
       setHasLoadedOnce(true);
       startTransition(() => {
-        setImages(result.rows.map((row) => rowToImageData(row)));
+        setImages(result.rows.map((row) => rowToImageData(row, options?.thumbWidth)));
         setTotalImageCount(result.totalCount);
         setGalleryTotalPages(result.totalPages);
       });
@@ -169,7 +173,7 @@ export function useGalleryImages(
   // are needed because Blink may defer reclamation.
   const prevImagesRef = useRef(images);
   useEffect(() => {
-    if (prevImagesRef.current !== images && images.length > 0) {
+    if (prevImagesRef.current !== images) {
       requestAnimationFrame(() => {
         window.appInfo.clearResourceCache();
       });

@@ -513,6 +513,33 @@ export function SettingsView({
 
         <Separator className="bg-border" />
 
+        <div className="space-y-2">
+          <SectionHeader onReset={() => onReset(["thumbnailQuality"])}>
+            {t("settings.thumbnailQuality.title")}
+          </SectionHeader>
+          <p className="text-xs text-muted-foreground select-none">
+            {t("settings.thumbnailQuality.description")}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(["low", "normal", "high"] as const).map((q) => (
+              <button
+                key={q}
+                onClick={() => onUpdate({ thumbnailQuality: q })}
+                className={cn(
+                  "px-3 py-1.5 text-sm rounded-md border transition-colors max-sm:py-2.5",
+                  settings.thumbnailQuality === q
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-secondary text-muted-foreground border-border hover:text-foreground hover:border-foreground/30",
+                )}
+              >
+                {t(`settings.thumbnailQuality.${q}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Separator className="bg-border" />
+
         <PageSizeSection
           value={settings.pageSize}
           onUpdate={onUpdate}

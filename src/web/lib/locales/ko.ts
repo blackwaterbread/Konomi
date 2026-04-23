@@ -727,6 +727,14 @@ const ko = {
       confirm: "적용",
       cancel: "취소",
     },
+    thumbnailQuality: {
+      title: "썸네일 품질",
+      description:
+        "갤러리 썸네일의 해상도를 설정합니다. 높을수록 선명하지만 메모리를 더 사용합니다.",
+      low: "낮음 (200px)",
+      normal: "보통 (400px)",
+      high: "높음 (800px)",
+    },
     recentRange: {
       title: "최근 생성 범위",
       description: "최근 생성 뷰에서 표시할 기간입니다.",
