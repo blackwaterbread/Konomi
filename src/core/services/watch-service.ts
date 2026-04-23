@@ -15,6 +15,7 @@ import type { FolderDuplicateGroup } from "./duplicate-service";
 
 const log = createLogger("watch-service");
 const DEBOUNCE_MS = 500;
+const BATCH_FLUSH_MS = 1000;
 const QUERY_CHUNK = 2000;
 const DELETE_BATCH = 400;
 
@@ -116,6 +117,30 @@ export function createWatchService(deps: WatchServiceDeps) {
   const deferredChanges = new Map<string, number>();
   const deferredReconcileFolders = new Set<number>();
 
+  // Batch accumulator: coalesce per-file events into a single flush
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingBatch: any[] = [];
+  const pendingRemoved: number[] = [];
+  let batchFlushTimer: NodeJS.Timeout | null = null;
+
+  function flushBatch(): void {
+    if (batchFlushTimer) {
+      clearTimeout(batchFlushTimer);
+      batchFlushTimer = null;
+    }
+    if (pendingBatch.length > 0) {
+      sender.send("image:batch", pendingBatch.splice(0));
+    }
+    if (pendingRemoved.length > 0) {
+      sender.send("image:removed", pendingRemoved.splice(0));
+    }
+  }
+
+  function scheduleBatchFlush(): void {
+    if (batchFlushTimer) clearTimeout(batchFlushTimer);
+    batchFlushTimer = setTimeout(flushBatch, BATCH_FLUSH_MS);
+  }
+
   function emitSearchStatsProgress(done: number, total: number): void {
     sender.send("image:searchStatsProgress", { done, total });
   }
@@ -148,7 +173,8 @@ export function createWatchService(deps: WatchServiceDeps) {
             emitSearchStatsProgress,
           );
         }
-        sender.send("image:removed", [existing.id]);
+        pendingRemoved.push(existing.id);
+        scheduleBatchFlush();
       } else {
         await reconcileFolder(folderId);
       }
@@ -194,7 +220,8 @@ export function createWatchService(deps: WatchServiceDeps) {
         await similarityCache.refreshForImageIds([image.id]);
       }
 
-      sender.send("image:batch", [image]);
+      pendingBatch.push(image);
+      scheduleBatchFlush();
     } catch {
       // skip unreadable files
     }
@@ -376,6 +403,12 @@ export function createWatchService(deps: WatchServiceDeps) {
       scanActive = false;
       deferredChanges.clear();
       deferredReconcileFolders.clear();
+      if (batchFlushTimer) {
+        clearTimeout(batchFlushTimer);
+        batchFlushTimer = null;
+      }
+      pendingBatch.length = 0;
+      pendingRemoved.length = 0;
     },
 
     setScanActive(

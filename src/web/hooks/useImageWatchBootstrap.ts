@@ -128,6 +128,33 @@ export function useImageEventSubscriptions({
     refreshSubfoldersRef.current = refreshSubfolders;
   }, [refreshSubfolders]);
 
+  // Debounced subfolder refresh: accumulates folder IDs over 1s before calling
+  // refreshSubfolders once. Prevents flooding the utility process with
+  // listSubdirectories IPC calls when many file events fire in rapid succession.
+  const pendingRefreshIdsRef = useRef<Set<number>>(new Set());
+  const pendingRefreshAllowEmptyRef = useRef(false);
+  const refreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSubfolderRefresh = useCallback(
+    (ids: number[], options?: { allowEmpty?: boolean }) => {
+      const refresh = refreshSubfoldersRef.current;
+      if (!refresh) return;
+      for (const id of ids) pendingRefreshIdsRef.current.add(id);
+      if (options?.allowEmpty) pendingRefreshAllowEmptyRef.current = true;
+      if (refreshDebounceTimerRef.current)
+        clearTimeout(refreshDebounceTimerRef.current);
+      refreshDebounceTimerRef.current = setTimeout(() => {
+        refreshDebounceTimerRef.current = null;
+        const folderIds = [...pendingRefreshIdsRef.current];
+        pendingRefreshIdsRef.current.clear();
+        const allowEmpty = pendingRefreshAllowEmptyRef.current;
+        pendingRefreshAllowEmptyRef.current = false;
+        if (folderIds.length > 0) void refresh(folderIds, { allowEmpty });
+      }, 1000);
+    },
+    [],
+  );
+
   useEffect(() => {
     const offBatch = window.image.onBatch((rows: ImageRow[]) => {
       if (rows.length === 0) return;
@@ -150,11 +177,9 @@ export function useImageEventSubscriptions({
         // Subfolder list is derived from image paths. New images may belong
         // to a subfolder that isn't yet in the cached list — refresh so the
         // sidebar picks it up without requiring a restart.
-        const refresh = refreshSubfoldersRef.current;
-        if (refresh) {
-          const touchedFolderIds = [...new Set(rows.map((r) => r.folderId))];
-          if (touchedFolderIds.length > 0) void refresh(touchedFolderIds);
-        }
+        const touchedFolderIds = [...new Set(rows.map((r) => r.folderId))];
+        if (touchedFolderIds.length > 0)
+          scheduleSubfolderRefresh(touchedFolderIds);
       }
     });
 
@@ -168,16 +193,18 @@ export function useImageEventSubscriptions({
       scheduleSearchStatsRefresh(120);
       // Subfolder list is derived from image paths, so removed images can
       // leave stale entries until the next full refresh. Recompute now.
-      const refresh = refreshSubfoldersRef.current;
-      if (refresh) {
-        const folderIds = [...effectiveFolderIdsRef.current];
-        if (folderIds.length > 0) void refresh(folderIds, { allowEmpty: true });
-      }
+      const folderIds = [...effectiveFolderIdsRef.current];
+      if (folderIds.length > 0)
+        scheduleSubfolderRefresh(folderIds, { allowEmpty: true });
     });
 
     return () => {
       offBatch();
       offRemoved();
+      if (refreshDebounceTimerRef.current) {
+        clearTimeout(refreshDebounceTimerRef.current);
+        refreshDebounceTimerRef.current = null;
+      }
     };
   }, [
     scanningRef,
@@ -185,6 +212,7 @@ export function useImageEventSubscriptions({
     scheduleAnalysis,
     schedulePageRefresh,
     scheduleSearchStatsRefresh,
+    scheduleSubfolderRefresh,
   ]);
 }
 
