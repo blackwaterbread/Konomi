@@ -221,6 +221,9 @@ describe("watch-service", () => {
 
     watchRecords[0]?.callback("rename", "removed.png");
     await vi.advanceTimersByTimeAsync(500);
+    // processChange has run; image:removed is queued in the batch accumulator
+    // and flushed after BATCH_FLUSH_MS (1000ms).
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(duplicateDetection.forgetIgnored).toHaveBeenCalledWith(removedPath);
     expect(imageRepo.deleteByPath).toHaveBeenCalledWith(removedPath);
@@ -344,6 +347,75 @@ describe("watch-service", () => {
     expect(imageRepo.upsertByPath).toHaveBeenCalledTimes(1);
     expect(similarityCache.refreshForImageIds).toHaveBeenCalledWith([99]);
     expect(sender.send).toHaveBeenCalledWith("image:batch", [imageRow]);
+  });
+
+  it("coalesces multiple per-file removals into a single image:removed event", async () => {
+    const watchRecords: WatcherRecord[] = [];
+    mockFsWatch(watchRecords);
+    const sender = createSender();
+    const folderPath = createTempDir();
+
+    const makeRow = (id: number, name: string) => ({
+      id,
+      path: path.join(folderPath, name),
+      folderId: 7,
+      prompt: "",
+      negativePrompt: "",
+      characterPrompts: "[]",
+      promptTokens: "[]",
+      negativePromptTokens: "[]",
+      characterPromptTokens: "[]",
+      source: "unknown",
+      model: "",
+      seed: "",
+      width: 0,
+      height: 0,
+      sampler: "",
+      steps: 0,
+      cfgScale: 0,
+      cfgRescale: 0,
+      noiseSchedule: "",
+      varietyPlus: false,
+      isFavorite: false,
+      pHash: "",
+      fileSize: 0,
+      fileModifiedAt: new Date("2026-03-20T00:00:00.000Z"),
+      createdAt: new Date("2026-03-20T00:00:00.000Z"),
+    });
+
+    const imageRepo = createMockImageRepo();
+    (imageRepo.findByPath as ReturnType<typeof vi.fn>).mockImplementation(
+      async (p: string) => {
+        const name = path.basename(p);
+        const match = name.match(/removed-(\d+)\.png/);
+        return match ? makeRow(Number(match[1]), name) : null;
+      },
+    );
+
+    const service = createWatchService({
+      imageRepo,
+      folderRepo: createMockFolderRepo([{ id: 7, name: "watched", path: folderPath }]),
+      sender,
+      readMeta: () => null,
+    });
+    await service.startAll();
+
+    // Fire 5 per-file removal events in rapid succession
+    for (let i = 1; i <= 5; i++) {
+      watchRecords[0]?.callback("rename", `removed-${i}.png`);
+    }
+
+    // Drain debounce (500ms) + batch flush (1000ms)
+    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const removedCalls = sender.send.mock.calls.filter(
+      ([event]) => event === "image:removed",
+    );
+    expect(removedCalls).toHaveLength(1);
+    expect(new Set(removedCalls[0][1] as number[])).toEqual(
+      new Set([1, 2, 3, 4, 5]),
+    );
   });
 
   it("reconciles missing rows when the watch event omits a filename", async () => {

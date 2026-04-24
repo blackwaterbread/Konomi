@@ -1,6 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useImageWatchBootstrap } from "@/hooks/useImageWatchBootstrap";
+import {
+  useImageEventSubscriptions,
+  useImageWatchBootstrap,
+} from "@/hooks/useImageWatchBootstrap";
 import { createImageRow } from "../helpers/image-row";
 import { preloadEvents } from "../helpers/preload-mocks";
 
@@ -49,6 +52,53 @@ describe("useImageWatchBootstrap", () => {
     expect(scheduleAnalysis).toHaveBeenCalledTimes(3);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
+  });
+
+  it("debounces refreshSubfolders across rapid batch/removed events into one call", async () => {
+    vi.useFakeTimers();
+    try {
+      const refreshSubfolders = vi.fn().mockResolvedValue(undefined);
+      const effectiveFolderIds = new Set<number>([1, 2]);
+
+      renderHook(() =>
+        useImageEventSubscriptions({
+          scheduleSearchStatsRefresh: vi.fn(),
+          scanningRef: { current: false },
+          rescanningRef: { current: false },
+          scheduleAnalysis: vi.fn(),
+          schedulePageRefresh: vi.fn(),
+          incrementPendingNew: vi.fn(),
+          incrementPendingRemoved: vi.fn(),
+          effectiveFolderIds,
+          refreshSubfolders,
+        }),
+      );
+
+      act(() => {
+        preloadEvents.image.batch.emit([createImageRow({ id: 1, folderId: 1 })]);
+        preloadEvents.image.batch.emit([createImageRow({ id: 2, folderId: 1 })]);
+        preloadEvents.image.batch.emit([createImageRow({ id: 3, folderId: 2 })]);
+        preloadEvents.image.removed.emit([11]);
+        preloadEvents.image.removed.emit([12]);
+      });
+
+      // Within the debounce window, refreshSubfolders must not have fired
+      expect(refreshSubfolders).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      // All five events collapse into a single refreshSubfolders call
+      expect(refreshSubfolders).toHaveBeenCalledTimes(1);
+      const [folderIds, options] = refreshSubfolders.mock.calls[0];
+      expect(new Set(folderIds as number[])).toEqual(new Set([1, 2]));
+      // allowEmpty must propagate when any event in the window requested it
+      // (removed events do — subfolder can be fully emptied by deletion).
+      expect(options).toEqual({ allowEmpty: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("skips gallery refresh during scan to avoid IO contention", async () => {
