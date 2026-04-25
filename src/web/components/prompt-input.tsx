@@ -447,6 +447,10 @@ export const PromptInput = memo(function PromptInput({
     selectionStart: value.length,
     selectionEnd: value.length,
   });
+  const groupDismissedSnapshotRef = useRef<{
+    value: string;
+    cursor: number;
+  } | null>(null);
   const lastRawEmittedRef = useRef<string>(value);
 
   const [externalDragOver, setExternalDragOver] = useState(false);
@@ -1741,6 +1745,16 @@ export const PromptInput = memo(function PromptInput({
       selection.selectionEnd,
     );
     if (groupContext) {
+      const dismissed = groupDismissedSnapshotRef.current;
+      if (
+        dismissed &&
+        dismissed.value === selection.currentValue &&
+        dismissed.cursor === selection.selectionStart
+      ) {
+        setRawTagPrefix("");
+        return nextSnapshot;
+      }
+      groupDismissedSnapshotRef.current = null;
       setGroupSearch(groupContext.search);
       if (!groupDropdownOpen) {
         setGroupDropdownIndex(0);
@@ -1748,6 +1762,7 @@ export const PromptInput = memo(function PromptInput({
       setGroupDropdownOpen(true);
       setRawTagPrefix("");
     } else {
+      groupDismissedSnapshotRef.current = null;
       setGroupDropdownOpen(false);
       setGroupSearch("");
       setRawTagPrefix(
@@ -1783,10 +1798,22 @@ export const PromptInput = memo(function PromptInput({
         selectionEnd: selection.end,
       };
       if (groupContext) {
+        const dismissed = groupDismissedSnapshotRef.current;
+        const stillDismissed =
+          dismissed &&
+          dismissed.value === nextValue &&
+          dismissed.cursor === selection.start;
+        if (stillDismissed) {
+          setRawTagPrefix(rawPrefix);
+          queueRawSelection(selection.start, selection.end);
+          return;
+        }
+        groupDismissedSnapshotRef.current = null;
         setGroupSearch(groupContext.search);
         setGroupDropdownOpen(true);
         setGroupDropdownIndex(0);
       } else {
+        groupDismissedSnapshotRef.current = null;
         setGroupDropdownOpen(false);
         setGroupSearch("");
       }
@@ -1806,6 +1833,7 @@ export const PromptInput = memo(function PromptInput({
       selectionEnd: selection.end,
     };
     lastRawEmittedRef.current = nextValue;
+    groupDismissedSnapshotRef.current = null;
     if (groupContext) {
       setGroupSearch(groupContext.search);
       setGroupDropdownOpen(true);
@@ -1963,6 +1991,11 @@ export const PromptInput = memo(function PromptInput({
       }
       if (e.key === "Escape") {
         e.preventDefault();
+        const snapshot = rawSnapshotRef.current;
+        groupDismissedSnapshotRef.current = {
+          value: snapshot.value,
+          cursor: snapshot.selectionStart,
+        };
         setGroupDropdownOpen(false);
         setGroupSearch("");
         return;
@@ -2246,6 +2279,7 @@ export const PromptInput = memo(function PromptInput({
             onSelect={syncRawSnapshot}
             onFocus={syncRawSnapshot}
             onBlur={() => {
+              groupDismissedSnapshotRef.current = null;
               setTimeout(() => {
                 setGroupDropdownOpen(false);
                 setTagSuggestionOpen(false);
