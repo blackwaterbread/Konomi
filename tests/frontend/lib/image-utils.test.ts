@@ -46,10 +46,11 @@ describe("imageUrl in Web mode", () => {
     expect(url).toBe(`/api/files/image?path=${encodeURIComponent("/images/photos/a.png")}`);
   });
 
-  it("ignores thumbWidth argument (current behavior)", () => {
+  it("appends &w=<thumbWidth> when provided", () => {
     const url = imageUrl("/images/photos/a.png", 400);
-    expect(url).toBe(`/api/files/image?path=${encodeURIComponent("/images/photos/a.png")}`);
-    expect(url).not.toContain("w=400");
+    expect(url).toBe(
+      `/api/files/image?path=${encodeURIComponent("/images/photos/a.png")}&w=400`,
+    );
   });
 
   it("falls back to Web mode when window.appInfo is missing", () => {
