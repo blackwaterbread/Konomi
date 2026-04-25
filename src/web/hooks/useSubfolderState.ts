@@ -300,6 +300,16 @@ export function useSubfolderState() {
     [deselected],
   );
 
+  const hasAnyOverrides = useMemo(() => deselected.size > 0, [deselected]);
+
+  const clearAllOverrides = useCallback(() => {
+    setDeselected((prev) => {
+      if (prev.size === 0) return prev;
+      writeDeselected(new Map());
+      return new Map();
+    });
+  }, []);
+
   const emptyFiltersRef = useRef<SubfolderFilter[]>([]);
 
   const subfolderFilters = useMemo<SubfolderFilter[]>(() => {
@@ -323,6 +333,8 @@ export function useSubfolderState() {
     isSubfolderVisible,
     isRootVisible,
     hasSubfolderOverrides,
+    hasAnyOverrides,
+    clearAllOverrides,
     toggleSubfolder,
     toggleRoot,
     setFolderSubfoldersVisible,

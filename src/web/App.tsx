@@ -106,6 +106,8 @@ export default function App({
     toggleSubfolderCollapse,
     galleryReady,
     initialize: initializeFolders,
+    isFolderVisibilityDefault,
+    resetFolderVisibility,
   } = useFolderController(initialFolderCount, initialFolders);
   const allFolderIds = useMemo(() => folders.map((f) => f.id), [folders]);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilter[]>([]);
@@ -496,6 +498,7 @@ export default function App({
       isRootVisible,
       isFolderPartial,
       collapsedSubfolderPaths,
+      isFolderVisibilityDefault,
     }),
     [
       activeScanFolderIds,
@@ -509,6 +512,7 @@ export default function App({
       isRootVisible,
       isFolderPartial,
       collapsedSubfolderPaths,
+      isFolderVisibilityDefault,
     ],
   );
 
@@ -522,6 +526,7 @@ export default function App({
       onFolderToggle: toggleFolder,
       onFolderIsolate: isolateFolder,
       onSubfolderIsolate: isolateSubfolder,
+      onResetVisibility: resetFolderVisibility,
       onFolderToggleCollapse: toggleCollapse,
       onFolderRemoved: handleFolderRemoved,
       onFolderAdded: handleFolderAdded,
@@ -549,6 +554,7 @@ export default function App({
       toggleFolder,
       isolateFolder,
       isolateSubfolder,
+      resetFolderVisibility,
       toggleSubfolder,
       toggleSubfolderCollapse,
       toggleRoot,

@@ -65,6 +65,10 @@ export function useFolderSelection() {
     setSelectedFolderIds(new Set([id]));
   }, []);
 
+  const selectFolders = useCallback((ids: number[]) => {
+    setSelectedFolderIds(new Set(ids));
+  }, []);
+
   return {
     selectedFolderIds,
     toggleFolder,
@@ -72,5 +76,6 @@ export function useFolderSelection() {
     addSelectedFolder,
     removeSelectedFolder,
     isolateFolder,
+    selectFolders,
   };
 }

@@ -912,6 +912,7 @@ const en = {
         "You cannot add folders while similarity analysis is running",
       toggleAll: "Show/hide all",
       toggleRoot: "Show/hide root images",
+      resetVisibility: "Show all folders",
       expand: "Expand subfolders",
       collapse: "Collapse subfolders",
       addOne: "Add Folder",

@@ -25,6 +25,7 @@ export function useFolderController(
     addSelectedFolder,
     removeSelectedFolder,
     isolateFolder,
+    selectFolders,
   } = useFolderSelection();
   const { collapsedFolderIds, toggleCollapse } = useFolderCollapse();
   const {
@@ -33,6 +34,8 @@ export function useFolderController(
     isSubfolderVisible,
     isRootVisible,
     hasSubfolderOverrides,
+    hasAnyOverrides,
+    clearAllOverrides,
     toggleSubfolder,
     toggleRoot,
     setFolderSubfoldersVisible,
@@ -194,6 +197,20 @@ export function useFolderController(
     [isolateFolder, folders, setFolderSubfoldersVisible],
   );
 
+  const isFolderVisibilityDefault = useMemo(() => {
+    if (folders.length === 0) return true;
+    if (hasAnyOverrides) return false;
+    for (const folder of folders) {
+      if (!selectedFolderIds.has(folder.id)) return false;
+    }
+    return true;
+  }, [folders, selectedFolderIds, hasAnyOverrides]);
+
+  const resetFolderVisibility = useCallback(() => {
+    selectFolders(folders.map((f) => f.id));
+    clearAllOverrides();
+  }, [folders, selectFolders, clearAllOverrides]);
+
   const isolateSubfolderVisible = useCallback(
     (folderId: number, subfolderPath: string) => {
       isolateFolder(folderId);
@@ -221,6 +238,8 @@ export function useFolderController(
     toggleFolder: toggleFolderVisible,
     isolateFolder: isolateFolderVisible,
     isolateSubfolder: isolateSubfolderVisible,
+    isFolderVisibilityDefault,
+    resetFolderVisibility,
     addSelectedFolder,
     removeSelectedFolder,
     folderCount,

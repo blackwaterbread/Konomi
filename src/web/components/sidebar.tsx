@@ -17,6 +17,7 @@
   ChevronDown,
   X,
   Search,
+  RotateCcw,
 } from "lucide-react";
 import {
   forwardRef,
@@ -101,6 +102,7 @@ interface SidebarFolderState {
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
+  isFolderVisibilityDefault?: boolean;
 }
 
 interface SidebarFolderActions {
@@ -115,6 +117,7 @@ interface SidebarFolderActions {
   onFolderToggle?: (id: number) => void;
   onFolderIsolate?: (id: number) => void;
   onSubfolderIsolate?: (folderId: number, subfolderPath: string) => void;
+  onResetVisibility?: () => void;
   onFolderToggleCollapse?: (id: number) => void;
   onFolderRemoved?: (id: number) => void;
   onFolderAdded?: (folderId: number) => void;
@@ -1472,12 +1475,14 @@ interface SidebarFoldersSectionProps {
   isSubfolderVisible?: (path: string, folderId: number) => boolean;
   isRootVisible?: (folderId: number) => boolean;
   isFolderPartial?: (folderId: number) => boolean;
+  isFolderVisibilityDefault?: boolean;
   onOpenAddFolders: () => void;
   onOpenAddMultipleFolders?: () => void;
   showAddMenu?: boolean;
   onToggle?: (id: number) => void;
   onIsolate?: (id: number) => void;
   onSubfolderIsolate?: (folderId: number, subfolderPath: string) => void;
+  onResetVisibility?: () => void;
   onToggleCollapse?: (id: number) => void;
   onRename: (id: number, name: string) => Promise<void>;
   onDeleteRequest: (target: { id: number; name: string }) => void;
@@ -1509,12 +1514,14 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   isSubfolderVisible,
   isRootVisible,
   isFolderPartial,
+  isFolderVisibilityDefault,
   onOpenAddFolders,
   onOpenAddMultipleFolders,
   showAddMenu,
   onToggle,
   onIsolate,
   onSubfolderIsolate,
+  onResetVisibility,
   onToggleCollapse,
   onRename,
   onDeleteRequest,
@@ -1582,6 +1589,18 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
           </Button>
         )}
       </div>
+      {isFolderVisibilityDefault === false && onResetVisibility && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-7 mb-2 px-2 text-xs text-muted-foreground hover:text-foreground justify-start"
+          onClick={onResetVisibility}
+          title={t("sidebar.folders.resetVisibility")}
+        >
+          <RotateCcw className="h-3 w-3 mr-1.5" />
+          {t("sidebar.folders.resetVisibility")}
+        </Button>
+      )}
       {folders.length === 0 && !pendingFolder ? (
         <p className="text-xs text-muted-foreground px-8 select-none">
           {t("sidebar.folders.empty")}
@@ -1868,6 +1887,7 @@ export const Sidebar = memo(
       isSubfolderVisible,
       isRootVisible,
       isFolderPartial,
+      isFolderVisibilityDefault,
     } = folderState;
     const {
       createFolder,
@@ -1877,6 +1897,7 @@ export const Sidebar = memo(
       onFolderToggle,
       onFolderIsolate,
       onSubfolderIsolate,
+      onResetVisibility,
       onFolderToggleCollapse,
       onFolderRemoved,
       onFolderAdded,
@@ -2366,12 +2387,14 @@ export const Sidebar = memo(
                 isSubfolderVisible={isSubfolderVisible}
                 isRootVisible={isRootVisible}
                 isFolderPartial={isFolderPartial}
+                isFolderVisibilityDefault={isFolderVisibilityDefault}
                 onOpenAddFolders={handleOpenAvailableFolders}
                 onOpenAddMultipleFolders={handleOpenAddMultipleFolders}
                 showAddMenu={isElectron}
                 onToggle={onFolderToggle}
                 onIsolate={onFolderIsolate}
                 onSubfolderIsolate={onSubfolderIsolate}
+                onResetVisibility={onResetVisibility}
                 onToggleCollapse={onFolderToggleCollapse}
                 onRename={handleFolderRename}
                 onDeleteRequest={handleDeleteFolderRequest}
