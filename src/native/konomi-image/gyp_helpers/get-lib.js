@@ -1,9 +1,14 @@
 "use strict";
 const path = require("path");
 const fs = require("fs");
-const root = process.env.LIBPNG_ROOT || "";
-if (!root) {
+const pngRoot = process.env.LIBPNG_ROOT || "";
+const jpegRoot = process.env.LIBJPEG_ROOT || "";
+if (!pngRoot) {
   process.stderr.write("LIBPNG_ROOT is not set\n");
+  process.exit(1);
+}
+if (!jpegRoot) {
+  process.stderr.write("LIBJPEG_ROOT is not set\n");
   process.exit(1);
 }
 
@@ -18,28 +23,35 @@ function findLib(dir, candidates) {
   process.exit(1);
 }
 
-const libDir = path.join(root, "lib");
+const pngLibDir = path.join(pngRoot, "lib");
+const jpegLibDir = path.join(jpegRoot, "lib");
 
 if (process.platform === "win32") {
   // libpng (vcpkg x64-windows-static naming)
-  const pngLib = findLib(libDir, [
+  const pngLib = findLib(pngLibDir, [
     "libpng16.lib",
     "libpng16_static.lib",
     "libpng.lib",
   ]);
   // zlib (required for static link of libpng on Windows)
-  const zlibLib = findLib(libDir, [
+  const zlibLib = findLib(pngLibDir, [
     "zlib.lib",
     "zlibstatic.lib",
     "zlib_static.lib",
   ]);
-  // node-gyp <!@(...) splits on whitespace — two paths → two library entries
-  process.stdout.write(`${pngLib} ${zlibLib}`);
+  // libjpeg-turbo (vcpkg x64-windows-static)
+  const jpegLib = findLib(jpegLibDir, [
+    "turbojpeg.lib",
+    "jpeg.lib",
+    "libjpeg.lib",
+  ]);
+  process.stdout.write(`${pngLib} ${zlibLib} ${jpegLib}`);
 } else if (process.platform === "darwin") {
-  // macOS: static libpng; zlib is a system library (linked automatically)
-  const pngLib = findLib(libDir, ["libpng.a", "libpng16.a"]);
-  process.stdout.write(pngLib);
+  // macOS: static libraries
+  const pngLib = findLib(pngLibDir, ["libpng.a", "libpng16.a"]);
+  const jpegLib = findLib(jpegLibDir, ["libturbojpeg.a", "libjpeg.a"]);
+  process.stdout.write(`${pngLib} ${jpegLib}`);
 } else {
   // Linux: link shared libraries via flags
-  process.stdout.write("-lpng -lz");
+  process.stdout.write("-lpng -lz -lturbojpeg");
 }

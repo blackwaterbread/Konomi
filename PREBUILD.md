@@ -15,7 +15,7 @@ Konomi ships two C++ native addons. You only need this guide when:
 | Addon | Source | Purpose |
 |-------|--------|---------|
 | `webp-alpha` | [`src/native/webp-alpha/`](src/native/webp-alpha/) | WebP alpha-channel decode (libwebp) |
-| `konomi-image` | [`src/native/konomi-image/`](src/native/konomi-image/) | PNG decode + DCT pHash + NAI LSB extraction (libpng) |
+| `konomi-image` | [`src/native/konomi-image/`](src/native/konomi-image/) | PNG decode + DCT pHash + NAI LSB extraction + JPEG encode (libpng + libjpeg-turbo) |
 
 ---
 
@@ -27,9 +27,9 @@ Konomi ships two C++ native addons. You only need this guide when:
 | [Bun](https://bun.sh/) | script runner |
 | `node-gyp` | install globally: `npm install -g node-gyp` |
 | **Windows** — [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 2019+ | "Desktop development with C++" workload |
-| **Windows** — [vcpkg](https://vcpkg.io/) | libwebp + libpng (static) |
-| **macOS** — [Homebrew](https://brew.sh/) | libwebp + libpng (auto-detected) |
-| **Linux** — `libpng-dev`, `libwebp-dev`, `zlib1g-dev` | via apt/yum |
+| **Windows** — [vcpkg](https://vcpkg.io/) | libwebp + libpng + libjpeg-turbo (static) |
+| **macOS** — [Homebrew](https://brew.sh/) | libwebp + libpng + jpeg-turbo (auto-detected) |
+| **Linux** — `libpng-dev`, `libwebp-dev`, `zlib1g-dev`, `libturbojpeg0-dev` | via apt/yum |
 
 ---
 
@@ -40,7 +40,7 @@ Konomi ships two C++ native addons. You only need this guide when:
 ```powershell
 git clone https://github.com/microsoft/vcpkg.git <YOUR_VCPKG_PATH>
 <YOUR_VCPKG_PATH>\bootstrap-vcpkg.bat
-<YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static libpng:x64-windows-static
+<YOUR_VCPKG_PATH>\vcpkg install libwebp:x64-windows-static libpng:x64-windows-static libjpeg-turbo:x64-windows-static
 ```
 
 **2. Set environment variables (permanent):**
@@ -49,6 +49,7 @@ git clone https://github.com/microsoft/vcpkg.git <YOUR_VCPKG_PATH>
 2. Under "User variables", add:
    - `LIBWEBP_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
    - `LIBPNG_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
+   - `LIBJPEG_ROOT` = `<YOUR_VCPKG_PATH>\installed\x64-windows-static`
 3. Restart your terminal after saving
 
 > `set VAR=...` in cmd is session-only and will not persist.
@@ -66,10 +67,10 @@ bun run prebuild:native
 **1. Install libraries via Homebrew:**
 
 ```bash
-brew install webp libpng
+brew install webp libpng jpeg-turbo
 ```
 
-**2. Build (`LIBWEBP_ROOT` / `LIBPNG_ROOT` are auto-detected from brew):**
+**2. Build (`LIBWEBP_ROOT` / `LIBPNG_ROOT` / `LIBJPEG_ROOT` are auto-detected from brew):**
 
 ```bash
 bun run prebuild:native
@@ -82,7 +83,7 @@ bun run prebuild:native
 **1. Install libraries (Debian/Ubuntu):**
 
 ```bash
-sudo apt-get install libpng-dev libwebp-dev zlib1g-dev
+sudo apt-get install libpng-dev libwebp-dev zlib1g-dev libturbojpeg0-dev
 ```
 
 **2. Set roots and build:**
@@ -90,6 +91,7 @@ sudo apt-get install libpng-dev libwebp-dev zlib1g-dev
 ```bash
 export LIBPNG_ROOT=/usr
 export LIBWEBP_ROOT=/usr
+export LIBJPEG_ROOT=/usr
 bun run prebuild:native
 ```
 

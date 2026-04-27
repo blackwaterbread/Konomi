@@ -10,7 +10,7 @@ ENV PATH="/root/.bun/bin:$PATH"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
-    libpng-dev libwebp-dev zlib1g-dev \
+    libpng-dev libwebp-dev zlib1g-dev libturbojpeg0-dev \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -28,6 +28,7 @@ COPY . .
 # Build native addons
 ENV LIBPNG_ROOT=/usr
 ENV LIBWEBP_ROOT=/usr
+ENV LIBJPEG_ROOT=/usr
 RUN node scripts/build-native.mjs
 
 # Generate Prisma client (MariaDB)
@@ -94,7 +95,7 @@ RUN apk add --no-cache mariadb mariadb-client
 FROM oven/bun:1-alpine AS runtime
 
 # Minimal runtime libs (no full MariaDB apk)
-RUN apk add --no-cache libpng libwebp gosu tini \
+RUN apk add --no-cache libpng libwebp libjpeg-turbo gosu tini \
     # Shared libs needed by MariaDB binaries
     libaio ncurses-libs pcre2 zstd-libs
 

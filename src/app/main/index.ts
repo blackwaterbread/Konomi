@@ -326,12 +326,14 @@ app.on("window-all-closed", () => {
 
 // ---------------------------------------------------------------------------
 // Thumbnail generation for gallery grid — reduces decoded bitmap memory ~12x.
-// Uses native C++ addon (libpng decode + bilinear resize) when available,
-// falls back to Electron nativeImage.  Caches to disk.
+// Uses native C++ addon (libpng decode + bilinear resize + libjpeg-turbo
+// encode) when available, falls back to Electron nativeImage.  Caches to disk.
 // ---------------------------------------------------------------------------
 import crypto from "crypto";
-import { resizePng } from "@core/lib/konomi-image";
+import { encodeJpeg, resizePng } from "@core/lib/konomi-image";
 import { resizeWebp } from "@core/lib/webp-alpha";
+
+const THUMB_JPEG_QUALITY = 92;
 
 async function serveThumb(
   filePath: string,
@@ -383,12 +385,12 @@ async function serveThumb(
   });
 }
 
-/** Try native C++ resize first, fall back to Electron nativeImage. */
+/** Try native C++ resize + JPEG encode first, fall back to Electron nativeImage. */
 function generateThumb(
   filePath: string,
   maxWidth: number,
 ): Promise<Buffer | null> {
-  // Fast path: native addon (C++ decode + bilinear resize)
+  // Fast path: native addon (C++ decode + bilinear resize + libjpeg-turbo encode)
   try {
     const buf = fs.readFileSync(filePath);
     const ext = filePath.toLowerCase();
@@ -396,12 +398,19 @@ function generateThumb(
       ? resizeWebp(buf, maxWidth)
       : resizePng(buf, maxWidth);
     if (result) {
-      // result.data is raw BGRA pixels → convert to JPEG via nativeImage
+      const jpeg = encodeJpeg(
+        result.data,
+        result.width,
+        result.height,
+        THUMB_JPEG_QUALITY,
+      );
+      if (jpeg) return Promise.resolve(jpeg);
+      // encodeJpeg unavailable — fall back to nativeImage for this step only
       const bmp = nativeImage.createFromBitmap(result.data, {
         width: result.width,
         height: result.height,
       });
-      return Promise.resolve(bmp.toJPEG(92));
+      return Promise.resolve(bmp.toJPEG(THUMB_JPEG_QUALITY));
     }
     // null = image already small enough
     return Promise.resolve(null);
@@ -415,5 +424,5 @@ function generateThumb(
   if (size.width <= maxWidth) return Promise.resolve(null);
 
   const resized = img.resize({ width: maxWidth, quality: "best" });
-  return Promise.resolve(resized.toJPEG(92));
+  return Promise.resolve(resized.toJPEG(THUMB_JPEG_QUALITY));
 }

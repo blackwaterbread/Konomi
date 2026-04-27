@@ -1,11 +1,21 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import type { FastifyInstance } from "fastify";
 import { readImageMeta, readImageMetaFromBuffer } from "@core/lib/image-meta";
-import { resizePng } from "@core/lib/konomi-image";
+import { encodeJpeg, resizePng } from "@core/lib/konomi-image";
 import { resizeWebp } from "@core/lib/webp-alpha";
 import { isUnderDataRoot } from "../lib/data-root";
-import { encodeBgraToPng } from "../lib/png-encode";
+
+const THUMB_JPEG_QUALITY = 92;
+
+function getThumbCacheDir(): string {
+  const userData = process.env.KONOMI_USER_DATA;
+  if (!userData) throw new Error("KONOMI_USER_DATA is not set");
+  const dir = path.join(userData, "thumb-cache");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 /**
  * Image file serving route — replaces the konomi:// protocol handler from Electron.
@@ -20,8 +30,10 @@ export function registerImageFileRoutes(app: FastifyInstance) {
     },
   );
 
+  const thumbCacheDir = getThumbCacheDir();
+
   // Serve image file by absolute path (URL-encoded in query param)
-  // Optional ?w=<maxWidth> downscales PNG/WebP to a PNG thumbnail.
+  // Optional ?w=<maxWidth> downscales PNG/WebP to a JPEG thumbnail.
   app.get<{ Querystring: { path: string; w?: string } }>("/api/files/image", async (req, reply) => {
     const filePath = req.query.path;
     if (!filePath) {
@@ -51,13 +63,39 @@ export function registerImageFileRoutes(app: FastifyInstance) {
     const maxWidth = parseInt(req.query.w ?? "", 10);
     if (maxWidth > 0 && (ext === ".png" || ext === ".webp")) {
       try {
+        const stat = await fs.promises.stat(filePath);
+        const hash = crypto
+          .createHash("md5")
+          .update(`${filePath}\0${maxWidth}\0${stat.mtimeMs}`)
+          .digest("hex");
+        const cachePath = path.join(thumbCacheDir, `${hash}.jpg`);
+
+        try {
+          const cacheStat = await fs.promises.stat(cachePath);
+          if (cacheStat.size > 0) {
+            return reply
+              .type("image/jpeg")
+              .send(fs.createReadStream(cachePath));
+          }
+        } catch {
+          // Cache miss — generate thumbnail
+        }
+
         const buf = await fs.promises.readFile(filePath);
         const result = ext === ".webp"
           ? resizeWebp(buf, maxWidth)
           : resizePng(buf, maxWidth);
         if (result) {
-          const png = encodeBgraToPng(result.data, result.width, result.height);
-          return reply.type("image/png").send(png);
+          const jpeg = encodeJpeg(
+            result.data,
+            result.width,
+            result.height,
+            THUMB_JPEG_QUALITY,
+          );
+          if (jpeg) {
+            fs.promises.writeFile(cachePath, jpeg).catch(() => {});
+            return reply.type("image/jpeg").send(jpeg);
+          }
         }
       } catch {
         // Fall through to original file

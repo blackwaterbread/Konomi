@@ -50,6 +50,12 @@ interface KonomiImageNative {
   extractNaiLsb(buf: Buffer): NaiLsbResult | null;
   computeAllPairs(input: AllPairsInput): AllPairsResult;
   resizePng(buf: Buffer, maxWidth: number): ResizePngResult | null;
+  encodeJpeg(
+    bgra: Buffer,
+    width: number,
+    height: number,
+    quality: number,
+  ): Buffer | null;
 }
 
 let _native: KonomiImageNative | null | undefined = undefined;
@@ -107,6 +113,19 @@ export function resizePng(
   maxWidth: number,
 ): ResizePngResult | null {
   return getNative()?.resizePng(buf, maxWidth) ?? null;
+}
+
+/**
+ * Encode raw BGRA pixels to a JPEG buffer using libjpeg-turbo.
+ * `quality` is 1–100 (clamped). Returns null if native addon unavailable.
+ */
+export function encodeJpeg(
+  bgra: Buffer,
+  width: number,
+  height: number,
+  quality: number,
+): Buffer | null {
+  return getNative()?.encodeJpeg(bgra, width, height, quality) ?? null;
 }
 
 export type { ResizePngResult };

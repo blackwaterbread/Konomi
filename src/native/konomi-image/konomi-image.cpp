@@ -1,6 +1,7 @@
 #define _USE_MATH_DEFINES
 #include <napi.h>
 #include <png.h>
+#include <turbojpeg.h>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -876,6 +877,68 @@ Napi::Value ResizePng(const Napi::CallbackInfo& info) {
   return result;
 }
 
+// ── JPEG encoding (libjpeg-turbo) ─────────────────────────────────────────────
+
+// Encode raw BGRA pixels to a JPEG buffer using libjpeg-turbo.
+// Input: Buffer (BGRA, width*height*4 bytes), width, height, quality (1-100)
+// Output: Buffer (JPEG bytes), or null on failure.
+Napi::Value EncodeJpeg(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 4
+      || !info[0].IsBuffer()
+      || !info[1].IsNumber()
+      || !info[2].IsNumber()
+      || !info[3].IsNumber()) {
+    Napi::TypeError::New(env, "Expected (Buffer, number, number, number)")
+      .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  auto buf = info[0].As<Napi::Buffer<uint8_t>>();
+  int width   = info[1].As<Napi::Number>().Int32Value();
+  int height  = info[2].As<Napi::Number>().Int32Value();
+  int quality = info[3].As<Napi::Number>().Int32Value();
+
+  if (width <= 0 || height <= 0) return env.Null();
+  if (quality < 1) quality = 1;
+  if (quality > 100) quality = 100;
+
+  const size_t expected = (size_t)width * height * 4;
+  if (buf.ByteLength() < expected) return env.Null();
+
+  tjhandle compressor = tjInitCompress();
+  if (!compressor) return env.Null();
+
+  unsigned char* jpegBuf = nullptr;
+  unsigned long  jpegSize = 0;
+  const int rc = tjCompress2(
+    compressor,
+    buf.Data(),                      // BGRA source
+    width,
+    0,                                // pitch (0 = width*pixelSize)
+    height,
+    TJPF_BGRA,                        // input pixel format
+    &jpegBuf,
+    &jpegSize,
+    TJSAMP_420,                       // 4:2:0 chroma subsampling
+    quality,
+    TJFLAG_FASTDCT
+  );
+
+  tjDestroy(compressor);
+
+  if (rc != 0 || !jpegBuf) {
+    if (jpegBuf) tjFree(jpegBuf);
+    return env.Null();
+  }
+
+  // Copy into a Napi-managed buffer, then free libjpeg-turbo's buffer.
+  auto out = Napi::Buffer<uint8_t>::Copy(env, jpegBuf, jpegSize);
+  tjFree(jpegBuf);
+  return out;
+}
+
 // ── Module init ───────────────────────────────────────────────────────────────
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -884,6 +947,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("extractNaiLsb",   Napi::Function::New(env, ExtractNaiLsb));
   exports.Set("computeAllPairs", Napi::Function::New(env, ComputeAllPairs));
   exports.Set("resizePng",       Napi::Function::New(env, ResizePng));
+  exports.Set("encodeJpeg",      Napi::Function::New(env, EncodeJpeg));
   return exports;
 }
 
