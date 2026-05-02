@@ -73,6 +73,13 @@ export type ImageRow = {
   pHash: string;
   fileModifiedAt: Date;
   createdAt: Date;
+  /**
+   * True when this row represents a path that was not in the DB before this
+   * batch was emitted. False when the row is a metadata update / mtime touch
+   * of a previously-seen path. Only present on push events (`image:batch`);
+   * undefined on rows fetched via list/listByIds.
+   */
+  isNew?: boolean;
 };
 
 export type ImageSortBy = "recent" | "oldest" | "favorites" | "name";

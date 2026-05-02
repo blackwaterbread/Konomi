@@ -27,5 +27,6 @@ export function createImageRow(overrides?: Partial<ImageRow>): ImageRow {
     fileModifiedAt:
       overrides?.fileModifiedAt ?? new Date("2026-03-20T00:00:00.000Z"),
     createdAt: overrides?.createdAt ?? new Date("2026-03-20T00:00:00.000Z"),
+    isNew: overrides?.isNew,
   };
 }

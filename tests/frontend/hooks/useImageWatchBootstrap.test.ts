@@ -45,13 +45,72 @@ describe("useImageWatchBootstrap", () => {
     });
 
     // Neither batch nor removed events trigger schedulePageRefresh anymore —
-    // batch calls incrementPendingNew and removed calls incrementPendingRemoved
+    // batch calls addPendingNewIds and removed calls addPendingRemovedIds
     // (gallery shows a banner instead of auto-refreshing).
     expect(schedulePageRefresh).not.toHaveBeenCalled();
     // init(0) + batch + removed = 3
     expect(scheduleAnalysis).toHaveBeenCalledTimes(3);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
+  });
+
+  it("forwards ids of isNew rows in visible folders to addPendingNewIds", () => {
+    const addPendingNewIds = vi.fn();
+    const effectiveFolderIds = new Set<number>([1, 2]);
+
+    renderHook(() =>
+      useImageEventSubscriptions({
+        scheduleSearchStatsRefresh: vi.fn(),
+        scanningRef: { current: false },
+        rescanningRef: { current: false },
+        scheduleAnalysis: vi.fn(),
+        schedulePageRefresh: vi.fn(),
+        addPendingNewIds,
+        addPendingRemovedIds: vi.fn(),
+        effectiveFolderIds,
+        refreshSubfolders: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    act(() => {
+      preloadEvents.image.batch.emit([
+        createImageRow({ id: 1, folderId: 1, isNew: true }),
+        createImageRow({ id: 2, folderId: 1, isNew: false }),
+        createImageRow({ id: 3, folderId: 2, isNew: true }),
+        // Out-of-view folder should be skipped regardless of isNew
+        createImageRow({ id: 4, folderId: 99, isNew: true }),
+        // Missing isNew (would mean a buggy emitter) — fail closed.
+        createImageRow({ id: 5, folderId: 1 }),
+      ]);
+    });
+
+    expect(addPendingNewIds).toHaveBeenCalledTimes(1);
+    expect(addPendingNewIds).toHaveBeenCalledWith([1, 3]);
+  });
+
+  it("forwards image:removed ids to addPendingRemovedIds", () => {
+    const addPendingRemovedIds = vi.fn();
+
+    renderHook(() =>
+      useImageEventSubscriptions({
+        scheduleSearchStatsRefresh: vi.fn(),
+        scanningRef: { current: false },
+        rescanningRef: { current: false },
+        scheduleAnalysis: vi.fn(),
+        schedulePageRefresh: vi.fn(),
+        addPendingNewIds: vi.fn(),
+        addPendingRemovedIds,
+        effectiveFolderIds: new Set<number>([1]),
+        refreshSubfolders: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    act(() => {
+      preloadEvents.image.removed.emit([11, 12, 13]);
+    });
+
+    expect(addPendingRemovedIds).toHaveBeenCalledTimes(1);
+    expect(addPendingRemovedIds).toHaveBeenCalledWith([11, 12, 13]);
   });
 
   it("debounces refreshSubfolders across rapid batch/removed events into one call", async () => {
@@ -67,8 +126,8 @@ describe("useImageWatchBootstrap", () => {
           rescanningRef: { current: false },
           scheduleAnalysis: vi.fn(),
           schedulePageRefresh: vi.fn(),
-          incrementPendingNew: vi.fn(),
-          incrementPendingRemoved: vi.fn(),
+          addPendingNewIds: vi.fn(),
+          addPendingRemovedIds: vi.fn(),
           effectiveFolderIds,
           refreshSubfolders,
         }),

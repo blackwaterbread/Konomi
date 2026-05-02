@@ -301,6 +301,96 @@ describe("useGalleryController", () => {
     cancelAnimationFrameSpy.mockRestore();
   });
 
+  it("masks pending banner counts while search or advanced filters are active", async () => {
+    const {
+      requestAnimationFrameSpy,
+      cancelAnimationFrameSpy,
+      flushAllFrames,
+    } = installControlledAnimationFrames();
+
+    preloadMocks.image.listPage.mockResolvedValue({
+      rows: [],
+      totalCount: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
+
+    const selectedFolderIds = new Set([1]);
+    const queryFragment = {
+      onlyRecent: false,
+      customCategoryId: null,
+      builtinCategory: null,
+      randomSeed: 1,
+    } as const;
+
+    const initialProps = {
+      pageSize: 20,
+      recentDays: 14,
+      selectedFolderIds,
+      queryFragment,
+      resolutionFilters: [] as Array<{ width: number; height: number }>,
+      modelFilters: [] as string[],
+      seedFilters: [] as string[],
+      excludeTags: [] as string[],
+      folderCount: 1,
+    };
+
+    const { result, rerender } = renderHook((props) => useGalleryController(props), {
+      initialProps,
+    });
+
+    await waitFor(() =>
+      expect(preloadMocks.image.listPage).toHaveBeenCalled(),
+    );
+
+    act(() => {
+      result.current.addPendingNewIds([10, 11, 12]);
+      result.current.addPendingRemovedIds([20, 21]);
+    });
+
+    expect(result.current.imageGalleryState.pendingNewCount).toBe(3);
+    expect(result.current.imageGalleryState.pendingRemovedCount).toBe(2);
+
+    act(() => {
+      result.current.handleSearchChange("sunset");
+    });
+    act(() => {
+      flushAllFrames();
+    });
+
+    await waitFor(() => expect(result.current.searchQuery).toBe("sunset"));
+    expect(result.current.imageGalleryState.pendingNewCount).toBe(0);
+    expect(result.current.imageGalleryState.pendingRemovedCount).toBe(0);
+
+    act(() => {
+      result.current.galleryCommands.onClearSearch();
+    });
+    act(() => {
+      flushAllFrames();
+    });
+
+    await waitFor(() => expect(result.current.searchQuery).toBe(""));
+    expect(result.current.imageGalleryState.pendingNewCount).toBe(3);
+    expect(result.current.imageGalleryState.pendingRemovedCount).toBe(2);
+
+    rerender({
+      ...initialProps,
+      modelFilters: ["nai-diffusion-4-5-full"],
+    });
+
+    expect(result.current.imageGalleryState.pendingNewCount).toBe(0);
+    expect(result.current.imageGalleryState.pendingRemovedCount).toBe(0);
+
+    rerender(initialProps);
+
+    expect(result.current.imageGalleryState.pendingNewCount).toBe(3);
+    expect(result.current.imageGalleryState.pendingRemovedCount).toBe(2);
+
+    requestAnimationFrameSpy.mockRestore();
+    cancelAnimationFrameSpy.mockRestore();
+  });
+
   it("surfaces full-selection load failures", async () => {
     preloadMocks.image.listPage.mockResolvedValue({
       rows: [],

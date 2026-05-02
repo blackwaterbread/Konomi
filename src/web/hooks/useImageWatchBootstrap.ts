@@ -95,28 +95,28 @@ export function useImageEventSubscriptions({
   rescanningRef,
   scheduleAnalysis,
   schedulePageRefresh,
-  incrementPendingNew,
-  incrementPendingRemoved,
+  addPendingNewIds,
+  addPendingRemovedIds,
   effectiveFolderIds,
   refreshSubfolders,
 }: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan"> & {
-  incrementPendingNew: (count: number) => void;
-  incrementPendingRemoved: (count: number) => void;
+  addPendingNewIds: (ids: number[]) => void;
+  addPendingRemovedIds: (ids: number[]) => void;
   effectiveFolderIds: Set<number>;
   refreshSubfolders?: (
     folderIds: number[],
     options?: { allowEmpty?: boolean },
   ) => Promise<void>;
 }) {
-  const incrementPendingNewRef = useRef(incrementPendingNew);
+  const addPendingNewIdsRef = useRef(addPendingNewIds);
   useEffect(() => {
-    incrementPendingNewRef.current = incrementPendingNew;
-  }, [incrementPendingNew]);
+    addPendingNewIdsRef.current = addPendingNewIds;
+  }, [addPendingNewIds]);
 
-  const incrementPendingRemovedRef = useRef(incrementPendingRemoved);
+  const addPendingRemovedIdsRef = useRef(addPendingRemovedIds);
   useEffect(() => {
-    incrementPendingRemovedRef.current = incrementPendingRemoved;
-  }, [incrementPendingRemoved]);
+    addPendingRemovedIdsRef.current = addPendingRemovedIds;
+  }, [addPendingRemovedIds]);
 
   const effectiveFolderIdsRef = useRef(effectiveFolderIds);
   useEffect(() => {
@@ -164,13 +164,20 @@ export function useImageEventSubscriptions({
         // triggers a full schedulePageRefresh(0) anyway. Refreshing mid-scan
         // causes DB reads + image file reads that compete with scan IO.
       } else {
-        // Only count images belonging to currently visible folders so the
-        // "new images" banner doesn't appear for non-visible folder additions.
-        const visibleCount = rows.filter((r) =>
-          effectiveFolderIdsRef.current.has(r.folderId),
-        ).length;
-        if (visibleCount > 0) {
-          incrementPendingNewRef.current(visibleCount);
+        // Only collect rows that are actually new (not metadata updates /
+        // mtime touches of existing paths) AND belong to currently visible
+        // folders. Every emitter (scan-service, watch-service, rescan
+        // handlers) annotates batch rows with isNew, so a missing flag
+        // signals a bug in a new emitter — fail closed (don't count) so it
+        // surfaces as "no banner" rather than silently inflating the count.
+        const visibleNewIds: number[] = [];
+        for (const r of rows) {
+          if (r.isNew !== true) continue;
+          if (!effectiveFolderIdsRef.current.has(r.folderId)) continue;
+          visibleNewIds.push(r.id);
+        }
+        if (visibleNewIds.length > 0) {
+          addPendingNewIdsRef.current(visibleNewIds);
         }
         scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
@@ -187,7 +194,7 @@ export function useImageEventSubscriptions({
       if (ids.length === 0) return;
       if (rescanningRef.current) return;
       if (!scanningRef.current) {
-        incrementPendingRemovedRef.current(ids.length);
+        addPendingRemovedIdsRef.current(ids);
       }
       scheduleAnalysis();
       scheduleSearchStatsRefresh(120);
@@ -234,8 +241,8 @@ export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
     ...subscriptionOptions,
     scanningRef,
     scheduleAnalysis,
-    incrementPendingNew: () => {},
-    incrementPendingRemoved: () => {},
+    addPendingNewIds: () => {},
+    addPendingRemovedIds: () => {},
     effectiveFolderIds: new Set(),
   });
 

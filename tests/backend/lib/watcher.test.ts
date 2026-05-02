@@ -346,7 +346,9 @@ describe("watch-service", () => {
 
     expect(imageRepo.upsertByPath).toHaveBeenCalledTimes(1);
     expect(similarityCache.refreshForImageIds).toHaveBeenCalledWith([99]);
-    expect(sender.send).toHaveBeenCalledWith("image:batch", [imageRow]);
+    expect(sender.send).toHaveBeenCalledWith("image:batch", [
+      { ...imageRow, isNew: true },
+    ]);
   });
 
   it("coalesces multiple per-file removals into a single image:removed event", async () => {

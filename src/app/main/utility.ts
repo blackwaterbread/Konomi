@@ -467,14 +467,21 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return imageService.rescanAll(
         (done: number, total: number) =>
           utilitySender.send("image:rescanMetadataProgress", { done, total }),
-        (images: ImageEntity[]) => utilitySender.send("image:batch", images),
+        (images: ImageEntity[]) =>
+          utilitySender.send(
+            "image:batch",
+            images.map((img) => ({ ...img, isNew: false })),
+          ),
         emitSearchStatsProgress,
       );
 
     case "image:rescanImageMetadata": {
       const { paths } = payload as { paths: string[] };
       return imageService.rescanPaths(paths, (images: ImageEntity[]) =>
-        utilitySender.send("image:batch", images),
+        utilitySender.send(
+          "image:batch",
+          images.map((img) => ({ ...img, isNew: false })),
+        ),
       );
     }
 

@@ -99,10 +99,10 @@ export function useGalleryController({
     isLoading: isGalleryLoading,
     pendingNewCount,
     pendingRemovedCount,
-    incrementPendingNew,
-    incrementPendingRemoved,
-    markSelfRemoved,
-    releaseSelfRemoved,
+    addPendingNewIds,
+    addPendingRemovedIds,
+    markSelfRemovedIds,
+    releaseSelfRemovedIds,
     applyPendingRefresh,
     schedulePageRefresh,
   } = useGalleryImages(listBaseQuery, {
@@ -240,6 +240,21 @@ export function useGalleryController({
     }
   }, [listBaseQuery]);
 
+  // When the user is filtering the gallery (search text or any advanced
+  // filter), suppress the pending banners. The watcher batches don't carry
+  // enough info to decide whether each new id matches the active filter, so
+  // showing "N new" would be misleading — clicking the banner could refresh
+  // to nothing visible. The underlying id sets in useGalleryImages are kept
+  // intact, so clearing the filter restores the count automatically.
+  const hasActiveFilters =
+    searchQuery !== "" ||
+    resolutionFilters.length > 0 ||
+    modelFilters.length > 0 ||
+    seedFilters.length > 0 ||
+    excludeTags.length > 0;
+  const visiblePendingNewCount = hasActiveFilters ? 0 : pendingNewCount;
+  const visiblePendingRemovedCount = hasActiveFilters ? 0 : pendingRemovedCount;
+
   const imageGalleryState = useMemo(
     () => ({
       images,
@@ -250,8 +265,8 @@ export function useGalleryController({
       isInitializing: !hasLoadedOnce,
       isRefreshing: galleryOverlayVisible || (isGalleryLoading && hasLoadedOnce),
       selectionScopeKey: gallerySelectionScopeKey,
-      pendingNewCount,
-      pendingRemovedCount,
+      pendingNewCount: visiblePendingNewCount,
+      pendingRemovedCount: visiblePendingRemovedCount,
     }),
     [
       folderCount,
@@ -260,8 +275,8 @@ export function useGalleryController({
       hasLoadedOnce,
       images,
       isGalleryLoading,
-      pendingNewCount,
-      pendingRemovedCount,
+      visiblePendingNewCount,
+      visiblePendingRemovedCount,
       searchQuery,
       sortBy,
       totalImageCount,
@@ -294,10 +309,10 @@ export function useGalleryController({
     searchQuery,
     handleSearchChange,
     schedulePageRefresh,
-    incrementPendingNew,
-    incrementPendingRemoved,
-    markSelfRemoved,
-    releaseSelfRemoved,
+    addPendingNewIds,
+    addPendingRemovedIds,
+    markSelfRemovedIds,
+    releaseSelfRemovedIds,
     applyPendingRefresh,
     listBaseQuery,
     imageGalleryState,

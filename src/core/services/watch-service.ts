@@ -220,7 +220,7 @@ export function createWatchService(deps: WatchServiceDeps) {
         await similarityCache.refreshForImageIds([image.id]);
       }
 
-      pendingBatch.push(image);
+      pendingBatch.push({ ...image, isNew: !existing });
       scheduleBatchFlush();
     } catch {
       // skip unreadable files

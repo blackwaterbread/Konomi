@@ -520,7 +520,11 @@ export function createScanService(deps: ScanServiceDeps) {
       }
 
       const images = await imageRepo.upsertBatch(batch);
-      sender.send("image:batch", images);
+      const annotated = images.map((img) => ({
+        ...img,
+        isNew: !existingMap.has(img.path),
+      }));
+      sender.send("image:batch", annotated);
     };
 
     const processFile = async (filePath: string): Promise<void> => {

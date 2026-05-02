@@ -218,14 +218,21 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   app.post("/api/images/rescan-metadata", async () => {
     return imageService.rescanAll(
       (done, total) => sender.send("image:rescanMetadataProgress", { done, total }),
-      (images) => sender.send("image:batch", images),
+      (images) =>
+        sender.send(
+          "image:batch",
+          images.map((img) => ({ ...img, isNew: false })),
+        ),
       emitSearchStatsProgress,
     );
   });
 
   app.post<{ Body: { paths: string[] } }>("/api/images/rescan-image-metadata", async (req) => {
     return imageService.rescanPaths(req.body.paths, (images) =>
-      sender.send("image:batch", images),
+      sender.send(
+        "image:batch",
+        images.map((img) => ({ ...img, isNew: false })),
+      ),
     );
   });
 }
