@@ -26,9 +26,7 @@ interface UseSettingsAnalysisControllerOptions {
   updateSettings: (patch: Partial<Settings>) => void;
   resetSettings: (keys?: (keyof Settings)[]) => void;
   scanningRef: MutableRefObject<boolean>;
-  analyzeTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   pendingSimilarityRecalcRef: MutableRefObject<boolean>;
-  suspendAutoAnalysisRef: MutableRefObject<boolean>;
   runAnalysisNow: () => Promise<boolean>;
 }
 
@@ -36,9 +34,7 @@ export function useSettingsAnalysisController({
   updateSettings,
   resetSettings,
   scanningRef,
-  analyzeTimerRef,
   pendingSimilarityRecalcRef,
-  suspendAutoAnalysisRef,
   runAnalysisNow,
 }: UseSettingsAnalysisControllerOptions) {
   const { t } = useTranslation();
@@ -70,12 +66,10 @@ export function useSettingsAnalysisController({
         return;
       }
 
-      suspendAutoAnalysisRef.current = true;
       pendingSimilarityRecalcRef.current = false;
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current);
-        analyzeTimerRef.current = null;
-      }
+      // resetHashes triggers maintenance.scheduleAnalysis(0) on the core
+      // side, but we want immediate feedback in the settings panel — call
+      // runAnalysisNow so the user sees progress while still on the page.
       await window.image.resetHashes();
       await runAnalysisNow();
     } catch (error: unknown) {
@@ -84,17 +78,8 @@ export function useSettingsAnalysisController({
           message: error instanceof Error ? error.message : String(error),
         }),
       );
-    } finally {
-      suspendAutoAnalysisRef.current = false;
     }
-  }, [
-    analyzeTimerRef,
-    pendingSimilarityRecalcRef,
-    runAnalysisNow,
-    scanningRef,
-    suspendAutoAnalysisRef,
-    t,
-  ]);
+  }, [pendingSimilarityRecalcRef, runAnalysisNow, scanningRef, t]);
 
   return {
     handleSettingsUpdate,

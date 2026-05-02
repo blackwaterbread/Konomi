@@ -19,21 +19,20 @@ interface UseSidebarFolderActionsOptions {
     options?: RunScanOptions,
   ) => Promise<{ ok: boolean; cancelled: boolean }>;
   scanningRef: MutableRefObject<boolean>;
-  scheduleAnalysis: (delay?: number) => void;
-  analyzeTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   setActiveScanFolderIds: Dispatch<SetStateAction<Set<number>>>;
   setRollbackFolderIds: Dispatch<SetStateAction<Set<number>>>;
   refreshSubfolders: (folderIds: number[]) => Promise<void>;
 }
 
+// Auto-trigger of analysis after scan/rescan/folder-add lives in the core
+// maintenance service (utility process or web server). These handlers only
+// drive renderer-side UI state.
 export function useSidebarFolderActions({
   isAnalyzing,
   addSelectedFolder,
   removeSelectedFolder,
   runScan,
   scanningRef,
-  scheduleAnalysis,
-  analyzeTimerRef,
   setActiveScanFolderIds,
   setRollbackFolderIds,
   refreshSubfolders,
@@ -53,7 +52,6 @@ export function useSidebarFolderActions({
             next.delete(folderId);
             return next;
           });
-          scheduleAnalysis(0);
         },
       );
     },
@@ -61,7 +59,6 @@ export function useSidebarFolderActions({
       addSelectedFolder,
       refreshSubfolders,
       runScan,
-      scheduleAnalysis,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],
@@ -97,7 +94,6 @@ export function useSidebarFolderActions({
             for (const id of folderIds) next.delete(id);
             return next;
           });
-          scheduleAnalysis(0);
         },
       );
     },
@@ -106,7 +102,6 @@ export function useSidebarFolderActions({
       handleFolderAdded,
       refreshSubfolders,
       runScan,
-      scheduleAnalysis,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],
@@ -126,18 +121,8 @@ export function useSidebarFolderActions({
         next.delete(folderId);
         return next;
       });
-      // 폴더 롤백 시 예약된 분석 타이머를 취소하여 불필요한 해시 계산 방지
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current);
-        analyzeTimerRef.current = null;
-      }
     },
-    [
-      analyzeTimerRef,
-      removeSelectedFolder,
-      setActiveScanFolderIds,
-      setRollbackFolderIds,
-    ],
+    [removeSelectedFolder, setActiveScanFolderIds, setRollbackFolderIds],
   );
 
   const handleFolderRemoved = useCallback(
@@ -154,13 +139,11 @@ export function useSidebarFolderActions({
         next.delete(folderId);
         return next;
       });
-      scheduleAnalysis(500);
       void runScan();
     },
     [
       removeSelectedFolder,
       runScan,
-      scheduleAnalysis,
       setActiveScanFolderIds,
       setRollbackFolderIds,
     ],
@@ -178,7 +161,6 @@ export function useSidebarFolderActions({
       void runScan({ folderIds: [folderId] }).then(({ ok, cancelled }) => {
         if (ok && !cancelled) {
           void refreshSubfolders([folderId]);
-          scheduleAnalysis(0);
         }
       });
     },
@@ -187,7 +169,6 @@ export function useSidebarFolderActions({
       refreshSubfolders,
       runScan,
       scanningRef,
-      scheduleAnalysis,
       setActiveScanFolderIds,
     ],
   );

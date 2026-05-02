@@ -33,24 +33,28 @@ import {
   getSimilarGroups,
   getSimilarityReasons,
   resetAllHashes,
+  pHashPool,
 } from "@core/lib/phash";
 import { createNaiGenService } from "@core/services/nai-gen-service";
-import type { NaiConfigPatch, GenerateParams } from "@core/services/nai-gen-service";
+import type {
+  NaiConfigPatch,
+  GenerateParams,
+} from "@core/services/nai-gen-service";
 import { createPrismaNaiConfigRepo } from "@core/lib/repositories/prisma-nai-config-repo";
 import type { CancelToken } from "@core/lib/scanner";
 import { createLogger } from "@core/lib/logger";
 import { createFolderService } from "@core/services/folder-service";
 import { createCategoryService } from "@core/services/category-service";
+import { createMaintenanceService } from "@core/services/maintenance-service";
 import { createPrismaFolderRepo } from "@core/lib/repositories/prisma-folder-repo";
 import { createPrismaCategoryRepo } from "@core/lib/repositories/prisma-category-repo";
 import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import { createPromptTagService } from "@core/services/prompt-tag-service";
 import { getPromptsDBPath } from "@core/lib/prompts-db";
-import { getDB, runMigrations } from "@core/lib/db";
+import { getDB, runMigrations, disconnectDB } from "@core/lib/db";
 import Database from "better-sqlite3";
 
 let scanCancelToken: CancelToken | null = null;
-let computeHashesInFlight: Promise<number> | null = null;
 const log = createLogger("main/utility");
 
 // ── Repository & Service initialization ─────────────────────
@@ -62,7 +66,17 @@ const promptRepo = createPrismaPromptRepo(getDB);
 
 const naiConfigRepo = createPrismaNaiConfigRepo(getDB);
 
-const folderService = createFolderService({ folderRepo, imageRepo });
+const folderService = createFolderService({
+  folderRepo,
+  imageRepo,
+  similarityCache: {
+    deleteForImageIds: deleteSimilarityCacheForImageIds,
+  },
+  searchStats: {
+    listSourcesForFolder: listImageSearchStatSourcesForFolder,
+    decrementForRows: decrementImageSearchStatsForRows,
+  },
+});
 const categoryService = createCategoryService({ categoryRepo, imageRepo });
 const promptBuilderService = createPromptBuilderService({ promptRepo });
 const naiGenService = createNaiGenService({ naiConfigRepo });
@@ -86,10 +100,41 @@ const promptTagService = createPromptTagService({
   openDatabase: (path, options) => new Database(path, options),
 });
 
+// Abstract EventSender wrapping parentPort push messages
+const utilitySender = {
+  send(channel: string, data: unknown): void {
+    process.parentPort.postMessage({ event: channel, payload: data });
+  },
+};
+
+let scanInFlight = false;
+
+const maintenanceService = createMaintenanceService({
+  computeAllHashes,
+  sender: utilitySender,
+  isScanActive: () => scanInFlight,
+});
+
+// Maintenance auto-trigger: any time scan-service / watcher / other emitters
+// send batch or removed events, schedule an analysis run. The maintenance
+// service debounces (clearScheduleTimer + setTimeout) and defers while a
+// scan is active, so the constant stream of scan-emitted batches collapses
+// into a single trailing run after scan completion. Routing scan events
+// through this wrapper means new scan emit-points stay safe even if a
+// caller forgets the explicit scheduleAnalysis(0).
+const maintenanceAwareSender = {
+  send(channel: string, data: unknown): void {
+    utilitySender.send(channel, data);
+    if (channel === "image:batch" || channel === "image:removed") {
+      maintenanceService.scheduleAnalysis();
+    }
+  },
+};
+
 const scanService = createScanService({
   imageRepo,
   folderRepo,
-  sender: { send(channel: string, data: unknown) { process.parentPort.postMessage({ event: channel, payload: data }); } },
+  sender: maintenanceAwareSender,
   readMeta: (filePath) => naiPool.run(filePath),
   hashFile: fileHash,
   searchStats: searchStatsAdapter,
@@ -111,24 +156,18 @@ const duplicateService = createDuplicateService({
   similarityCache: similarityCacheAdapter,
 });
 
-// Abstract EventSender wrapping parentPort push messages
-const utilitySender = {
-  send(channel: string, data: unknown): void {
-    process.parentPort.postMessage({ event: channel, payload: data });
-  },
-};
-
 const watchService = createWatchService({
   imageRepo,
   folderRepo,
-  sender: utilitySender,
+  sender: maintenanceAwareSender,
   readMeta: readImageMeta,
   searchStats: {
     applyMutation: applyImageSearchStatsMutation,
     decrementForRows: decrementImageSearchStatsForRows,
   },
   duplicateDetection: {
-    findDuplicateForIncomingPath: (p) => duplicateService.findDuplicateForIncomingPath(p),
+    findDuplicateForIncomingPath: (p) =>
+      duplicateService.findDuplicateForIncomingPath(p),
     isIgnored: isIgnoredDuplicatePath,
     forgetIgnored: forgetIgnoredDuplicatePath,
   },
@@ -144,7 +183,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
   };
   switch (type) {
     case "db:runMigrations":
-      runMigrations((progress) => {
+      await runMigrations((progress) => {
         utilitySender.send("db:migrationProgress", progress);
       });
       return;
@@ -185,6 +224,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           touchedIncomingPaths: resolved.touchedIncomingPaths,
           retainedIncomingPaths: resolved.retainedIncomingPaths,
         });
+        maintenanceService.scheduleAnalysis(0);
         return null;
       } finally {
         watchService.setScanActive(false);
@@ -193,22 +233,15 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     case "folder:delete": {
       const { id } = payload as { id: number };
       watchService.stopFolder(id);
-      const folderImageIds = await imageService.listIdsByFolderId(id);
-      const folderStatRows = await listImageSearchStatSourcesForFolder(id);
-      await folderService.delete(id);
-      // Defer non-critical cleanup so the UI gets an immediate response
-      (async () => {
-        await deleteSimilarityCacheForImageIds(folderImageIds);
-        await decrementImageSearchStatsForRows(
-          folderStatRows,
-          emitSearchStatsProgress,
-        );
-        try {
-          await getDB().$executeRawUnsafe("PRAGMA incremental_vacuum");
-        } catch {
-          /* ignore */
-        }
-      })();
+      // folderService.delete handles ImageSimilarityCache + ImageSearchStat
+      // cleanup internally so the web/data-root paths get the same parity.
+      await folderService.delete(id, emitSearchStatsProgress);
+      // PRAGMA is sqlite-specific and best-effort, so it stays out of core.
+      try {
+        await getDB().$executeRawUnsafe("PRAGMA incremental_vacuum");
+      } catch {
+        /* ignore */
+      }
       return null;
     }
     case "folder:rename": {
@@ -272,9 +305,10 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           }
         | undefined) ?? {};
       scanCancelToken = { cancelled: false };
+      scanInFlight = true;
       watchService.setScanActive(true);
       try {
-        return await scanService.scanAll({
+        const result = await scanService.scanAll({
           signal: scanCancelToken,
           folderIds,
           orderedFolderIds,
@@ -288,8 +322,13 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           onSearchStatsProgress: emitSearchStatsProgress,
           onPhase: (phase) => utilitySender.send("image:scanPhase", { phase }),
         });
+        if (!scanCancelToken?.cancelled) {
+          maintenanceService.scheduleAnalysis(0);
+        }
+        return result;
       } finally {
         scanCancelToken = null;
+        scanInFlight = false;
         watchService.setScanActive(false, { discardDeferredChanges: true });
       }
     }
@@ -418,20 +457,13 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         }) ?? {},
       );
 
-    case "image:computeHashes":
-      if (computeHashesInFlight) {
-        log.debug("Deduplicating image:computeHashes request");
-        return computeHashesInFlight;
-      }
-      computeHashesInFlight = computeAllHashes(
-        (done, total) =>
-          utilitySender.send("image:hashProgress", { done, total }),
-        (done, total) =>
-          utilitySender.send("image:similarityProgress", { done, total }),
-      ).finally(() => {
-        computeHashesInFlight = null;
-      });
-      return computeHashesInFlight;
+    case "image:computeHashes": {
+      // Manual trigger: client (settings panel "지금 분석") forces an
+      // analysis run. The maintenance service dedupes against any in-flight
+      // run automatically.
+      const result = await maintenanceService.runAnalysisNow();
+      return result.hashed;
+    }
     case "image:similarGroups": {
       const { threshold, jaccardThreshold } = payload as {
         threshold: number;
@@ -460,11 +492,15 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         jaccardThreshold,
       );
     }
-    case "image:resetHashes":
-      return resetAllHashes();
+    case "image:resetHashes": {
+      const result = await resetAllHashes();
+      // Hashes were just cleared — schedule maintenance to recompute.
+      maintenanceService.scheduleAnalysis(0);
+      return result;
+    }
 
-    case "image:rescanMetadata":
-      return imageService.rescanAll(
+    case "image:rescanMetadata": {
+      const result = await imageService.rescanAll(
         (done: number, total: number) =>
           utilitySender.send("image:rescanMetadataProgress", { done, total }),
         (images: ImageEntity[]) =>
@@ -474,15 +510,24 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           ),
         emitSearchStatsProgress,
       );
+      // Token text changed → similarity cache may be stale → schedule run.
+      maintenanceService.scheduleAnalysis(0);
+      return result;
+    }
 
     case "image:rescanImageMetadata": {
       const { paths } = payload as { paths: string[] };
-      return imageService.rescanPaths(paths, (images: ImageEntity[]) =>
-        utilitySender.send(
-          "image:batch",
-          images.map((img) => ({ ...img, isNew: false })),
-        ),
+      const result = await imageService.rescanPaths(
+        paths,
+        (images: ImageEntity[]) =>
+          utilitySender.send(
+            "image:batch",
+            images.map((img) => ({ ...img, isNew: false })),
+          ),
       );
+      // Token text changed → similarity cache for these images is stale.
+      maintenanceService.scheduleAnalysis(0);
+      return result;
     }
 
     case "category:list":
@@ -567,6 +612,38 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         },
       );
 
+    case "system:shutdown": {
+      // Triggered by the bridge on app close. Gives the utility process a
+      // chance to drain in-flight maintenance work, terminate worker
+      // threads, and disconnect from the DB cleanly. Reply with `null` once
+      // done so the bridge can proceed with child.kill().
+      log.info("Shutdown requested");
+      maintenanceService.requestShutdown();
+      if (scanCancelToken) scanCancelToken.cancelled = true;
+      try {
+        watchService.stopAll();
+      } catch (err) {
+        log.errorWithStack("watchService.stopAll failed", err as Error);
+      }
+      try {
+        await maintenanceService.flush();
+      } catch (err) {
+        log.errorWithStack("maintenance.flush failed", err as Error);
+      }
+      try {
+        await Promise.allSettled([naiPool.shutdown(), pHashPool.shutdown()]);
+      } catch (err) {
+        log.errorWithStack("Worker pool shutdown failed", err as Error);
+      }
+      try {
+        await disconnectDB();
+      } catch (err) {
+        log.errorWithStack("disconnectDB failed", err as Error);
+      }
+      log.info("Shutdown complete");
+      return null;
+    }
+
     default:
       throw new Error(`Unknown request type: ${type}`);
   }
@@ -590,7 +667,8 @@ duplicateService
 
 // Start watching folders immediately in paused mode so file changes that
 // occur before the first scan are queued and flushed after the scan finishes.
-watchService.startAll({ paused: true })
+watchService
+  .startAll({ paused: true })
   .then(() => log.info("Watcher started in paused mode"))
   .catch((error) =>
     log.errorWithStack("Failed to start watcher on boot", error),

@@ -47,6 +47,7 @@ const en = {
     loading: "Loading...",
     none: "None",
     more: "More",
+    refresh: "Refresh",
     textFieldContext: {
       cut: "Cut",
       copy: "Copy",
@@ -56,11 +57,16 @@ const en = {
     },
   },
   availableFolders: {
-    title: "Add Folders",
+    title: "Detected Folders",
     description:
       "Folders mounted as Docker volumes are auto-registered and scanned.",
     instruction:
-      "To add a new folder, mount it under /images in your Docker configuration and restart the server.",
+      "To add a new folder, mount it under /images in your Docker configuration. It will be auto-registered within 60 seconds.",
+    detected: "{{count}} detected",
+    loading: "Detecting...",
+    empty: "No mounted folders detected.",
+    registered: "Registered",
+    pending: "Pending",
   },
   header: {
     searchPlaceholder: "Search images by prompt...",

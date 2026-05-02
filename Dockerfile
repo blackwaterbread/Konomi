@@ -132,7 +132,6 @@ COPY --from=builder /build/node_modules/ ./node_modules/
 COPY --from=builder /build/prisma/ ./prisma/
 
 COPY docker/entrypoint.sh /entrypoint.sh
-COPY docker/init.sql /app/docker/init.sql
 RUN chmod +x /entrypoint.sh
 
 ENV KONOMI_PORT=3000

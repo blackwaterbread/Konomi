@@ -5,7 +5,13 @@ import type { Services } from "../services";
 import { listAvailableDirectories, isUnderDataRoot } from "../lib/data-root";
 
 export function registerFolderRoutes(app: FastifyInstance, services: Services) {
-  const { folderService, watchService, duplicateService, imageService, sender } = services;
+  const {
+    folderService,
+    watchService,
+    duplicateService,
+    maintenanceService,
+    sender,
+  } = services;
 
   // List detected directories under DATA_ROOT (Docker volume mounts)
   app.get("/api/folders/available", async () => {
@@ -29,9 +35,11 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
   app.delete<{ Params: { id: string } }>("/api/folders/:id", async (req) => {
     const id = Number(req.params.id);
     watchService.stopFolder(id);
-    const folderImageIds = await imageService.listIdsByFolderId(id);
-    await folderService.delete(id);
-    // TODO: deferred similarity cache + search stats cleanup (same as utility.ts)
+    // folderService.delete handles ImageSimilarityCache + ImageSearchStat
+    // cleanup internally so no per-call-site bookkeeping is needed.
+    await folderService.delete(id, (done, total) =>
+      sender.send("image:searchStatsProgress", { done, total }),
+    );
     return null;
   });
 
@@ -94,6 +102,7 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
         touchedIncomingPaths: resolved.touchedIncomingPaths,
         retainedIncomingPaths: resolved.retainedIncomingPaths,
       });
+      maintenanceService.scheduleAnalysis(0);
       return null;
     } finally {
       watchService.setScanActive(false);

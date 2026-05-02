@@ -231,13 +231,10 @@ export default function App({
   const {
     isAnalyzing,
     hasAnalyzedOnce,
-    analyzeTimerRef,
     pendingSimilarityRecalcRef,
     getVisualThreshold,
     getPromptThreshold,
-    suspendAutoAnalysisRef,
     runAnalysisNow,
-    scheduleAnalysis,
   } = useImageAnalysis({ scanningRef, settings });
 
   const {
@@ -252,8 +249,6 @@ export default function App({
     removeSelectedFolder,
     runScan,
     scanningRef,
-    scheduleAnalysis,
-    analyzeTimerRef,
     setActiveScanFolderIds,
     setRollbackFolderIds,
     refreshSubfolders,
@@ -263,9 +258,7 @@ export default function App({
       updateSettings,
       resetSettings,
       scanningRef,
-      analyzeTimerRef,
       pendingSimilarityRecalcRef,
-      suspendAutoAnalysisRef,
       runAnalysisNow,
     });
 
@@ -286,7 +279,6 @@ export default function App({
     handleInitialLanguageContinue,
   } = useAppShellState({
     scanningRef,
-    analyzeTimerRef,
     pendingSimilarityRecalcRef,
     runAnalysisNow,
   });
@@ -356,12 +348,13 @@ export default function App({
     };
   }, []);
 
-  // Event subscriptions — pure IPC listeners, no initialization logic
+  // Event subscriptions — pure IPC listeners, no initialization logic.
+  // Auto-trigger of analysis runs in the core maintenance service (utility
+  // process / web server), so the renderer only refreshes UI-side caches.
   useImageEventSubscriptions({
     scheduleSearchStatsRefresh,
     scanningRef,
     rescanningRef,
-    scheduleAnalysis,
     schedulePageRefresh,
     addPendingNewIds,
     addPendingRemovedIds,
@@ -381,7 +374,6 @@ export default function App({
       // during scan are deferred and flushed when the scan finishes.
       handle = runAppInitialization({
         loadSearchPresetStats,
-        scheduleAnalysis,
         runScan,
         setScanning,
         scanningRef,

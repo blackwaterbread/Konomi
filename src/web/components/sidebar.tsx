@@ -2449,6 +2449,7 @@ export const Sidebar = memo(
           <AvailableFoldersDialog
             open={availableFoldersOpen}
             onOpenChange={setAvailableFoldersOpen}
+            folders={folders}
           />
         )}
       </>

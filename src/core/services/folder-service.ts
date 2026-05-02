@@ -1,12 +1,32 @@
 import fs from "fs/promises";
 import path from "path";
-import type { FolderEntity } from "../types/repository";
+import type {
+  FolderEntity,
+  SearchStatSource,
+} from "../types/repository";
 import type { FolderRepo } from "../lib/repositories/prisma-folder-repo";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
 
 export type FolderServiceDeps = {
   folderRepo: FolderRepo;
   imageRepo: ImageRepo;
+  /**
+   * Optional cleanup hooks for tables without a foreign-key path back to
+   * Folder (ImageSimilarityCache, ImageSearchStat). Call sites that wire
+   * these in get cleanup-on-delete for free; sites that don't will leave
+   * stale rows behind. The Electron utility process and Fastify server both
+   * wire these in.
+   */
+  similarityCache?: {
+    deleteForImageIds(imageIds: number[]): Promise<void>;
+  };
+  searchStats?: {
+    listSourcesForFolder(folderId: number): Promise<SearchStatSource[]>;
+    decrementForRows(
+      rows: SearchStatSource[],
+      onProgress?: (done: number, total: number) => void,
+    ): Promise<void>;
+  };
 };
 
 export type FolderStats = {
@@ -28,7 +48,7 @@ async function normalizeFolderPath(folderPath: string): Promise<string> {
 }
 
 export function createFolderService(deps: FolderServiceDeps) {
-  const { folderRepo, imageRepo } = deps;
+  const { folderRepo, imageRepo, similarityCache, searchStats } = deps;
 
   return {
     async list(): Promise<FolderEntity[]> {
@@ -38,17 +58,39 @@ export function createFolderService(deps: FolderServiceDeps) {
     async create(name: string, folderPath: string): Promise<FolderEntity> {
       const normalizedPath = await normalizeFolderPath(folderPath);
       const existing = await folderRepo.findAll();
-      for (const folder of existing) {
-        const normalizedExisting = await normalizeFolderPath(folder.path);
-        if (normalizedExisting === normalizedPath) {
-          throw new Error("Folder path already registered");
-        }
+      // Normalize all existing paths in parallel — the data-root watcher
+      // batch-creates folders on volume mount, so an O(n) realpath per call
+      // becomes O(n²) over a fresh boot. Promise.all amortizes the syscalls.
+      const normalizedExisting = await Promise.all(
+        existing.map((folder) => normalizeFolderPath(folder.path)),
+      );
+      if (normalizedExisting.includes(normalizedPath)) {
+        throw new Error("Folder path already registered");
       }
       return folderRepo.create(name, folderPath);
     },
 
-    async delete(id: number): Promise<void> {
-      return folderRepo.delete(id);
+    async delete(
+      id: number,
+      onSearchStatsProgress?: (done: number, total: number) => void,
+    ): Promise<void> {
+      // Capture image IDs and stat-source rows BEFORE the cascade delete —
+      // once folderRepo.delete fires, the Image rows are gone and the only
+      // way to find the orphans in ImageSimilarityCache / ImageSearchStat is
+      // by IDs we already collected.
+      const [imageIds, statRows] = await Promise.all([
+        imageRepo.listIdsByFolderId(id),
+        searchStats?.listSourcesForFolder(id) ?? Promise.resolve([]),
+      ]);
+      await folderRepo.delete(id);
+      // ImageSimilarityCache / ImageSearchStat have no FK back to Folder, so
+      // cascade doesn't reach them. Clean them up explicitly.
+      if (similarityCache && imageIds.length > 0) {
+        await similarityCache.deleteForImageIds(imageIds);
+      }
+      if (searchStats && statRows.length > 0) {
+        await searchStats.decrementForRows(statRows, onSearchStatsProgress);
+      }
     },
 
     async rename(id: number, name: string): Promise<FolderEntity> {

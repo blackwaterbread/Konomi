@@ -191,3 +191,10 @@ export type {
   SimilarityServiceDeps,
   SimilarGroup,
 } from "./services/similarity-service";
+
+// Maintenance service
+export { createMaintenanceService } from "./services/maintenance-service";
+export type {
+  MaintenanceService,
+  MaintenanceServiceDeps,
+} from "./services/maintenance-service";

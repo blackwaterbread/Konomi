@@ -2,13 +2,11 @@ import fs from "fs";
 import type { FastifyInstance } from "fastify";
 import type { Services } from "../services";
 import type { ImageListQuery } from "@core/types/image-query";
-import type { CancelToken } from "@core/lib/scanner";
 import {
   getImageSearchPresetStats,
   suggestImageSearchTags,
 } from "@core/lib/search-stats-store";
 import {
-  computeAllHashes,
   getSimilarGroups,
   getGroupForImage,
   getSimilarityReasons,
@@ -18,11 +16,15 @@ import {
 import { decrementImageSearchStatsForRows } from "@core/lib/search-stats-store";
 import type { SearchStatSource } from "@core/types/repository";
 
-let scanCancelToken: CancelToken | null = null;
-let computeHashesInFlight: Promise<number> | null = null;
-
 export function registerImageRoutes(app: FastifyInstance, services: Services) {
-  const { imageService, scanService, watchService, sender } = services;
+  const {
+    imageService,
+    scanService,
+    watchService,
+    maintenanceService,
+    scanState,
+    sender,
+  } = services;
 
   const emitSearchStatsProgress = (done: number, total: number) => {
     sender.send("image:searchStatsProgress", { done, total });
@@ -63,11 +65,13 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     };
   }>("/api/images/scan", async (req) => {
     const { detectDuplicates = false, folderIds, orderedFolderIds, skipFolderIds } = req.body ?? {};
-    scanCancelToken = { cancelled: false };
+    const cancelToken = { cancelled: false };
+    scanState.active = true;
+    scanState.cancelToken = cancelToken;
     watchService.setScanActive(true);
     try {
-      return scanService.scanAll({
-        signal: scanCancelToken,
+      const result = await scanService.scanAll({
+        signal: cancelToken,
         folderIds,
         orderedFolderIds,
         skipFolderIds,
@@ -79,14 +83,19 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
         onSearchStatsProgress: emitSearchStatsProgress,
         onPhase: (phase) => sender.send("image:scanPhase", { phase }),
       });
+      if (!cancelToken.cancelled) {
+        maintenanceService.scheduleAnalysis(0);
+      }
+      return result;
     } finally {
-      scanCancelToken = null;
+      scanState.active = false;
+      scanState.cancelToken = null;
       watchService.setScanActive(false, { discardDeferredChanges: true });
     }
   });
 
   app.post("/api/images/scan/cancel", async () => {
-    if (scanCancelToken) scanCancelToken.cancelled = true;
+    if (scanState.cancelToken) scanState.cancelToken.cancelled = true;
     return null;
   });
 
@@ -176,14 +185,10 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
 
   // ── Hashing / Similarity ─────────────────
   app.post("/api/images/compute-hashes", async () => {
-    if (computeHashesInFlight) return computeHashesInFlight;
-    computeHashesInFlight = computeAllHashes(
-      (done, total) => sender.send("image:hashProgress", { done, total }),
-      (done, total) => sender.send("image:similarityProgress", { done, total }),
-    ).finally(() => {
-      computeHashesInFlight = null;
-    });
-    return computeHashesInFlight;
+    // Manual trigger: routes call into maintenance service so the request
+    // dedupes against any in-flight (auto-scheduled) run.
+    const result = await maintenanceService.runAnalysisNow();
+    return result.hashed;
   });
 
   app.post<{ Body: { threshold: number; jaccardThreshold?: number } }>(
@@ -211,12 +216,14 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   });
 
   app.post("/api/images/reset-hashes", async () => {
-    return resetAllHashes();
+    const result = await resetAllHashes();
+    maintenanceService.scheduleAnalysis(0);
+    return result;
   });
 
   // ── Rescan metadata ──────────────────────
   app.post("/api/images/rescan-metadata", async () => {
-    return imageService.rescanAll(
+    const result = await imageService.rescanAll(
       (done, total) => sender.send("image:rescanMetadataProgress", { done, total }),
       (images) =>
         sender.send(
@@ -225,14 +232,19 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
         ),
       emitSearchStatsProgress,
     );
+    maintenanceService.scheduleAnalysis(0);
+    return result;
   });
 
   app.post<{ Body: { paths: string[] } }>("/api/images/rescan-image-metadata", async (req) => {
-    return imageService.rescanPaths(req.body.paths, (images) =>
+    const result = await imageService.rescanPaths(req.body.paths, (images) =>
       sender.send(
         "image:batch",
         images.map((img) => ({ ...img, isNew: false })),
       ),
     );
+    // Token text changed → similarity cache for these images is stale.
+    maintenanceService.scheduleAnalysis(0);
+    return result;
   });
 }

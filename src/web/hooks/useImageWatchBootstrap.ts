@@ -2,41 +2,42 @@ import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
 
-interface UseImageWatchBootstrapOptions {
-  loadSearchPresetStats: () => Promise<void>;
+interface UseImageEventSubscriptionsOptions {
   scheduleSearchStatsRefresh: (delay?: number) => void;
   scanningRef: MutableRefObject<boolean>;
   rescanningRef: MutableRefObject<boolean>;
-  scheduleAnalysis: (delay?: number) => void;
   schedulePageRefresh: (delay?: number) => void;
-  runScan: (options?: {
-    detectDuplicates?: boolean;
-    folderIds?: number[];
-    skipFolderIds?: number[];
-    refreshPage?: boolean;
-    refreshSearchPresetStats?: boolean;
-  }) => Promise<{ ok: boolean; cancelled: boolean }>;
 }
 
 /**
  * Runs the app initialization sequence:
- * quickVerify → scan (changed folders only) → analysis.
+ * quickVerify → scan (changed folders only).
  *
  * quickVerify classifies every folder as changed/unchanged via stat + mtime.
  * Unchanged folders are passed as skipFolderIds so syncAllFolders skips them
  * entirely, avoiding redundant DB queries and stale-row checks.
+ *
+ * Analysis (computeHashes / similarity refresh) is auto-scheduled by the
+ * core maintenance service when scanService.scanAll() finishes, so the
+ * renderer no longer schedules it here.
  */
+export type RunScan = (options?: {
+  detectDuplicates?: boolean;
+  folderIds?: number[];
+  skipFolderIds?: number[];
+  refreshPage?: boolean;
+  refreshSearchPresetStats?: boolean;
+}) => Promise<{ ok: boolean; cancelled: boolean }>;
+
 export function runAppInitialization({
   loadSearchPresetStats,
-  scheduleAnalysis,
   runScan,
   onInitialRefreshDone,
   setScanning,
   scanningRef,
 }: {
   loadSearchPresetStats: () => Promise<void>;
-  scheduleAnalysis: (delay?: number) => void;
-  runScan: UseImageWatchBootstrapOptions["runScan"];
+  runScan: RunScan;
   onInitialRefreshDone?: () => void;
   setScanning: (v: boolean) => void;
   scanningRef: MutableRefObject<boolean>;
@@ -67,14 +68,13 @@ export function runAppInitialization({
     // Skip duplicate detection on boot — it requires hashing candidate files
     // which adds significant IO. The watcher catches duplicates in real-time
     // for new files, and folder-add scans run with detectDuplicates=true.
-    const scanResult = await runScan({
+    await runScan({
       detectDuplicates: false,
       skipFolderIds,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
     if (!cancelled) onInitialRefreshDone?.();
-    if (!scanResult.cancelled) scheduleAnalysis(0);
   })();
 
   return {
@@ -88,18 +88,21 @@ export function runAppInitialization({
  * Subscribes to IPC events (onBatch, onRemoved).
  * Pure event subscription — no initialization logic.
  * Watcher is started separately in runAppInitialization.
+ *
+ * Auto-trigger of analysis on batch/removed lives in the core maintenance
+ * service; this hook only updates renderer-side UI state and refreshes
+ * downstream caches (search-stat presets, subfolder lists).
  */
 export function useImageEventSubscriptions({
   scheduleSearchStatsRefresh,
   scanningRef,
   rescanningRef,
-  scheduleAnalysis,
   schedulePageRefresh,
   addPendingNewIds,
   addPendingRemovedIds,
   effectiveFolderIds,
   refreshSubfolders,
-}: Omit<UseImageWatchBootstrapOptions, "loadSearchPresetStats" | "runScan"> & {
+}: UseImageEventSubscriptionsOptions & {
   addPendingNewIds: (ids: number[]) => void;
   addPendingRemovedIds: (ids: number[]) => void;
   effectiveFolderIds: Set<number>;
@@ -179,7 +182,6 @@ export function useImageEventSubscriptions({
         if (visibleNewIds.length > 0) {
           addPendingNewIdsRef.current(visibleNewIds);
         }
-        scheduleAnalysis();
         scheduleSearchStatsRefresh(180);
         // Subfolder list is derived from image paths. New images may belong
         // to a subfolder that isn't yet in the cached list — refresh so the
@@ -196,7 +198,6 @@ export function useImageEventSubscriptions({
       if (!scanningRef.current) {
         addPendingRemovedIdsRef.current(ids);
       }
-      scheduleAnalysis();
       scheduleSearchStatsRefresh(120);
       // Subfolder list is derived from image paths, so removed images can
       // leave stale entries until the next full refresh. Recompute now.
@@ -216,52 +217,9 @@ export function useImageEventSubscriptions({
   }, [
     scanningRef,
     rescanningRef,
-    scheduleAnalysis,
     schedulePageRefresh,
     scheduleSearchStatsRefresh,
     scheduleSubfolderRefresh,
   ]);
 }
 
-/**
- * @deprecated Use useImageEventSubscriptions + runAppInitialization instead.
- * Kept temporarily for reference during migration.
- */
-export function useImageWatchBootstrap(options: UseImageWatchBootstrapOptions) {
-  const {
-    loadSearchPresetStats,
-    scanningRef,
-    scheduleAnalysis,
-    runScan,
-    ...subscriptionOptions
-  } = options;
-
-  // Event subscriptions
-  useImageEventSubscriptions({
-    ...subscriptionOptions,
-    scanningRef,
-    scheduleAnalysis,
-    addPendingNewIds: () => {},
-    addPendingRemovedIds: () => {},
-    effectiveFolderIds: new Set(),
-  });
-
-  // Initialization — run once on mount with no quickVerify (fallback path)
-  const initRef = useRef(false);
-  const runInit = useCallback(() => {
-    if (initRef.current) return { cancel: () => {} };
-    initRef.current = true;
-    return runAppInitialization({
-      loadSearchPresetStats,
-      scheduleAnalysis,
-      runScan,
-      setScanning: () => {},
-      scanningRef,
-    });
-  }, [loadSearchPresetStats, scheduleAnalysis, runScan, scanningRef]);
-
-  useEffect(() => {
-    const handle = runInit();
-    return handle.cancel;
-  }, [runInit]);
-}

@@ -36,19 +36,18 @@ init_mariadb() {
     exit 1
   fi
 
-  # On first run, create konomi user with TCP access
+  # On first run, create konomi user with TCP access. The database itself
+  # and all schema migrations are applied by the Node process at startup
+  # (see src/core/lib/db.ts:runMigrations + src/server/db.ts:ensureDatabase).
   if [ "$FIRST_RUN" = "true" ]; then
     echo "Creating database user..."
     mariadb --socket="$SOCKET" <<'EOSQL'
-CREATE DATABASE IF NOT EXISTS `konomi` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'konomi'@'127.0.0.1' IDENTIFIED BY 'konomi';
 GRANT ALL PRIVILEGES ON `konomi`.* TO 'konomi'@'127.0.0.1';
 FLUSH PRIVILEGES;
 EOSQL
   fi
 
-  # Run schema init SQL (idempotent)
-  mariadb --socket="$SOCKET" < /app/docker/init.sql
   echo "MariaDB ready."
 }
 

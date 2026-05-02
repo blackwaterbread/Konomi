@@ -16,7 +16,10 @@ let migrationsDone = false;
 let externalGetDB: (() => PrismaClient) | null = null;
 let dialect: "sqlite" | "mysql" = "sqlite";
 
-export function setDBProvider(provider: () => PrismaClient, dbDialect: "sqlite" | "mysql" = "sqlite"): void {
+export function setDBProvider(
+  provider: () => PrismaClient,
+  dbDialect: "sqlite" | "mysql" = "sqlite",
+): void {
   externalGetDB = provider;
   dialect = dbDialect;
 }
@@ -36,9 +39,52 @@ export interface MigrationProgress {
   migrationName: string;
 }
 
-export function runMigrations(
-  onProgress?: (progress: MigrationProgress) => void,
-): void {
+type ProgressCallback = (progress: MigrationProgress) => void;
+
+function listMigrationDirs(migrationsPath: string): string[] | null {
+  try {
+    return fs
+      .readdirSync(migrationsPath)
+      .filter((d) => /^\d{14}/.test(d))
+      .sort();
+  } catch {
+    return null;
+  }
+}
+
+function readMigrationSql(
+  migrationsPath: string,
+  dir: string,
+): { sql: string; checksum: string } | null {
+  const sqlPath = path.join(migrationsPath, dir, "migration.sql");
+  try {
+    const sql = fs.readFileSync(sqlPath, "utf-8");
+    const checksum = crypto.createHash("sha256").update(sql).digest("hex");
+    return { sql, checksum };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Public, dialect-aware migration entry point. Async so the MariaDB path
+ * can use the async `mariadb` client; the SQLite branch stays synchronous
+ * because better-sqlite3 is sync and so are getDB/getRawDB. Callers should
+ * always `await` this — for SQLite the await is a no-op, for MariaDB it
+ * waits on the network round-trips.
+ */
+export async function runMigrations(
+  onProgress?: ProgressCallback,
+): Promise<void> {
+  if (migrationsDone) return;
+  if (dialect === "mysql") {
+    await runMariadbMigrations(onProgress);
+  } else {
+    runSqliteMigrations(onProgress);
+  }
+}
+
+function runSqliteMigrations(onProgress?: ProgressCallback): void {
   if (migrationsDone) return;
   const migrationsPath = process.env.KONOMI_MIGRATIONS_PATH;
   if (!migrationsPath) {
@@ -61,13 +107,8 @@ export function runMigrations(
             applied_steps_count INTEGER NOT NULL DEFAULT 0
         )`);
 
-    let dirs: string[];
-    try {
-      dirs = fs
-        .readdirSync(migrationsPath)
-        .filter((d) => /^\d{14}/.test(d))
-        .sort();
-    } catch {
+    const dirs = listMigrationDirs(migrationsPath);
+    if (!dirs) {
       migrationsDone = true;
       return;
     }
@@ -84,18 +125,15 @@ export function runMigrations(
     let done = 0;
 
     for (const dir of pending) {
-      const sqlPath = path.join(migrationsPath, dir, "migration.sql");
-      let sql: string;
-      try {
-        sql = fs.readFileSync(sqlPath, "utf-8");
-      } catch {
+      const loaded = readMigrationSql(migrationsPath, dir);
+      if (!loaded) {
         log.warn("Migration SQL file not found, skipping", {
           migration: dir,
         });
         done++;
         continue;
       }
-      const checksum = crypto.createHash("sha256").update(sql).digest("hex");
+      const { sql, checksum } = loaded;
       onProgress?.({ done, total: pending.length, migrationName: dir });
       log.info("Applying migration", { migration: dir });
 
@@ -130,9 +168,13 @@ export function runMigrations(
       } catch (error) {
         // 트랜잭션 실패 시 롤백됨 — _prisma_migrations에 기록되지 않으므로
         // 다음 실행 시 자동 재시도됨
-        log.errorWithStack("Migration failed, will retry on next launch", error, {
-          migration: dir,
-        });
+        log.errorWithStack(
+          "Migration failed, will retry on next launch",
+          error,
+          {
+            migration: dir,
+          },
+        );
         throw error;
       }
       done++;
@@ -147,6 +189,116 @@ export function runMigrations(
   migrationsDone = true;
 }
 
+async function runMariadbMigrations(
+  onProgress?: ProgressCallback,
+): Promise<void> {
+  const migrationsPath = process.env.KONOMI_MIGRATIONS_PATH;
+  if (!migrationsPath) {
+    migrationsDone = true;
+    return;
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    log.warn("DATABASE_URL not set, skipping MariaDB migrations");
+    migrationsDone = true;
+    return;
+  }
+
+  const url = new URL(databaseUrl);
+  const dbName = url.pathname.replace(/^\//, "");
+  if (!dbName) {
+    log.warn("DATABASE_URL has no database name, skipping migrations");
+    migrationsDone = true;
+    return;
+  }
+
+  // Lazy import — keeps mariadb out of the Electron bundle path.
+  const { createConnection } = await import("mariadb");
+  const conn = await createConnection({
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: dbName,
+    multipleStatements: true,
+  });
+
+  try {
+    await conn.query(
+      `CREATE TABLE IF NOT EXISTS \`_prisma_migrations\` (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        checksum VARCHAR(64) NOT NULL DEFAULT '',
+        finished_at DATETIME(3) NULL,
+        migration_name VARCHAR(255) NOT NULL,
+        logs TEXT NULL,
+        rolled_back_at DATETIME(3) NULL,
+        started_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        applied_steps_count INT UNSIGNED NOT NULL DEFAULT 0
+      ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    );
+
+    const dirs = listMigrationDirs(migrationsPath);
+    if (!dirs) {
+      migrationsDone = true;
+      return;
+    }
+
+    const applied = (await conn.query(
+      "SELECT migration_name FROM `_prisma_migrations`",
+    )) as { migration_name: string }[];
+    const appliedSet = new Set(applied.map((m) => m.migration_name));
+
+    const pending = dirs.filter((d) => !appliedSet.has(d));
+    if (pending.length > 0) {
+      log.info("Pending migrations", { count: pending.length });
+    }
+    let done = 0;
+
+    for (const dir of pending) {
+      const loaded = readMigrationSql(migrationsPath, dir);
+      if (!loaded) {
+        log.warn("Migration SQL file not found, skipping", {
+          migration: dir,
+        });
+        done++;
+        continue;
+      }
+      const { sql, checksum } = loaded;
+      onProgress?.({ done, total: pending.length, migrationName: dir });
+      log.info("Applying migration", { migration: dir });
+
+      try {
+        // MariaDB DDL is auto-committed — wrapping in a transaction has no
+        // effect. If a migration fails partway through, _prisma_migrations
+        // is left untouched so the next boot retries the whole file. The
+        // baseline uses CREATE TABLE IF NOT EXISTS, so retries are safe.
+        await conn.query(sql);
+        await conn.query(
+          "INSERT INTO `_prisma_migrations` (id, checksum, migration_name, finished_at, applied_steps_count) VALUES (?, ?, ?, NOW(3), 1)",
+          [crypto.randomUUID(), checksum, dir],
+        );
+        log.info("Migration applied", { migration: dir });
+      } catch (error) {
+        log.errorWithStack(
+          "Migration failed, will retry on next launch",
+          error,
+          { migration: dir },
+        );
+        throw error;
+      }
+      done++;
+    }
+
+    if (pending.length > 0) {
+      onProgress?.({ done, total: pending.length, migrationName: "" });
+    }
+  } finally {
+    await conn.end();
+  }
+  migrationsDone = true;
+}
+
 /**
  * SQLite crash safety:
  * - better-sqlite3 defaults to DELETE journal mode → auto-rollback on next open
@@ -157,7 +309,7 @@ export function runMigrations(
 export function getDB(): PrismaClient {
   if (externalGetDB) return externalGetDB();
   if (!client) {
-    runMigrations();
+    runSqliteMigrations();
     const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
     const adapter = new PrismaBetterSqlite3({ url: dbPath });
     client = new PrismaClient({ adapter });
@@ -175,7 +327,7 @@ export function getDB(): PrismaClient {
  */
 export function getRawDB(): Database.Database {
   if (!rawDb) {
-    runMigrations();
+    runSqliteMigrations();
     const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
     rawDb = new Database(dbPath);
     rawDb.pragma("busy_timeout = 5000");

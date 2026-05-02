@@ -146,4 +146,25 @@ export class WorkerPool<T> {
       }
     });
   }
+
+  /**
+   * Terminate all workers and resolve pending tasks with the null result.
+   * Used during process shutdown so worker threads exit cleanly instead of
+   * being torn down by the event loop.
+   */
+  async shutdown(): Promise<void> {
+    this.cancelIdleShutdown();
+    const queued = this.queue.splice(0);
+    for (const task of queued) task.resolve(this.nullResult);
+    for (const [, cb] of this.callbacks) cb(this.nullResult);
+    this.callbacks.clear();
+    const allWorkers = new Set<Worker>(this.idle);
+    for (const w of this.workerTask.keys()) allWorkers.add(w);
+    this.idle.length = 0;
+    this.workerTask.clear();
+    this.activeCount = 0;
+    await Promise.all(
+      Array.from(allWorkers, (w) => w.terminate().catch(() => {})),
+    );
+  }
 }

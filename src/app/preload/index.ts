@@ -197,6 +197,14 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.on("image:hashProgress", handler);
     return () => ipcRenderer.removeListener("image:hashProgress", handler);
   },
+  onAnalysisActive: (cb: (data: { active: boolean }) => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { active: boolean },
+    ) => cb(data);
+    ipcRenderer.on("image:analysisActive", handler);
+    return () => ipcRenderer.removeListener("image:analysisActive", handler);
+  },
   onSimilarityProgress: (
     cb: (data: { done: number; total: number }) => void,
   ) => {
@@ -391,4 +399,7 @@ contextBridge.exposeInMainWorld("folder", {
     ipcRenderer.invoke("folder:listSubdirectoriesByPath", folderPath),
   stats: (id: number) => ipcRenderer.invoke("folder:stats", id),
   size: (id: number) => ipcRenderer.invoke("folder:size", id),
+  // Web-only event; Electron does not auto-detect new mounts.
+  onListChanged: (_cb: (data: { added: number; removed: number }) => void) =>
+    () => {},
 });

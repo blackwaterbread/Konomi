@@ -86,6 +86,7 @@ export interface FolderApi {
   stats(id: number): Promise<FolderStats | null>;
   size(id: number): Promise<number>;
   availableDirectories(): Promise<{ name: string; path: string }[]>;
+  onListChanged(cb: (data: { added: number; removed: number }) => void): () => void;
 }
 
 // ── Image API ──────────────────────────────────────────────────
@@ -137,6 +138,7 @@ export interface ImageApi {
   onWatchDuplicate(cb: (item: FolderDuplicateGroup) => void): () => void;
   onQuickVerifyProgress(cb: ProgressCallback): () => void;
   onHashProgress(cb: ProgressCallback): () => void;
+  onAnalysisActive(cb: (data: { active: boolean }) => void): () => void;
   onSimilarityProgress(cb: ProgressCallback): () => void;
   onScanProgress(cb: ProgressCallback): () => void;
   onScanPhase(cb: (data: { phase: string }) => void): () => void;

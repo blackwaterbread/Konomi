@@ -6,6 +6,19 @@ import { createLogger } from "@/lib/logger";
 
 const log = createLogger("renderer/useImageAnalysis");
 
+/**
+ * UI state hook for the maintenance/analysis run.
+ *
+ * Auto-trigger logic now lives in the core maintenance service, which runs
+ * inside the Electron utility process or the Fastify server. This hook is a
+ * thin subscriber: it tracks whether a run is active (via the
+ * `image:analysisActive` push event) and exposes a manual trigger
+ * (`runAnalysisNow`) for explicit user actions like the settings panel
+ * "지금 분석" button.
+ *
+ * Threshold settings still live here because `getSimilarGroups` is a
+ * threshold-aware DB query — that part is intentionally kept on the client.
+ */
 export function useImageAnalysis({
   scanningRef,
   settings,
@@ -17,14 +30,9 @@ export function useImageAnalysis({
   const [hasAnalyzedOnce, setHasAnalyzedOnce] = useState(false);
   const [similarGroupCount, setSimilarGroupCount] = useState(0);
 
-  const analyzingRef = useRef(false);
-  const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisPromiseRef = useRef<Promise<boolean> | null>(null);
-  const suspendAutoAnalysisRef = useRef(false);
   const pendingSimilarityRecalcRef = useRef(false);
 
-  // Getter functions — replace ref sync useEffect.
-  // Consumers call these instead of reading .current from refs.
   const getVisualThreshold = useCallback(
     () =>
       settings.useAdvancedSimilarityThresholds
@@ -48,12 +56,16 @@ export function useImageAnalysis({
     ],
   );
 
+  // Subscribe to maintenance run lifecycle from core. Auto-triggered runs
+  // (after scan, after watcher batch events) only surface to the UI through
+  // these events.
   useEffect(() => {
+    const off = window.image.onAnalysisActive(({ active }) => {
+      setIsAnalyzing(active);
+      if (!active) setHasAnalyzedOnce(true);
+    });
     return () => {
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current);
-        analyzeTimerRef.current = null;
-      }
+      off();
     };
   }, []);
 
@@ -64,9 +76,7 @@ export function useImageAnalysis({
       if (scanningRef.current) return false;
 
       const startedAt = Date.now();
-      log.info("Analysis started");
-      analyzingRef.current = true;
-      setIsAnalyzing(true);
+      log.info("Analysis triggered manually");
       try {
         await window.image.computeHashes();
         const groups = await window.image.similarGroups(
@@ -75,8 +85,7 @@ export function useImageAnalysis({
         );
         setSimilarGroupCount(groups.length);
         pendingSimilarityRecalcRef.current = false;
-        setHasAnalyzedOnce(true);
-        log.info("Analysis completed", {
+        log.info("Manual analysis completed", {
           elapsedMs: Date.now() - startedAt,
           groups: groups.length,
         });
@@ -93,8 +102,6 @@ export function useImageAnalysis({
         );
         return false;
       } finally {
-        analyzingRef.current = false;
-        setIsAnalyzing(false);
         analysisPromiseRef.current = null;
       }
     })();
@@ -103,33 +110,13 @@ export function useImageAnalysis({
     return run;
   }, [scanningRef, getVisualThreshold, getPromptThreshold]);
 
-  const scheduleAnalysis = useCallback(
-    (delay = 3000) => {
-      if (suspendAutoAnalysisRef.current) return;
-      if (analyzeTimerRef.current) clearTimeout(analyzeTimerRef.current);
-      analyzeTimerRef.current = setTimeout(async () => {
-        if (suspendAutoAnalysisRef.current) return;
-        if (scanningRef.current) {
-          log.debug("Analysis delayed because scan is running");
-          scheduleAnalysis(1000);
-          return;
-        }
-        await runAnalysisNow();
-      }, delay);
-    },
-    [runAnalysisNow, scanningRef],
-  );
-
   return {
     isAnalyzing,
     hasAnalyzedOnce,
     similarGroupCount,
-    analyzeTimerRef,
     pendingSimilarityRecalcRef,
     getVisualThreshold,
     getPromptThreshold,
-    suspendAutoAnalysisRef,
     runAnalysisNow,
-    scheduleAnalysis,
   };
 }

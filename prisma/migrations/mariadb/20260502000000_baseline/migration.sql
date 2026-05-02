@@ -1,8 +1,6 @@
--- Konomi MariaDB schema init (generated from prisma/schema/mariadb.prisma)
--- This runs automatically on first container startup.
-
-CREATE DATABASE IF NOT EXISTS `konomi` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `konomi`;
+-- Konomi MariaDB baseline schema (squashed)
+-- Uses IF NOT EXISTS so existing databases (created from the legacy
+-- docker/init.sql script) are unaffected.
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS `Folder` (

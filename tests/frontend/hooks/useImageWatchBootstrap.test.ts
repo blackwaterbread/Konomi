@@ -1,8 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  runAppInitialization,
   useImageEventSubscriptions,
-  useImageWatchBootstrap,
 } from "@/hooks/useImageWatchBootstrap";
 import { createImageRow } from "../helpers/image-row";
 import { preloadEvents } from "../helpers/preload-mocks";
@@ -16,23 +17,33 @@ describe("useImageWatchBootstrap", () => {
   it("boots watchers and reacts to batch and removed events", async () => {
     const loadSearchPresetStats = vi.fn().mockResolvedValue(undefined);
     const scheduleSearchStatsRefresh = vi.fn();
-    const scheduleAnalysis = vi.fn();
     const schedulePageRefresh = vi.fn();
+    const runScan = vi.fn().mockResolvedValue(true);
     const scanningRef = { current: false };
 
-    renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats,
+    renderHook(() => {
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh,
         scanningRef,
         rescanningRef: { current: false },
-        scheduleAnalysis,
         schedulePageRefresh,
-        runScan: vi.fn().mockResolvedValue(true),
-      }),
-    );
+        addPendingNewIds: () => {},
+        addPendingRemovedIds: () => {},
+        effectiveFolderIds: new Set(),
+      });
+      useEffect(
+        () =>
+          runAppInitialization({
+            loadSearchPresetStats,
+            runScan,
+            setScanning: () => {},
+            scanningRef,
+          }).cancel,
+        [],
+      );
+    });
 
-    await waitFor(() => expect(scheduleAnalysis).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(runScan).toHaveBeenCalled());
 
     // runAppInitialization sets scanningRef.current = true; reset it so
     // batch/removed events are processed as post-scan watcher events.
@@ -46,10 +57,9 @@ describe("useImageWatchBootstrap", () => {
 
     // Neither batch nor removed events trigger schedulePageRefresh anymore —
     // batch calls addPendingNewIds and removed calls addPendingRemovedIds
-    // (gallery shows a banner instead of auto-refreshing).
+    // (gallery shows a banner instead of auto-refreshing). Analysis
+    // auto-trigger now lives in the core maintenance service, not here.
     expect(schedulePageRefresh).not.toHaveBeenCalled();
-    // init(0) + batch + removed = 3
-    expect(scheduleAnalysis).toHaveBeenCalledTimes(3);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(180);
     expect(scheduleSearchStatsRefresh).toHaveBeenCalledWith(120);
   });
@@ -63,7 +73,6 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh: vi.fn(),
         scanningRef: { current: false },
         rescanningRef: { current: false },
-        scheduleAnalysis: vi.fn(),
         schedulePageRefresh: vi.fn(),
         addPendingNewIds,
         addPendingRemovedIds: vi.fn(),
@@ -96,7 +105,6 @@ describe("useImageWatchBootstrap", () => {
         scheduleSearchStatsRefresh: vi.fn(),
         scanningRef: { current: false },
         rescanningRef: { current: false },
-        scheduleAnalysis: vi.fn(),
         schedulePageRefresh: vi.fn(),
         addPendingNewIds: vi.fn(),
         addPendingRemovedIds,
@@ -124,7 +132,6 @@ describe("useImageWatchBootstrap", () => {
           scheduleSearchStatsRefresh: vi.fn(),
           scanningRef: { current: false },
           rescanningRef: { current: false },
-          scheduleAnalysis: vi.fn(),
           schedulePageRefresh: vi.fn(),
           addPendingNewIds: vi.fn(),
           addPendingRemovedIds: vi.fn(),
@@ -162,21 +169,30 @@ describe("useImageWatchBootstrap", () => {
 
   it("skips gallery refresh during scan to avoid IO contention", async () => {
     const scheduleSearchStatsRefresh = vi.fn();
-    const scheduleAnalysis = vi.fn();
     const schedulePageRefresh = vi.fn();
+    const scanningRef = { current: true };
 
-    renderHook(() =>
-      useImageWatchBootstrap({
-        loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+    renderHook(() => {
+      useImageEventSubscriptions({
         scheduleSearchStatsRefresh,
-
-        scanningRef: { current: true },
+        scanningRef,
         rescanningRef: { current: false },
-        scheduleAnalysis,
         schedulePageRefresh,
-        runScan: vi.fn().mockResolvedValue(true),
-      }),
-    );
+        addPendingNewIds: () => {},
+        addPendingRemovedIds: () => {},
+        effectiveFolderIds: new Set(),
+      });
+      useEffect(
+        () =>
+          runAppInitialization({
+            loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+            runScan: vi.fn().mockResolvedValue(true),
+            setScanning: () => {},
+            scanningRef,
+          }).cancel,
+        [],
+      );
+    });
 
     await act(async () => {
       await Promise.resolve();

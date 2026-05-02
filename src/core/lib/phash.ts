@@ -1,7 +1,7 @@
 import os from "os";
 import path from "path";
 import { getDB, getRawDB, getDialect, insertIgnore } from "./db";
-import { withConcurrency } from "@core/lib/scanner";
+import { withConcurrency, type CancelToken } from "@core/lib/scanner";
 import { WorkerPool } from "@core/lib/worker-pool";
 import { computeAllPairs, type AllPairsInput, type AllPairsResult } from "@core/lib/konomi-image";
 import {
@@ -34,7 +34,7 @@ const SIMILARITY_CACHE_META_TABLE = "ImageSimilarityCacheMeta";
 const POOL_SIZE = Math.max(4, Math.min(os.availableParallelism() - 1, 8));
 const WORKER_PATH = path.join(__dirname, "phash.worker.js");
 
-const pHashPool = new WorkerPool<string | null>({
+export const pHashPool = new WorkerPool<string | null>({
   size: POOL_SIZE,
   workerPath: WORKER_PATH,
   eager: true,
@@ -365,6 +365,7 @@ async function upsertSimilarityCacheRows(
 async function upsertSimilarityCacheFromArrays(
   result: AllPairsResult,
   onProgress?: (done: number, total: number) => void,
+  signal?: CancelToken,
 ): Promise<void> {
   const count = result.imageAIds.length;
   if (count === 0) return;
@@ -374,6 +375,7 @@ async function upsertSimilarityCacheFromArrays(
 
   const ROWS_PER_STMT = 2000;
   for (let i = 0; i < count; i += ROWS_PER_STMT) {
+    if (signal?.cancelled) return;
     const end = Math.min(i + ROWS_PER_STMT, count);
     const chunkSize = end - i;
     const placeholders = Array.from(
@@ -454,19 +456,23 @@ function computePairCacheRow(
 export async function refreshSimilarityCacheForImageIds(
   imageIds: number[],
   onProgress?: (done: number, total: number) => void,
-  options?: { preserveExisting?: boolean },
+  options?: { preserveExisting?: boolean; signal?: CancelToken },
 ): Promise<void> {
+  const signal = options?.signal;
   const targetIds = normalizeImageIds(imageIds);
   if (targetIds.length === 0) return;
 
   await ensureSimilarityCacheTables();
+  if (signal?.cancelled) return;
   if (!options?.preserveExisting) {
     await deleteSimilarityCacheForImageIds(targetIds);
   }
+  if (signal?.cancelled) return;
 
   // Pass 1: build IDF map + collect image IDs
   const { idfMap, imageCount, imageIdSet } = await buildIdfMap();
   if (imageCount < 2) return;
+  if (signal?.cancelled) return;
 
   const existingTargetIds = targetIds.filter((id) => imageIdSet.has(id));
   if (existingTargetIds.length === 0) return;
@@ -476,6 +482,7 @@ export async function refreshSimilarityCacheForImageIds(
   const sourceRows = getDialect() === "mysql"
     ? await getDB().$queryRawUnsafe<SimilaritySourceRow[]>(SIMILARITY_SOURCE_SQL)
     : (() => { const rawDb = getRawDB(); return [...rawDb.prepare(SIMILARITY_SOURCE_SQL).iterate()] as SimilaritySourceRow[]; })();
+  if (signal?.cancelled) return;
 
   // ── Native fast path ─────────────────────────────────────────────────────
   {
@@ -490,7 +497,8 @@ export async function refreshSimilarityCacheForImageIds(
     }
     const nativeResult = computeAllPairs(nativeInput);
     if (nativeResult !== null) {
-      await upsertSimilarityCacheFromArrays(nativeResult, onProgress);
+      await upsertSimilarityCacheFromArrays(nativeResult, onProgress, signal);
+      if (signal?.cancelled) return;
       if (isFullCoverage) await markSimilarityCachePrimed();
       return;
     }
@@ -517,8 +525,10 @@ export async function refreshSimilarityCacheForImageIds(
   onProgress?.(0, totalPairs);
   let processedPairs = 0;
   for (const targetId of existingTargetIds) {
+    if (signal?.cancelled) return;
     const target = imageById.get(targetId)!;
     for (const candidate of fallbackImages) {
+      if (signal?.cancelled) return;
       if (candidate.id === targetId) continue;
       if (targetIdSet.has(candidate.id) && candidate.id < targetId) continue;
 
@@ -548,9 +558,11 @@ export async function refreshSimilarityCacheForImageIds(
 
 async function ensureSimilarityCachePrimed(
   onProgress?: (done: number, total: number) => void,
+  signal?: CancelToken,
 ): Promise<void> {
   await ensureSimilarityCacheTables();
   if (await isSimilarityCachePrimed()) return;
+  if (signal?.cancelled) return;
 
   const db = getDB();
   const ids = await db.image.findMany({ select: { id: true } });
@@ -558,8 +570,9 @@ async function ensureSimilarityCachePrimed(
     await refreshSimilarityCacheForImageIds(
       ids.map((row) => row.id),
       onProgress,
-      { preserveExisting: true },
+      { preserveExisting: true, signal },
     );
+    if (signal?.cancelled) return;
   }
   await markSimilarityCachePrimed();
 }
@@ -573,6 +586,7 @@ export async function resetAllHashes(): Promise<void> {
 export async function computeAllHashes(
   onHashProgress?: (done: number, total: number) => void,
   onSimilarityProgress?: (done: number, total: number) => void,
+  signal?: CancelToken,
 ): Promise<number> {
   const startedAt = Date.now();
   const db = getDB();
@@ -609,26 +623,32 @@ export async function computeAllHashes(
 
   console.info(`[phash.computeAllHashes] start targets=${total}`);
   try {
-    await withConcurrency(images, POOL_SIZE * 2, async (img) => {
-      try {
-        const hash = await pHashPool.run(img.path);
-        if (hash) {
-          pending.push({ id: img.id, hash });
-          await flushPending();
+    await withConcurrency(
+      images,
+      POOL_SIZE * 2,
+      async (img) => {
+        if (signal?.cancelled) return;
+        try {
+          const hash = await pHashPool.run(img.path);
+          if (hash) {
+            pending.push({ id: img.id, hash });
+            await flushPending();
+          }
+        } catch {
+          // Skip unreadable files.
         }
-      } catch {
-        // Skip unreadable files.
-      }
-      done++;
-      const progressNow = Date.now();
-      if (done === total || progressNow - lastProgressAt >= 100) {
-        lastProgressAt = progressNow;
-        onHashProgress?.(done, total);
-      }
-      if (done % 32 === 0) {
-        await yieldToEventLoop();
-      }
-    });
+        done++;
+        const progressNow = Date.now();
+        if (done === total || progressNow - lastProgressAt >= 100) {
+          lastProgressAt = progressNow;
+          onHashProgress?.(done, total);
+        }
+        if (done % 32 === 0) {
+          await yieldToEventLoop();
+        }
+      },
+      signal,
+    );
 
     if (pending.length > 0) {
       const chunk = pending.splice(0);
@@ -640,10 +660,11 @@ export async function computeAllHashes(
       );
     }
 
-    if (allUpdatedIds.length > 0) {
+    if (allUpdatedIds.length > 0 && !signal?.cancelled) {
       await refreshSimilarityCacheForImageIds(
         allUpdatedIds,
         onSimilarityProgress,
+        { signal },
       );
     }
 
@@ -652,7 +673,7 @@ export async function computeAllHashes(
   } finally {
     const elapsedMs = Date.now() - startedAt;
     console.info(
-      `[phash.computeAllHashes] end elapsedMs=${elapsedMs} processed=${done}/${total} success=${success}`,
+      `[phash.computeAllHashes] end elapsedMs=${elapsedMs} processed=${done}/${total} success=${success} cancelled=${signal?.cancelled === true}`,
     );
   }
 }

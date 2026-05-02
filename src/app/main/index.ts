@@ -320,8 +320,14 @@ app
 
 app.on("window-all-closed", () => {
   log.info("All windows closed", { platform: process.platform });
-  bridge.stop();
-  if (process.platform !== "darwin") app.quit();
+  // macOS: keep the utility process alive while the app stays in the dock so
+  // the next window reopen is instant. Other platforms quit, so we drain the
+  // utility (maintenance/scan), terminate worker threads, and disconnect the
+  // SQLite client before letting Electron exit.
+  if (process.platform === "darwin") return;
+  void bridge.stopGracefully().finally(() => {
+    app.quit();
+  });
 });
 
 // ---------------------------------------------------------------------------

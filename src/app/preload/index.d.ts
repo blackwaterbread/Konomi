@@ -153,6 +153,9 @@ declare global {
       onHashProgress: (
         cb: (data: { done: number; total: number }) => void,
       ) => () => void;
+      onAnalysisActive: (
+        cb: (data: { active: boolean }) => void,
+      ) => () => void;
       onSimilarityProgress: (
         cb: (data: { done: number; total: number }) => void,
       ) => () => void;
@@ -207,6 +210,9 @@ declare global {
       ) => Promise<{ name: string; path: string }[]>;
       stats: (id: number) => Promise<FolderStats | null>;
       size: (id: number) => Promise<number>;
+      onListChanged: (
+        cb: (data: { added: number; removed: number }) => void,
+      ) => () => void;
     };
     nai: {
       validateApiKey: (

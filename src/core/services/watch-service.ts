@@ -368,11 +368,14 @@ export function createWatchService(deps: WatchServiceDeps) {
               return;
             }
             const fullPath = path.join(folderPath, filename);
-            if (
-              ![".png", ".webp"].includes(path.extname(fullPath).toLowerCase())
-            )
+            const ext = path.extname(fullPath).toLowerCase();
+            if (ext === ".png" || ext === ".webp") {
+              scheduleProcess(folderId, fullPath);
               return;
-            scheduleProcess(folderId, fullPath);
+            }
+            if (!ext) {
+              scheduleFolderReconcile(folderId);
+            }
           },
         );
         watcher.on("error", () => {

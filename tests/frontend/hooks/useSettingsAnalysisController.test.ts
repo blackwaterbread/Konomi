@@ -19,9 +19,7 @@ describe("useSettingsAnalysisController", () => {
         updateSettings,
         resetSettings,
         scanningRef: { current: false },
-        analyzeTimerRef: { current: null },
         pendingSimilarityRecalcRef,
-        suspendAutoAnalysisRef: { current: false },
         runAnalysisNow: vi.fn().mockResolvedValue(true),
       }),
     );
@@ -59,19 +57,14 @@ describe("useSettingsAnalysisController", () => {
 
   it("resets hashes and reruns analysis when scanning is idle", async () => {
     const runAnalysisNow = vi.fn().mockResolvedValue(true);
-    const timer = setTimeout(() => {}, 1000);
-    const analyzeTimerRef = { current: timer };
     const pendingSimilarityRecalcRef = { current: true };
-    const suspendAutoAnalysisRef = { current: false };
 
     const { result } = renderHook(() =>
       useSettingsAnalysisController({
         updateSettings: vi.fn(),
         resetSettings: vi.fn(),
         scanningRef: { current: false },
-        analyzeTimerRef,
         pendingSimilarityRecalcRef,
-        suspendAutoAnalysisRef,
         runAnalysisNow,
       }),
     );
@@ -82,9 +75,7 @@ describe("useSettingsAnalysisController", () => {
 
     expect(preloadMocks.image.resetHashes).toHaveBeenCalledTimes(1);
     expect(runAnalysisNow).toHaveBeenCalledTimes(1);
-    expect(analyzeTimerRef.current).toBeNull();
     expect(pendingSimilarityRecalcRef.current).toBe(false);
-    expect(suspendAutoAnalysisRef.current).toBe(false);
   });
 
   it("blocks hash reset while a scan is active", async () => {
@@ -95,9 +86,7 @@ describe("useSettingsAnalysisController", () => {
         updateSettings: vi.fn(),
         resetSettings: vi.fn(),
         scanningRef: { current: true },
-        analyzeTimerRef: { current: null },
         pendingSimilarityRecalcRef: { current: false },
-        suspendAutoAnalysisRef: { current: false },
         runAnalysisNow,
       }),
     );
@@ -113,21 +102,18 @@ describe("useSettingsAnalysisController", () => {
     expect(runAnalysisNow).not.toHaveBeenCalled();
   });
 
-  it("surfaces hash reset failures and restores auto analysis", async () => {
+  it("surfaces hash reset failures", async () => {
     const runAnalysisNow = vi.fn().mockResolvedValue(true);
     preloadMocks.image.resetHashes.mockRejectedValueOnce(
       new Error("disk unavailable"),
     );
-    const suspendAutoAnalysisRef = { current: false };
 
     const { result } = renderHook(() =>
       useSettingsAnalysisController({
         updateSettings: vi.fn(),
         resetSettings: vi.fn(),
         scanningRef: { current: false },
-        analyzeTimerRef: { current: null },
         pendingSimilarityRecalcRef: { current: false },
-        suspendAutoAnalysisRef,
         runAnalysisNow,
       }),
     );
@@ -140,6 +126,5 @@ describe("useSettingsAnalysisController", () => {
       "Failed to reset hashes: disk unavailable",
     );
     expect(runAnalysisNow).not.toHaveBeenCalled();
-    expect(suspendAutoAnalysisRef.current).toBe(false);
   });
 });

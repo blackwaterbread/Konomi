@@ -79,6 +79,13 @@ export function useFolders(initialFolders?: Folder[] | null) {
     load();
   }, [initialFolders, load]);
 
+  useEffect(() => {
+    const off = window.folder.onListChanged?.(() => {
+      void load();
+    });
+    return () => off?.();
+  }, [load]);
+
   const addFolder = useCallback(
     async (name: string, path: string) => {
       log.info("Creating folder", { name, path });

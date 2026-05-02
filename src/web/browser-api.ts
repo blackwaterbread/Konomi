@@ -129,6 +129,7 @@ export function createBrowserApi(): KonomiApi {
       stats: (id) => rpc(`/api/folders/${id}/stats`),
       size: (id) => rpc(`/api/folders/${id}/size`),
       availableDirectories: () => rpc("/api/folders/available"),
+      onListChanged: (cb) => onEvent("folder:listChanged", cb),
     },
 
     image: {
@@ -176,6 +177,7 @@ export function createBrowserApi(): KonomiApi {
       onWatchDuplicate: (cb) => onEvent("image:watchDuplicate", cb),
       onQuickVerifyProgress: (cb) => onEvent("image:quickVerifyProgress", cb),
       onHashProgress: (cb) => onEvent("image:hashProgress", cb),
+      onAnalysisActive: (cb) => onEvent("image:analysisActive", cb),
       onSimilarityProgress: (cb) => onEvent("image:similarityProgress", cb),
       onScanProgress: (cb) => onEvent("image:scanProgress", cb),
       onScanPhase: (cb) => onEvent("image:scanPhase", cb),

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 
@@ -11,7 +11,6 @@ function renderSidebarFolderActions(options?: {
   const runScan = vi
     .fn()
     .mockResolvedValue(options?.runScanResult ?? { ok: true, cancelled: false });
-  const scheduleAnalysis = vi.fn();
   const scanningRef = { current: options?.scanning ?? false };
 
   const { result } = renderHook(() => {
@@ -37,15 +36,12 @@ function renderSidebarFolderActions(options?: {
       });
     }, []);
 
-    const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const actions = useSidebarFolderActions({
       isAnalyzing: options?.isAnalyzing ?? false,
       addSelectedFolder,
       removeSelectedFolder,
       runScan,
       scanningRef,
-      scheduleAnalysis,
-      analyzeTimerRef,
       setActiveScanFolderIds,
       setRollbackFolderIds,
       refreshSubfolders: async () => {},
@@ -62,13 +58,12 @@ function renderSidebarFolderActions(options?: {
   return {
     result,
     runScan,
-    scheduleAnalysis,
   };
 }
 
 describe("useSidebarFolderActions", () => {
   it("adds a folder into selection and clears rollback state after a successful scan", async () => {
-    const { result, runScan, scheduleAnalysis } = renderSidebarFolderActions();
+    const { result, runScan } = renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(7);
@@ -79,12 +74,13 @@ describe("useSidebarFolderActions", () => {
     expect(result.current.rollbackFolderIds.has(7)).toBe(true);
     expect(runScan).toHaveBeenCalledTimes(1);
 
-    await waitFor(() => expect(scheduleAnalysis).toHaveBeenCalledWith(0));
-    expect(result.current.rollbackFolderIds.has(7)).toBe(false);
+    await waitFor(() =>
+      expect(result.current.rollbackFolderIds.has(7)).toBe(false),
+    );
   });
 
   it("removes folders from selection and scan state when cancelled or removed", async () => {
-    const { result, runScan, scheduleAnalysis } = renderSidebarFolderActions();
+    const { result, runScan } = renderSidebarFolderActions();
 
     act(() => {
       result.current.handleFolderAdded(9);
@@ -101,8 +97,6 @@ describe("useSidebarFolderActions", () => {
     expect(result.current.selectedFolderIds.has(9)).toBe(false);
     expect(result.current.activeScanFolderIds.has(9)).toBe(false);
     expect(result.current.rollbackFolderIds.has(9)).toBe(false);
-    // handleFolderCancelled does NOT schedule analysis — it clears the timer instead
-    expect(scheduleAnalysis).not.toHaveBeenCalledWith(500);
 
     act(() => {
       result.current.handleFolderAdded(11);
@@ -113,7 +107,6 @@ describe("useSidebarFolderActions", () => {
     );
 
     runScan.mockClear();
-    scheduleAnalysis.mockClear();
 
     act(() => {
       result.current.handleFolderRemoved(11);
@@ -123,7 +116,6 @@ describe("useSidebarFolderActions", () => {
     expect(result.current.activeScanFolderIds.has(11)).toBe(false);
     expect(result.current.rollbackFolderIds.has(11)).toBe(false);
     expect(runScan).toHaveBeenCalledTimes(1);
-    expect(scheduleAnalysis).toHaveBeenCalledWith(500);
   });
 
   it("rescans only when neither scanning nor analysis is already running", async () => {
@@ -135,7 +127,6 @@ describe("useSidebarFolderActions", () => {
 
     expect(idle.result.current.activeScanFolderIds.has(5)).toBe(true);
     expect(idle.runScan).toHaveBeenCalledWith({ folderIds: [5] });
-    await waitFor(() => expect(idle.scheduleAnalysis).toHaveBeenCalledWith(0));
 
     const scanning = renderSidebarFolderActions({ scanning: true });
     act(() => {

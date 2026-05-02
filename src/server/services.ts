@@ -20,6 +20,7 @@ import { createPromptBuilderService } from "@core/services/prompt-builder-servic
 import { createPromptTagService } from "@core/services/prompt-tag-service";
 import { createNaiGenService } from "@core/services/nai-gen-service";
 import { createWatchService } from "@core/services/watch-service";
+import { createMaintenanceService } from "@core/services/maintenance-service";
 import { readImageMeta } from "@core/lib/image-meta";
 import { getPromptsDBPath } from "@core/lib/prompts-db";
 import {
@@ -36,11 +37,14 @@ import {
   applyImageSearchStatsMutations,
   applyImageSearchStatsMutation,
   decrementImageSearchStatsForRows,
+  listImageSearchStatSourcesForFolder,
 } from "@core/lib/search-stats-store";
 import {
+  computeAllHashes,
   deleteSimilarityCacheForImageIds,
   refreshSimilarityCacheForImageIds,
 } from "@core/lib/phash";
+import type { CancelToken } from "@core/lib/scanner";
 import { createLogger } from "@core/lib/logger";
 import { Database } from "bun:sqlite";
 
@@ -71,7 +75,17 @@ export function createServices(sender: EventSender) {
   };
 
   // ── Services ─────────────────────────────
-  const folderService = createFolderService({ folderRepo, imageRepo });
+  const folderService = createFolderService({
+    folderRepo,
+    imageRepo,
+    similarityCache: {
+      deleteForImageIds: deleteSimilarityCacheForImageIds,
+    },
+    searchStats: {
+      listSourcesForFolder: listImageSearchStatSourcesForFolder,
+      decrementForRows: decrementImageSearchStatsForRows,
+    },
+  });
   const categoryService = createCategoryService({ categoryRepo, imageRepo });
   const promptBuilderService = createPromptBuilderService({ promptRepo });
   const naiGenService = createNaiGenService({ naiConfigRepo });
@@ -84,10 +98,48 @@ export function createServices(sender: EventSender) {
       }),
   });
 
+  // Maintenance service tracks scan-active so the scheduler defers analysis
+  // while bulk scans are running. The plain reference is captured here and
+  // mutated from runInitialScan / future scan handlers. `shuttingDown` is
+  // flipped by the SIGTERM handler; runInitialScan checks it before starting
+  // so a signal that arrives before the initial scan has launched can't get
+  // overwritten by a fresh, un-cancelled token.
+  const scanState: {
+    active: boolean;
+    cancelToken: CancelToken | null;
+    shuttingDown: boolean;
+  } = {
+    active: false,
+    cancelToken: null,
+    shuttingDown: false,
+  };
+
+  const maintenanceService = createMaintenanceService({
+    computeAllHashes,
+    sender,
+    isScanActive: () => scanState.active,
+  });
+
+  // Wrapped sender: any time scan-service / watcher / other emitters send
+  // batch or removed events, schedule an analysis run. The maintenance
+  // service debounces (clearScheduleTimer + setTimeout) and defers while a
+  // scan is active, so a stream of scan-emitted batches collapses into a
+  // single trailing run after the scan finishes. Routing scan events
+  // through this wrapper means new scan emit-points stay safe even if a
+  // caller forgets the explicit scheduleAnalysis(0).
+  const maintenanceAwareSender: EventSender = {
+    send(channel: string, data: unknown) {
+      sender.send(channel, data);
+      if (channel === "image:batch" || channel === "image:removed") {
+        maintenanceService.scheduleAnalysis();
+      }
+    },
+  };
+
   const scanService = createScanService({
     imageRepo,
     folderRepo,
-    sender,
+    sender: maintenanceAwareSender,
     readMeta: (filePath) => naiPool.run(filePath),
     hashFile: fileHash,
     searchStats: searchStatsAdapter,
@@ -112,7 +164,7 @@ export function createServices(sender: EventSender) {
   const watchService = createWatchService({
     imageRepo,
     folderRepo,
-    sender,
+    sender: maintenanceAwareSender,
     readMeta: readImageMeta,
     searchStats: {
       applyMutation: applyImageSearchStatsMutation,
@@ -142,7 +194,9 @@ export function createServices(sender: EventSender) {
     promptTagService,
     naiGenService,
     watchService,
+    maintenanceService,
     sender,
+    scanState,
   };
 }
 
@@ -228,13 +282,29 @@ export async function bootstrap(services: Services): Promise<void> {
 }
 
 export async function runInitialScan(services: Services): Promise<void> {
+  // Bail if a SIGTERM arrived before we got to start. Without this guard
+  // shutdown's `cancelToken.cancelled = true` would have run against a null
+  // token, then we'd allocate a fresh un-cancelled token and proceed past
+  // the shutdown sequence.
+  if (services.scanState.shuttingDown) {
+    log.info("Skipping initial scan — shutdown already requested");
+    return;
+  }
+  const cancelToken = { cancelled: false };
+  services.scanState.active = true;
+  services.scanState.cancelToken = cancelToken;
   try {
     log.info("Initial scan starting");
-    await services.scanService.scanAll();
+    await services.scanService.scanAll({ signal: cancelToken });
     log.info("Initial scan complete");
+    if (!cancelToken.cancelled) {
+      services.maintenanceService.scheduleAnalysis(0);
+    }
   } catch (err) {
     log.errorWithStack("Initial scan failed", err as Error);
   } finally {
+    services.scanState.active = false;
+    services.scanState.cancelToken = null;
     services.watchService.setScanActive(false, {
       discardDeferredChanges: true,
     });

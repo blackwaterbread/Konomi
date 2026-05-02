@@ -1,6 +1,7 @@
 import { getDB, getDialect } from "./db";
 import type { Prisma } from "../../../generated/prisma/client";
 import type { SearchStatSource } from "@core/types/repository";
+import type { CancelToken } from "@core/lib/scanner";
 import {
   buildStatDeltasFromMutations,
   extractTokenTexts,
@@ -285,8 +286,10 @@ async function readImageSearchPresetStatsFromTable(): Promise<ImageSearchPresetS
 
 export async function rebuildImageSearchPresetStats(
   onProgress?: SearchStatsProgressCallback,
+  signal?: CancelToken,
 ): Promise<void> {
   await ensureImageSearchStatTable();
+  if (signal?.cancelled) return;
   const db = getDB();
   const resolutionRows = (await db.$queryRawUnsafe(
     `SELECT width, height, COUNT(*) AS count
@@ -304,6 +307,7 @@ export async function rebuildImageSearchPresetStats(
   const tagCounts = new Map<string, { tag: string; count: number }>();
   let tagOffset = 0;
   for (;;) {
+    if (signal?.cancelled) return;
     const batch = (await db.image.findMany({
       select: {
         promptTokens: true,
@@ -328,6 +332,7 @@ export async function rebuildImageSearchPresetStats(
     tagOffset += batch.length;
     if (batch.length < TAG_STAT_BATCH_SIZE) break;
   }
+  if (signal?.cancelled) return;
   const tagRows = Array.from(tagCounts.entries()).map(([key, value]) => ({
     key,
     tag: value.tag,
@@ -347,6 +352,7 @@ export async function rebuildImageSearchPresetStats(
   const BATCH_SIZE = 500;
 
   for (let i = 0; i < resolutionRows.length; i += BATCH_SIZE) {
+    if (signal?.cancelled) return;
     const batch = resolutionRows.slice(i, i + BATCH_SIZE);
     const placeholders: string[] = [];
     const params: unknown[] = [];
@@ -378,6 +384,7 @@ export async function rebuildImageSearchPresetStats(
   }
 
   for (let i = 0; i < modelRows.length; i += BATCH_SIZE) {
+    if (signal?.cancelled) return;
     const batch = modelRows.slice(i, i + BATCH_SIZE);
     const placeholders: string[] = [];
     const params: unknown[] = [];
@@ -401,6 +408,7 @@ export async function rebuildImageSearchPresetStats(
   }
 
   for (let i = 0; i < tagRows.length; i += BATCH_SIZE) {
+    if (signal?.cancelled) return;
     const batch = tagRows.slice(i, i + BATCH_SIZE);
     const placeholders: string[] = [];
     const params: unknown[] = [];
@@ -426,6 +434,7 @@ export async function rebuildImageSearchPresetStats(
 
 export async function getImageSearchPresetStats(
   onProgress?: SearchStatsProgressCallback,
+  signal?: CancelToken,
 ): Promise<ImageSearchPresetStats> {
   await ensureImageSearchStatTable();
   let stats = await readImageSearchPresetStatsFromTable();
@@ -435,7 +444,8 @@ export async function getImageSearchPresetStats(
       stats.availableModels.length === 0) ||
     !hasTagRows
   ) {
-    await rebuildImageSearchPresetStats(onProgress);
+    await rebuildImageSearchPresetStats(onProgress, signal);
+    if (signal?.cancelled) return stats;
     stats = await readImageSearchPresetStatsFromTable();
   }
   return stats;

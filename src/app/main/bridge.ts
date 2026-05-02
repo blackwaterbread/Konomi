@@ -24,17 +24,24 @@ type PendingRequest = {
   timeout: ReturnType<typeof setTimeout> | null;
 };
 
-// [DEPRECATED] 기존에는 요청이 영원히 안 끝나는걸 방지하기 위한 Timeout이었으나,
-// 모든 무거운 작업이 CancelToken/signal 기반 취소를 지원하도록 재설계되어
-// Timeout으로 인한 강제 종료가 불필요해짐. 코드는 유지하되 기본값을 0(무한)으로 설정.
+// 0 = 무한 대기. 무거운 작업은 모두 CancelToken/signal 기반으로 취소되도록
+// 재설계되었기 때문에 timeout 강제 종료가 불필요. KONOMI_BRIDGE_TIMEOUT_MS
+// 환경 변수로 디버깅 시 유한 timeout을 강제할 수 있음.
 const DEFAULT_REQUEST_TIMEOUT_MS = 0;
 const RESTART_DELAY_MS = 1000;
+const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
 
 function resolveRequestTimeoutMs(): number {
   const raw = Number(process.env.KONOMI_BRIDGE_TIMEOUT_MS);
   if (!Number.isFinite(raw)) return DEFAULT_REQUEST_TIMEOUT_MS;
   if (raw <= 0) return 0;
   return Math.max(5000, Math.floor(raw));
+}
+
+function resolveShutdownGraceMs(): number {
+  const raw = Number(process.env.KONOMI_SHUTDOWN_GRACE_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SHUTDOWN_GRACE_MS;
+  return Math.max(1000, Math.floor(raw));
 }
 
 class UtilityBridge {
@@ -64,6 +71,59 @@ class UtilityBridge {
     this.child = null;
     if (child) {
       child.kill();
+    }
+  }
+
+  /**
+   * Graceful shutdown: gives the utility process a chance to drain in-flight
+   * maintenance work, terminate worker threads, and disconnect from the DB
+   * before being killed. Falls back to a forced kill after `gracePeriodMs`.
+   * Default grace period (5s) is overridable via `KONOMI_SHUTDOWN_GRACE_MS`
+   * for users with large libraries whose hashing can't drain in 5s.
+   */
+  async stopGracefully(gracePeriodMs = resolveShutdownGraceMs()): Promise<void> {
+    const child = this.child;
+    if (!this.utilityPath || !child) {
+      this.stop();
+      return;
+    }
+    this.log.info("Stopping utility bridge (graceful)", { gracePeriodMs });
+    // Prevent auto-restart while we wait for the utility to wind down.
+    this.utilityPath = null;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    let timedOut = true;
+    try {
+      await Promise.race([
+        this.request("system:shutdown").then(() => {
+          timedOut = false;
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, gracePeriodMs)),
+      ]);
+    } catch (err) {
+      timedOut = false;
+      this.log.errorWithStack(
+        "Graceful shutdown request failed",
+        err instanceof Error ? err : new Error(String(err)),
+      );
+    }
+    if (timedOut) {
+      this.log.warn(
+        "Utility process did not acknowledge shutdown in time; force-killing",
+        { gracePeriodMs },
+      );
+    }
+    this.rejectAllPending(new Error("Utility bridge stopped"));
+    this.child = null;
+    try {
+      child.kill();
+    } catch (err) {
+      this.log.errorWithStack(
+        "Failed to kill utility process after graceful shutdown",
+        err instanceof Error ? err : new Error(String(err)),
+      );
     }
   }
 
@@ -197,7 +257,9 @@ class UtilityBridge {
     this.log.info("Bound renderer webContents");
   }
 
-  // timeoutMs: bridge에 요청할 때 작업이 영원히 돌아가는걸 방지하는 일종의 timeout 안전장치인데, 정작 오래걸리는 작업을 지맘대로 캔슬시키는 문제가 있음. 0이면 무한
+  // timeoutMs: per-request override. 0 또는 미지정 시 DEFAULT_REQUEST_TIMEOUT_MS
+  // (기본 0 = 무한). 평소엔 무한이지만 테스트/디버깅 시 유한값을 넘겨 빠르게
+  // 실패하게 만들 수 있음.
   request<T>(type: string, payload?: unknown, timeoutMs?: number): Promise<T> {
     return new Promise((resolve, reject) => {
       const child = this.child;

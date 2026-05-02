@@ -21,7 +21,6 @@ const MAX_SIDEBAR_WIDTH = 480;
 
 interface UseAppShellStateOptions {
   scanningRef: MutableRefObject<boolean>;
-  analyzeTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   pendingSimilarityRecalcRef: MutableRefObject<boolean>;
   runAnalysisNow: () => Promise<boolean>;
 }
@@ -58,7 +57,6 @@ function getStoredSidebarWidth() {
 
 export function useAppShellState({
   scanningRef,
-  analyzeTimerRef,
   pendingSimilarityRecalcRef,
   runAnalysisNow,
 }: UseAppShellStateOptions): UseAppShellStateResult {
@@ -191,11 +189,6 @@ export function useAppShellState({
         return;
       }
 
-      if (analyzeTimerRef.current) {
-        clearTimeout(analyzeTimerRef.current);
-        analyzeTimerRef.current = null;
-      }
-
       setPanelTransitioning(true);
       setActivePanel(nextPanel);
       requestAnimationFrame(() => {
@@ -203,14 +196,7 @@ export function useAppShellState({
       });
       await runAnalysisNow();
     },
-    [
-      activePanel,
-      analyzeTimerRef,
-      pendingSimilarityRecalcRef,
-      runAnalysisNow,
-      scanningRef,
-      t,
-    ],
+    [activePanel, pendingSimilarityRecalcRef, runAnalysisNow, scanningRef, t],
   );
 
   const handleStartTour = useCallback(() => {

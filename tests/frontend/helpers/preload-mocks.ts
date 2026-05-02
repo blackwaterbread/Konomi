@@ -39,6 +39,7 @@ const imageWatchDuplicate =
     Parameters<Parameters<Window["image"]["onWatchDuplicate"]>[0]>[0]
   >();
 const imageHashProgress = createEventChannel<{ done: number; total: number }>();
+const imageAnalysisActive = createEventChannel<{ active: boolean }>();
 const imageSimilarityProgress = createEventChannel<{
   done: number;
   total: number;
@@ -83,6 +84,7 @@ export const preloadEvents = {
     removed: imageRemoved,
     watchDuplicate: imageWatchDuplicate,
     hashProgress: imageHashProgress,
+    analysisActive: imageAnalysisActive,
     similarityProgress: imageSimilarityProgress,
     scanProgress: imageScanProgress,
     searchStatsProgress: imageSearchStatsProgress,
@@ -187,6 +189,7 @@ export const preloadMocks = {
     similarGroupForImage: vi.fn().mockResolvedValue(null),
     similarReasons: vi.fn().mockResolvedValue([]),
     onHashProgress: imageHashProgress.subscribe,
+    onAnalysisActive: imageAnalysisActive.subscribe,
     onSimilarityProgress: imageSimilarityProgress.subscribe,
     onScanProgress: imageScanProgress.subscribe,
     onSearchStatsProgress: imageSearchStatsProgress.subscribe,

@@ -47,6 +47,7 @@ const ko = {
     loading: "로딩 중...",
     none: "없음",
     more: "더 보기",
+    refresh: "새로고침",
     textFieldContext: {
       cut: "잘라내기",
       copy: "복사",
@@ -56,10 +57,15 @@ const ko = {
     },
   },
   availableFolders: {
-    title: "폴더 추가",
+    title: "감지된 폴더",
     description: "Docker 볼륨에 마운트된 폴더는 자동으로 등록되어 스캔됩니다.",
     instruction:
-      "새 폴더를 추가하려면 Docker 설정에서 해당 폴더를 /images 하위에 마운트한 뒤 서버를 재시작하세요.",
+      "새 폴더를 추가하려면 Docker 설정에서 해당 폴더를 /images 하위에 마운트하세요. 마운트 후 최대 60초 안에 자동으로 등록됩니다.",
+    detected: "{{count}}개 감지됨",
+    loading: "감지 중...",
+    empty: "마운트된 폴더가 없습니다.",
+    registered: "등록됨",
+    pending: "등록 대기",
   },
   header: {
     searchPlaceholder: "프롬프트로 이미지 검색...",

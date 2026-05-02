@@ -7,13 +7,11 @@ describe("useAppShellState", () => {
   it("blocks leaving settings while a scan is active", async () => {
     const runAnalysisNow = vi.fn().mockResolvedValue(true);
     const scanningRef = { current: true };
-    const analyzeTimerRef = { current: null };
     const pendingSimilarityRecalcRef = { current: true };
 
     const { result } = renderHook(() =>
       useAppShellState({
         scanningRef,
-        analyzeTimerRef,
         pendingSimilarityRecalcRef,
         runAnalysisNow,
       }),
@@ -36,15 +34,12 @@ describe("useAppShellState", () => {
 
   it("reruns similarity analysis when leaving settings with pending work", async () => {
     const runAnalysisNow = vi.fn().mockResolvedValue(true);
-    const timer = setTimeout(() => {}, 1000);
     const scanningRef = { current: false };
-    const analyzeTimerRef = { current: timer };
     const pendingSimilarityRecalcRef = { current: true };
 
     const { result } = renderHook(() =>
       useAppShellState({
         scanningRef,
-        analyzeTimerRef,
         pendingSimilarityRecalcRef,
         runAnalysisNow,
       }),
@@ -59,7 +54,6 @@ describe("useAppShellState", () => {
     });
 
     expect(result.current.activePanel).toBe("gallery");
-    expect(analyzeTimerRef.current).toBeNull();
     expect(runAnalysisNow).toHaveBeenCalledTimes(1);
   });
 
@@ -67,7 +61,6 @@ describe("useAppShellState", () => {
     const { result } = renderHook(() =>
       useAppShellState({
         scanningRef: { current: false },
-        analyzeTimerRef: { current: null },
         pendingSimilarityRecalcRef: { current: false },
         runAnalysisNow: vi.fn().mockResolvedValue(true),
       }),
@@ -94,7 +87,6 @@ describe("useAppShellState", () => {
     const { result } = renderHook(() =>
       useAppShellState({
         scanningRef: { current: false },
-        analyzeTimerRef: { current: null },
         pendingSimilarityRecalcRef: { current: false },
         runAnalysisNow: vi.fn().mockResolvedValue(true),
       }),
