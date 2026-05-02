@@ -47,6 +47,13 @@ const ko = {
     loading: "로딩 중...",
     none: "없음",
     more: "더 보기",
+    textFieldContext: {
+      cut: "잘라내기",
+      copy: "복사",
+      paste: "붙여넣기",
+      delete: "삭제",
+      selectAll: "전체 선택",
+    },
   },
   availableFolders: {
     title: "폴더 추가",

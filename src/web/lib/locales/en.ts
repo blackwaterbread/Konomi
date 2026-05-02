@@ -47,6 +47,13 @@ const en = {
     loading: "Loading...",
     none: "None",
     more: "More",
+    textFieldContext: {
+      cut: "Cut",
+      copy: "Copy",
+      paste: "Paste",
+      delete: "Delete",
+      selectAll: "Select all",
+    },
   },
   availableFolders: {
     title: "Add Folders",

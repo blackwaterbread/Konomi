@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useTextFieldContextMenu } from "@/hooks/useTextFieldContextMenu";
 import infoImageUrl from "@/assets/images/info.webp";
 import type { AppInfo } from "@preload/index.d";
 
@@ -439,6 +440,7 @@ export function AppInfoDialog({
   const [loading, setLoading] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [licenseOpen, setLicenseOpen] = useState(false);
+  const licenseContextMenu = useTextFieldContextMenu<HTMLTextAreaElement>();
 
   useEffect(() => {
     if (!open) return;
@@ -590,7 +592,9 @@ export function AppInfoDialog({
             readOnly
             value={OPEN_SOURCE_LICENSE_TEXT}
             className="min-h-[24rem] w-full resize-none rounded-lg border border-border/60 bg-secondary/30 px-3 py-3 font-mono text-xs leading-6 text-foreground outline-none"
+            onContextMenu={licenseContextMenu.onContextMenu}
           />
+          {licenseContextMenu.contextMenu}
         </DialogContent>
       </Dialog>
     </Dialog>

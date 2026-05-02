@@ -3,6 +3,7 @@ import { Copy, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useTextFieldContextMenu } from "@/hooks/useTextFieldContextMenu";
 
 type StorageEntry = {
   key: string;
@@ -45,6 +46,7 @@ export const LocalStorageInspector = memo(function LocalStorageInspector() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editing, setEditing] = useState(false);
+  const editContextMenu = useTextFieldContextMenu<HTMLTextAreaElement>();
 
   const refresh = useCallback(() => {
     setEntries(readAllStorage());
@@ -201,12 +203,16 @@ export const LocalStorageInspector = memo(function LocalStorageInspector() {
             </div>
           </div>
           {editing ? (
-            <textarea
-              className="h-40 rounded-md border border-border bg-secondary p-2 text-xs font-mono resize-y"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              spellCheck={false}
-            />
+            <>
+              <textarea
+                className="h-40 rounded-md border border-border bg-secondary p-2 text-xs font-mono resize-y"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                spellCheck={false}
+                onContextMenu={editContextMenu.onContextMenu}
+              />
+              {editContextMenu.contextMenu}
+            </>
           ) : (
             <ScrollArea className="flex-1 rounded-md border border-border bg-secondary">
               <pre className="p-2 text-xs font-mono whitespace-pre-wrap break-all">

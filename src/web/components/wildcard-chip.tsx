@@ -12,6 +12,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import type { WildcardToken } from "@/lib/token";
 
 const POPOVER_WIDTH = 240;
@@ -267,7 +268,7 @@ function WildcardChipCore({
       </div>
 
       <div className="mb-2.5 flex gap-1">
-        <input
+        <Input
           ref={newOptionInputRef}
           value={newOptionDraft}
           onChange={(e) => setNewOptionDraft(e.target.value)}
@@ -282,7 +283,7 @@ function WildcardChipCore({
             }
           }}
           placeholder={t("wildcardChip.addOptionPlaceholder")}
-          className="flex-1 min-w-0 h-7 max-sm:h-10 rounded border border-border/60 bg-background px-2 text-xs max-sm:text-sm text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
+          className="flex-1 min-w-0 h-7 max-sm:h-10 rounded border border-border/60 bg-background dark:bg-background px-2 text-xs max-sm:text-sm text-foreground shadow-none placeholder:text-muted-foreground/40 focus-visible:border-primary/60 focus-visible:ring-0"
         />
         <button
           type="button"

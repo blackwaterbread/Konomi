@@ -46,6 +46,7 @@ import {
   Upload,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import {
   Select as RadixSelect,
   SelectContent,
@@ -395,7 +396,7 @@ const INFINITY_SYMBOL = "\u221E";
 const NAI_GEN_PERSIST_DELAY_MS = 200;
 
 const INPUT_CLS =
-  "w-full bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 max-sm:py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary transition-colors";
+  "h-auto w-full bg-secondary/60 dark:bg-secondary/60 border border-border/60 rounded-lg px-3 py-1.5 max-sm:py-2.5 text-sm text-foreground shadow-none placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 focus:bg-secondary focus-visible:border-primary/60 focus-visible:ring-0 transition-colors";
 
 interface ImportChecks {
   prompt: boolean;
@@ -916,7 +917,7 @@ function DeferredNumberInput({
   }, [inputValue, max, min, onChange, value]);
 
   return (
-    <input
+    <Input
       type="number"
       min={min}
       max={max}
@@ -930,7 +931,7 @@ function DeferredNumberInput({
 }
 
 const INLINE_NUM_CLS =
-  "w-10 text-sm font-semibold tabular-nums leading-none bg-transparent border-none outline-none text-foreground p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+  "h-auto w-10 text-sm font-semibold tabular-nums leading-none bg-transparent dark:bg-transparent border-none rounded-none shadow-none text-foreground p-0 focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 const formatInteger = (value: number) => String(value);
 const formatOneDecimal = (value: number) => value.toFixed(1);
@@ -1065,7 +1066,7 @@ const AdvancedSeedSummary = memo(function AdvancedSeedSummary({
       <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
         Seed
       </span>
-      <input
+      <Input
         type="text"
         inputMode="numeric"
         value={displayedSeed}
@@ -1084,7 +1085,7 @@ const AdvancedSeedSummary = memo(function AdvancedSeedSummary({
         onBlur={() => commitSeedInput()}
         placeholder="-"
         className={cn(
-          "w-16 max-w-16 text-sm font-semibold tabular-nums leading-none font-mono bg-transparent border-none outline-none text-foreground placeholder:text-foreground/30 p-0",
+          "h-auto w-16 max-w-16 text-sm font-semibold tabular-nums leading-none font-mono bg-transparent dark:bg-transparent border-none rounded-none shadow-none text-foreground placeholder:text-foreground/30 p-0 focus-visible:ring-0",
           displayedSeed.trim() && !seedFocused && "cursor-pointer truncate",
         )}
       />
@@ -1192,7 +1193,7 @@ const AdvancedSeedControl = memo(function AdvancedSeedControl({
     <div>
       <FieldLabel label={t("generation.advanced.seed")} />
       <div className="flex gap-1.5">
-        <input
+        <Input
           type="number"
           value={displayedSeed}
           onChange={(e) => setDraftSeed(e.target.value)}
@@ -2380,24 +2381,24 @@ const SizeSection = memo(function SizeSection({
                 ))
               )}
               <div className="border-t border-border/40 px-2 py-2 flex items-center gap-1.5">
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   value={customSizeAddW}
                   onChange={(e) => setCustomSizeAddW(e.target.value)}
                   placeholder="W"
-                  className="w-0 flex-1 min-w-0 bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center focus:outline-none focus:border-primary/50 cursor-text"
+                  className="h-auto w-0 flex-1 min-w-0 bg-secondary/60 dark:bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center shadow-none cursor-text focus-visible:border-primary/50 focus-visible:ring-0"
                 />
                 <span className="text-xs text-muted-foreground shrink-0">
                   횞
                 </span>
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   value={customSizeAddH}
                   onChange={(e) => setCustomSizeAddH(e.target.value)}
                   placeholder="H"
-                  className="w-0 flex-1 min-w-0 bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center focus:outline-none focus:border-primary/50 cursor-text"
+                  className="h-auto w-0 flex-1 min-w-0 bg-secondary/60 dark:bg-secondary/60 border border-border/60 rounded px-1.5 py-1 text-xs font-mono text-center shadow-none cursor-text focus-visible:border-primary/50 focus-visible:ring-0"
                 />
                 <button
                   onClick={() => {
@@ -3370,11 +3371,11 @@ const LeftPanel = memo(function LeftPanel({
                 <ModelSection model={model} setModel={setModel} />
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-                  <input
+                  <Input
                     value={promptSearchInput}
                     onChange={(e) => setPromptSearchInput(e.target.value)}
                     placeholder={t("generation.promptSearch.placeholder")}
-                    className="h-7 w-full rounded border border-border/40 bg-muted/50 pl-7 pr-7 text-xs text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50"
+                    className="h-7 w-full rounded border border-border/40 bg-muted/50 dark:bg-muted/50 pl-7 pr-7 text-xs text-foreground shadow-none placeholder:text-muted-foreground/40 focus-visible:border-primary/50 focus-visible:ring-0"
                   />
                   {promptSearchInput && (
                     <button
@@ -3603,7 +3604,7 @@ function RightSidePanelSettings({
           </div>
           {apiKeyValidated ? (
             <div className="flex gap-1.5">
-              <input
+              <Input
                 type="password"
                 value={apiKeyInput}
                 readOnly
@@ -3623,7 +3624,7 @@ function RightSidePanelSettings({
               </button>
             </div>
           ) : (
-            <input
+            <Input
               type="text"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
@@ -3657,7 +3658,7 @@ function RightSidePanelSettings({
             {t("generation.actions.outputFolder")}
           </span>
           <div className="flex gap-1.5">
-            <input
+            <Input
               value={outputFolder}
               placeholder={t("generation.actions.outputFolderPlaceholder")}
               className={cn(

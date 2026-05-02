@@ -762,9 +762,9 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
           )}
           <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           {isEditing ? (
-            <input
+            <Input
               ref={inputRef}
-              className="flex-1 min-w-0 text-sm bg-transparent border-b border-primary outline-none text-foreground"
+              className="flex-1 min-w-0 h-auto rounded-none border-0 border-b border-primary bg-transparent dark:bg-transparent px-0 py-0 text-sm text-foreground shadow-none focus-visible:border-primary focus-visible:ring-0"
               value={currentEditingName}
               autoFocus
               onChange={(e) => setEditingName(e.target.value)}
@@ -1246,9 +1246,9 @@ const SidebarCategoryRow = memo(function SidebarCategoryRow({
             />
           )}
           {isEditing ? (
-            <input
+            <Input
               ref={inputRef}
-              className="flex-1 min-w-0 text-sm bg-transparent border-b border-primary outline-none text-foreground"
+              className="flex-1 min-w-0 h-auto rounded-none border-0 border-b border-primary bg-transparent dark:bg-transparent px-0 py-0 text-sm text-foreground shadow-none focus-visible:border-primary focus-visible:ring-0"
               value={currentEditingName}
               autoFocus
               onChange={(e) => setEditingName(e.target.value)}

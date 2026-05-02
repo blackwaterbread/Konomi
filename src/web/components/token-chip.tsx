@@ -29,6 +29,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Input } from "@/components/ui/input";
 import {
   getPromptEmphasisSyntaxIssueKind,
   type PromptEmphasisSyntaxIssueKind,
@@ -858,7 +859,7 @@ function TokenChipCore({
             constrainToContainer && "min-w-0 max-w-full",
           )}
         >
-          <input
+          <Input
             ref={inlineInputRef}
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
@@ -868,7 +869,7 @@ function TokenChipCore({
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
-            className="bg-transparent outline-none text-xs min-w-[2ch]"
+            className="h-auto w-auto rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-0 text-xs shadow-none min-w-[2ch] focus-visible:ring-0"
             size={Math.max(2, draftText.length + 1)}
           />
           {inlineWeighted ? (
@@ -1005,7 +1006,7 @@ function TokenChipCore({
                 {t("tokenChip.editor.tag")}
               </label>
               <div className="relative">
-                <input
+                <Input
                   ref={editorInputRef}
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}
@@ -1015,7 +1016,7 @@ function TokenChipCore({
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className="h-8 w-full rounded border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60"
+                  className="h-8 w-full rounded border border-border bg-background dark:bg-background px-2 text-xs text-foreground shadow-none focus-visible:border-primary/60 focus-visible:ring-0"
                 />
                 {tagSuggestionOpen && tagSuggestions.length > 0 ? (
                   <div className="absolute top-full left-0 z-40 mt-1 max-h-56 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover shadow-lg">
@@ -1117,10 +1118,10 @@ function TokenChipCore({
               <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">
                 {t("tokenChip.editor.rawToken")}
               </label>
-              <input
+              <Input
                 value={previewRawToken}
                 readOnly
-                className="h-8 w-full rounded border border-border bg-background px-2 font-mono text-[11px] text-foreground/80 outline-none"
+                className="h-8 w-full rounded border border-border bg-background dark:bg-background px-2 font-mono text-[11px] text-foreground/80 shadow-none focus-visible:ring-0"
               />
             </div>
 

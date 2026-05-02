@@ -3,6 +3,7 @@ import { AlertTriangle, Copy, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useTextFieldContextMenu } from "@/hooks/useTextFieldContextMenu";
 import {
   API_REGISTRY,
   API_NAMESPACES,
@@ -28,6 +29,7 @@ export const ApiExecutor = memo(function ApiExecutor() {
   const [paramsText, setParamsText] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [resultError, setResultError] = useState(false);
+  const paramsContextMenu = useTextFieldContextMenu<HTMLTextAreaElement>();
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -202,7 +204,9 @@ export const ApiExecutor = memo(function ApiExecutor() {
             value={paramsText}
             onChange={(e) => setParamsText(e.target.value)}
             spellCheck={false}
+            onContextMenu={paramsContextMenu.onContextMenu}
           />
+          {paramsContextMenu.contextMenu}
         </div>
       )}
 

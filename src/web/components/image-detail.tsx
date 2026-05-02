@@ -34,6 +34,7 @@ import {
   Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -353,11 +354,11 @@ const InfoPanel = memo(function InfoPanel({
       <div className="shrink-0 border-b border-border/40 px-4 py-2">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-          <input
+          <Input
             value={tagFilterInput}
             onChange={(e) => setTagFilterInput(e.target.value)}
             placeholder={t("imageDetail.tagSearch.placeholder")}
-            className="h-7 w-full rounded border border-border/40 bg-muted/50 pl-7 pr-7 text-xs text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-primary/50"
+            className="h-7 w-full rounded border border-border/40 bg-muted/50 dark:bg-muted/50 pl-7 pr-7 text-xs text-foreground shadow-none placeholder:text-muted-foreground/40 focus-visible:border-primary/50 focus-visible:ring-0"
           />
           {tagFilterInput && (
             <button

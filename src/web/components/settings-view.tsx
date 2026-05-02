@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -203,7 +204,7 @@ function PageSizeSection({
           </button>
           {editing && (
             <>
-              <input
+              <Input
                 ref={inputRef}
                 type="number"
                 min={PAGE_SIZE_MIN}
@@ -214,7 +215,7 @@ function PageSizeSection({
                   if (e.key === "Enter") commitCustomValue();
                   if (e.key === "Escape") cancelEditor();
                 }}
-                className="w-16 px-2 py-1.5 text-sm rounded-md border border-border bg-secondary text-foreground text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-auto w-16 px-2 py-1.5 text-sm rounded-md border border-border bg-secondary dark:bg-secondary text-foreground text-center tabular-nums shadow-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-border"
               />
               <button
                 onClick={commitCustomValue}

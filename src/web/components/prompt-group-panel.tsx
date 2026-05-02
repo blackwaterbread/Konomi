@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 import type {
   PromptCategory,
   PromptGroup,
@@ -33,6 +34,7 @@ import type {
   PromptTagSuggestStats,
 } from "@preload/index.d";
 import { PromptTagSuggestionIndicator } from "./prompt-tag-suggestion-indicator";
+import { useTextFieldContextMenu } from "@/hooks/useTextFieldContextMenu";
 
 const DRAG_MIME = "application/x-konomi-token";
 const TAG_SUGGEST_LIMIT = 8;
@@ -210,6 +212,7 @@ function GroupFormArea({
   const parsedTags = useMemo(() => parseGroupTagDraft(tagsDraft), [tagsDraft]);
   const canSubmit = nameDraft.trim().length > 0 && parsedTags.length > 0;
   const [tagCaretPosition, setTagCaretPosition] = useState(initialTags.length);
+  const tagsContextMenu = useTextFieldContextMenu<HTMLTextAreaElement>();
   const [tagSuggestions, setTagSuggestions] = useState<PromptTagSuggestion[]>(
     [],
   );
@@ -359,7 +362,7 @@ function GroupFormArea({
   return (
     <div className="mx-2 mb-2 rounded border border-border/40 bg-secondary/30 p-2.5">
       <div className="space-y-2">
-        <input
+        <Input
           ref={nameInputRef}
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
@@ -372,7 +375,7 @@ function GroupFormArea({
           }}
           placeholder={t("promptGroupPanel.groupNamePlaceholder")}
           aria-label={t("promptGroupPanel.groupNamePlaceholder")}
-          className="h-8 w-full rounded border border-border/60 bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60"
+          className="h-8 w-full rounded border border-border/60 bg-background dark:bg-background px-2 text-xs text-foreground shadow-none focus-visible:border-primary/60 focus-visible:ring-0"
         />
         <div className="relative">
           <textarea
@@ -441,11 +444,13 @@ function GroupFormArea({
               }
               if (e.key === "Escape") onClose();
             }}
+            onContextMenu={tagsContextMenu.onContextMenu}
             rows={3}
             placeholder={t("promptGroupPanel.tagsPlaceholder")}
             aria-label={t("promptGroupPanel.groupTags")}
             className="block w-full resize-none rounded border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
           />
+          {tagsContextMenu.contextMenu}
           {tagSuggestionOpen && tagSuggestions.length > 0 ? (
             <div className="absolute top-full left-0 z-20 mt-1 max-h-56 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover shadow-lg">
               {tagSuggestions.map((suggestion, index) => (
@@ -737,7 +742,7 @@ function CategoryItem({
         </button>
 
         {renaming ? (
-          <input
+          <Input
             ref={renameInputRef}
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
@@ -749,7 +754,7 @@ function CategoryItem({
               if (e.key === "Escape") setRenaming(false);
             }}
             onBlur={commitRename}
-            className="flex-1 min-w-0 h-5 rounded border border-primary/60 bg-background px-1.5 text-xs text-foreground outline-none"
+            className="flex-1 min-w-0 h-5 rounded border border-primary/60 bg-background dark:bg-background px-1.5 text-xs text-foreground shadow-none focus-visible:border-primary/60 focus-visible:ring-0"
           />
         ) : (
           <span
@@ -1086,7 +1091,7 @@ export const PromptGroupPanel = memo(function PromptGroupPanel({
 
       <div className="shrink-0 border-t border-border/40 p-2">
         <div className="flex gap-1">
-          <input
+          <Input
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => {
@@ -1096,7 +1101,7 @@ export const PromptGroupPanel = memo(function PromptGroupPanel({
               }
             }}
             placeholder={t("promptGroupPanel.newCategoryPlaceholder")}
-            className="flex-1 min-w-0 h-7 rounded border border-border/60 bg-secondary/60 px-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder:text-muted-foreground/40"
+            className="flex-1 min-w-0 h-7 rounded border border-border/60 bg-secondary/60 dark:bg-secondary/60 px-2 text-xs text-foreground shadow-none placeholder:text-muted-foreground/40 focus-visible:border-primary/60 focus-visible:ring-0"
           />
           <button
             type="button"

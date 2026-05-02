@@ -33,6 +33,7 @@ import {
 import type { PromptGroup } from "@preload/index.d";
 import { PromptInput } from "@/components/prompt-input";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 
 const POPOVER_WIDTH = 264;
 const EDITOR_POPOVER_WIDTH = 300;
@@ -401,7 +402,7 @@ function GroupChipCore({
           <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-muted-foreground">
             {t("groupChip.groupName")}
           </label>
-          <input
+          <Input
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
             onKeyDown={(e) => {
@@ -414,7 +415,7 @@ function GroupChipCore({
                 handleCancel();
               }
             }}
-            className="h-8 w-full rounded border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary/60"
+            className="h-8 w-full rounded border border-border bg-background dark:bg-background px-2 text-xs text-foreground shadow-none focus-visible:border-primary/60 focus-visible:ring-0"
           />
         </div>
 
@@ -636,10 +637,10 @@ function GroupChipCore({
           <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">
             {t("tokenChip.editor.rawToken")}
           </label>
-          <input
+          <Input
             value={actionsRawText}
             readOnly
-            className="h-8 w-full rounded border border-border bg-background px-2 font-mono text-[11px] text-foreground/80 outline-none"
+            className="h-8 w-full rounded border border-border bg-background dark:bg-background px-2 font-mono text-[11px] text-foreground/80 shadow-none focus-visible:ring-0"
           />
         </div>
         {onChange ? (
