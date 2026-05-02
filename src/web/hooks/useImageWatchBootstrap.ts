@@ -15,7 +15,7 @@ interface UseImageWatchBootstrapOptions {
     skipFolderIds?: number[];
     refreshPage?: boolean;
     refreshSearchPresetStats?: boolean;
-  }) => Promise<boolean>;
+  }) => Promise<{ ok: boolean; cancelled: boolean }>;
 }
 
 /**
@@ -67,14 +67,14 @@ export function runAppInitialization({
     // Skip duplicate detection on boot — it requires hashing candidate files
     // which adds significant IO. The watcher catches duplicates in real-time
     // for new files, and folder-add scans run with detectDuplicates=true.
-    await runScan({
+    const scanResult = await runScan({
       detectDuplicates: false,
       skipFolderIds,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
     if (!cancelled) onInitialRefreshDone?.();
-    scheduleAnalysis(0);
+    if (!scanResult.cancelled) scheduleAnalysis(0);
   })();
 
   return {

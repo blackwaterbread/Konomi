@@ -15,7 +15,9 @@ interface UseSidebarFolderActionsOptions {
   isAnalyzing: boolean;
   addSelectedFolder: (id: number) => void;
   removeSelectedFolder: (id: number) => void;
-  runScan: (options?: RunScanOptions) => Promise<boolean>;
+  runScan: (
+    options?: RunScanOptions,
+  ) => Promise<{ ok: boolean; cancelled: boolean }>;
   scanningRef: MutableRefObject<boolean>;
   scheduleAnalysis: (delay?: number) => void;
   analyzeTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
@@ -42,16 +44,18 @@ export function useSidebarFolderActions({
       addSelectedFolder(folderId);
       setRollbackFolderIds((prev) => new Set([...prev, folderId]));
       setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
-      void runScan({ folderIds: [folderId], detectDuplicates: true }).then((ok) => {
-        if (!ok) return;
-        void refreshSubfolders([folderId]);
-        setRollbackFolderIds((prev) => {
-          const next = new Set(prev);
-          next.delete(folderId);
-          return next;
-        });
-        scheduleAnalysis(0);
-      });
+      void runScan({ folderIds: [folderId], detectDuplicates: true }).then(
+        ({ ok, cancelled }) => {
+          if (!ok || cancelled) return;
+          void refreshSubfolders([folderId]);
+          setRollbackFolderIds((prev) => {
+            const next = new Set(prev);
+            next.delete(folderId);
+            return next;
+          });
+          scheduleAnalysis(0);
+        },
+      );
     },
     [
       addSelectedFolder,
@@ -84,16 +88,18 @@ export function useSidebarFolderActions({
         for (const id of folderIds) next.add(id);
         return next;
       });
-      void runScan({ folderIds, detectDuplicates: true }).then((ok) => {
-        if (!ok) return;
-        void refreshSubfolders(folderIds);
-        setRollbackFolderIds((prev) => {
-          const next = new Set(prev);
-          for (const id of folderIds) next.delete(id);
-          return next;
-        });
-        scheduleAnalysis(0);
-      });
+      void runScan({ folderIds, detectDuplicates: true }).then(
+        ({ ok, cancelled }) => {
+          if (!ok || cancelled) return;
+          void refreshSubfolders(folderIds);
+          setRollbackFolderIds((prev) => {
+            const next = new Set(prev);
+            for (const id of folderIds) next.delete(id);
+            return next;
+          });
+          scheduleAnalysis(0);
+        },
+      );
     },
     [
       addSelectedFolder,
@@ -169,8 +175,8 @@ export function useSidebarFolderActions({
         next.add(folderId);
         return next;
       });
-      void runScan({ folderIds: [folderId] }).then((ok) => {
-        if (ok) {
+      void runScan({ folderIds: [folderId] }).then(({ ok, cancelled }) => {
+        if (ok && !cancelled) {
           void refreshSubfolders([folderId]);
           scheduleAnalysis(0);
         }

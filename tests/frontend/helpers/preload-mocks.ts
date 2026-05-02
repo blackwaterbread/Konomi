@@ -328,7 +328,7 @@ export function resetPreloadMocks(): void {
     .mockReset()
     .mockResolvedValue({ deleted: 0, failed: 0, deletedFromDb: 0 });
   preloadMocks.image.listByIds.mockReset().mockResolvedValue([]);
-  preloadMocks.image.scan.mockReset().mockResolvedValue(undefined);
+  preloadMocks.image.scan.mockReset().mockResolvedValue({ cancelled: false });
   preloadMocks.image.setFavorite.mockReset().mockResolvedValue(undefined);
   preloadMocks.image.watch.mockReset().mockResolvedValue(undefined);
   preloadMocks.image.listIgnoredDuplicates.mockReset().mockResolvedValue([]);

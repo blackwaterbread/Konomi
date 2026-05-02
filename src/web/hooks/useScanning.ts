@@ -32,7 +32,10 @@ export function useScanning({
     folderIds: number[];
   } | null>(null);
 
-  const scanPromiseRef = useRef<Promise<boolean> | null>(null);
+  const scanPromiseRef = useRef<Promise<{
+    ok: boolean;
+    cancelled: boolean;
+  }> | null>(null);
   const scanningRef = useRef(false);
   const scanStartCountRef = useRef(0);
   const rollbackRequestSeqRef = useRef(0);
@@ -71,7 +74,7 @@ export function useScanning({
       skipFolderIds?: number[];
       refreshPage?: boolean;
       refreshSearchPresetStats?: boolean;
-    }): Promise<boolean> => {
+    }): Promise<{ ok: boolean; cancelled: boolean }> => {
       if (scanPromiseRef.current) {
         log.debug("Scan request deduped");
         return scanPromiseRef.current;
@@ -102,8 +105,15 @@ export function useScanning({
       })();
       const scanPromise = window.image
         .scan({ detectDuplicates, folderIds, orderedFolderIds, skipFolderIds })
-        .then(() => {
-          log.info("Scan completed", { elapsedMs: Date.now() - startedAt });
+        .then((result) => {
+          const cancelled = result?.cancelled === true;
+          log.info("Scan completed", {
+            elapsedMs: Date.now() - startedAt,
+            cancelled,
+          });
+          if (cancelled) {
+            return { ok: true, cancelled: true };
+          }
           if (refreshPage) {
             schedulePageRefresh(0);
           }
@@ -123,7 +133,7 @@ export function useScanning({
               void refresh(ids, { allowEmpty: true });
             }
           }
-          return true;
+          return { ok: true, cancelled: false };
         })
         .catch((e: unknown) => {
           log.error("Scan failed", {
@@ -135,7 +145,7 @@ export function useScanning({
               message: e instanceof Error ? e.message : String(e),
             }),
           );
-          return false;
+          return { ok: false, cancelled: false };
         })
         .finally(() => {
           scanningRef.current = false;

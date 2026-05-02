@@ -15,7 +15,7 @@ function createDeferred<T>() {
 
 describe("useScanning", () => {
   it("tracks scan progress and folder activity during a successful scan", async () => {
-    const deferred = createDeferred<void>();
+    const deferred = createDeferred<{ cancelled: boolean }>();
     const schedulePageRefresh = vi.fn();
     const loadSearchPresetStats = vi.fn().mockResolvedValue(undefined);
     preloadMocks.image.scan.mockReturnValue(deferred.promise);
@@ -28,7 +28,7 @@ describe("useScanning", () => {
       }),
     );
 
-    let scanPromise!: Promise<boolean>;
+    let scanPromise!: Promise<{ ok: boolean; cancelled: boolean }>;
     act(() => {
       scanPromise = result.current.runScan({
         detectDuplicates: true,
@@ -54,7 +54,7 @@ describe("useScanning", () => {
 
     expect(result.current.activeScanFolderIds.has(3)).toBe(true);
 
-    deferred.resolve();
+    deferred.resolve({ cancelled: false });
     await act(async () => {
       await scanPromise;
     });
@@ -67,7 +67,7 @@ describe("useScanning", () => {
 
   it("cancels an active scan and raises a folder rollback request", async () => {
     vi.useFakeTimers();
-    const deferred = createDeferred<void>();
+    const deferred = createDeferred<{ cancelled: boolean }>();
     const schedulePageRefresh = vi.fn();
     const loadSearchPresetStats = vi.fn().mockResolvedValue(undefined);
     preloadMocks.image.scan.mockReturnValue(deferred.promise);
@@ -79,7 +79,7 @@ describe("useScanning", () => {
       }),
     );
 
-    let scanPromise!: Promise<boolean>;
+    let scanPromise!: Promise<{ ok: boolean; cancelled: boolean }>;
     act(() => {
       scanPromise = result.current.runScan();
       result.current.setRollbackFolderIds(new Set([7, 8]));
@@ -90,7 +90,7 @@ describe("useScanning", () => {
 
     await act(async () => {
       const confirmPromise = result.current.confirmCancelScan();
-      deferred.resolve();
+      deferred.resolve({ cancelled: true });
       await scanPromise;
       await vi.advanceTimersByTimeAsync(50);
       await confirmPromise;

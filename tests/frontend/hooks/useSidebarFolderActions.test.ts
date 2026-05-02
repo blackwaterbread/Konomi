@@ -6,9 +6,11 @@ import { useSidebarFolderActions } from "@/hooks/useSidebarFolderActions";
 function renderSidebarFolderActions(options?: {
   isAnalyzing?: boolean;
   scanning?: boolean;
-  runScanResult?: boolean;
+  runScanResult?: { ok: boolean; cancelled: boolean };
 }) {
-  const runScan = vi.fn().mockResolvedValue(options?.runScanResult ?? true);
+  const runScan = vi
+    .fn()
+    .mockResolvedValue(options?.runScanResult ?? { ok: true, cancelled: false });
   const scheduleAnalysis = vi.fn();
   const scanningRef = { current: options?.scanning ?? false };
 

@@ -626,7 +626,7 @@ export function createScanService(deps: ScanServiceDeps) {
   return {
     buildUpsertData,
 
-    async scanAll(options?: ScanOptions): Promise<void> {
+    async scanAll(options?: ScanOptions): Promise<{ cancelled: boolean }> {
       const signal = options?.signal;
       const startedAt = Date.now();
       const detectDuplicates = Boolean(options?.onDuplicateGroup);
@@ -720,7 +720,7 @@ export function createScanService(deps: ScanServiceDeps) {
           }
         }
 
-        if (signal?.cancelled) return;
+        if (signal?.cancelled) return { cancelled: true };
 
         // Clean up similarity cache for deleted images
         if (deletedSimilarityIds.size > 0 && deps.similarityCache) {
@@ -734,6 +734,7 @@ export function createScanService(deps: ScanServiceDeps) {
           total: progressState.total,
         });
         success = true;
+        return { cancelled: false };
       } finally {
         const elapsed = Date.now() - startedAt;
         log.info(

@@ -118,7 +118,7 @@ declare global {
         folderIds?: number[];
         orderedFolderIds?: number[];
         skipFolderIds?: number[];
-      }) => Promise<void>;
+      }) => Promise<{ cancelled: boolean }>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
       watch: () => Promise<void>;
       listIgnoredDuplicates: () => Promise<string[]>;
