@@ -296,9 +296,7 @@ function pathToFolderName(folderPath: string): string {
 
 interface SidebarMultiFolderDialogProps {
   openRequest: number;
-  onSubmit: (
-    paths: string[],
-  ) => Promise<{ errors: { path: string; message: string }[] }>;
+  onSubmit: (paths: string[]) => void;
 }
 
 const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
@@ -308,35 +306,21 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<MultiFolderEntry[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitErrors, setSubmitErrors] = useState<
-    { path: string; message: string }[]
-  >([]);
   const lastOpenRequestRef = useRef(0);
 
   useEffect(() => {
     if (openRequest === 0 || openRequest === lastOpenRequestRef.current) return;
     lastOpenRequestRef.current = openRequest;
     setEntries([]);
-    setSubmitErrors([]);
-    setIsSubmitting(false);
     setOpen(true);
   }, [openRequest]);
 
-  const handleOpenChange = useCallback(
-    (next: boolean) => {
-      if (!next && isSubmitting) return;
-      if (!next) {
-        setEntries([]);
-        setSubmitErrors([]);
-      }
-      setOpen(next);
-    },
-    [isSubmitting],
-  );
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!next) setEntries([]);
+    setOpen(next);
+  }, []);
 
   const handleBrowse = useCallback(async () => {
-    if (isSubmitting) return;
     try {
       const paths = await window.dialog.selectDirectories();
       if (!paths || paths.length === 0) return;
@@ -350,29 +334,18 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
     } catch {
       // dialog cancelled
     }
-  }, [isSubmitting]);
+  }, []);
 
   const handleRemove = useCallback((path: string) => {
     setEntries((prev) => prev.filter((e) => e.path !== path));
-    setSubmitErrors((prev) => prev.filter((e) => e.path !== path));
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    setIsSubmitting(true);
-    setSubmitErrors([]);
+  const handleSubmit = useCallback(() => {
+    if (entries.length === 0) return;
     const paths = entries.map((e) => e.path);
-    const { errors } = await onSubmit(paths);
-    setIsSubmitting(false);
-    if (errors.length > 0) {
-      setSubmitErrors(errors);
-      setEntries((prev) =>
-        prev.filter((e) => errors.some((err) => err.path === e.path)),
-      );
-    } else {
-      setEntries([]);
-      setSubmitErrors([]);
-      setOpen(false);
-    }
+    setEntries([]);
+    setOpen(false);
+    void onSubmit(paths);
   }, [entries, onSubmit]);
 
   return (
@@ -384,42 +357,28 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
         <div className="space-y-3">
           {entries.length > 0 ? (
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
-              {entries.map((entry) => {
-                const error = submitErrors.find((e) => e.path === entry.path);
-                return (
-                  <div
-                    key={entry.path}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border px-3 py-2",
-                      error && "border-destructive/40 bg-destructive/5",
-                    )}
-                  >
-                    <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {entry.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono truncate">
-                        {entry.path}
-                      </p>
-                      {error && (
-                        <p className="text-xs text-destructive mt-0.5">
-                          {error.message}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => handleRemove(entry.path)}
-                      disabled={isSubmitting}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
+              {entries.map((entry) => (
+                <div
+                  key={entry.path}
+                  className="flex items-center gap-2 rounded-md border px-3 py-2"
+                >
+                  <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{entry.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">
+                      {entry.path}
+                    </p>
                   </div>
-                );
-              })}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0"
+                    onClick={() => handleRemove(entry.path)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
@@ -431,7 +390,6 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
             variant="outline"
             className="w-full"
             onClick={handleBrowse}
-            disabled={isSubmitting}
           >
             <FolderPlus className="h-4 w-4 mr-2" />
             {t("sidebar.dialog.multiFolderBrowse")}
@@ -439,17 +397,9 @@ const SidebarMultiFolderDialog = memo(function SidebarMultiFolderDialog({
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost" disabled={isSubmitting}>
-              {t("common.cancel")}
-            </Button>
+            <Button variant="ghost">{t("common.cancel")}</Button>
           </DialogClose>
-          <Button
-            onClick={handleSubmit}
-            disabled={entries.length === 0 || isSubmitting}
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-            ) : null}
+          <Button onClick={handleSubmit} disabled={entries.length === 0}>
             {t("sidebar.dialog.addCount", { count: entries.length })}
           </Button>
         </DialogFooter>
@@ -2072,24 +2022,28 @@ export const Sidebar = memo(
     );
 
     const handleMultiFolderSubmit = useCallback(
-      async (paths: string[]) => {
-        let addedCount = 0;
-        for (const folderPath of paths) {
-          const name =
-            folderPath
-              .replace(/\\/g, "/")
-              .replace(/\/+$/, "")
-              .split("/")
-              .pop() || folderPath;
-          const folderId = await handleFolderAddWithDuplicateCheck(name, folderPath);
-          if (folderId !== null) addedCount++;
-        }
-        if (addedCount > 0) {
-          toast.success(
-            t("sidebar.folders.addedMultiple", { count: addedCount }),
-          );
-        }
-        return { errors: [] };
+      (paths: string[]) => {
+        void (async () => {
+          let addedCount = 0;
+          for (const folderPath of paths) {
+            const name =
+              folderPath
+                .replace(/\\/g, "/")
+                .replace(/\/+$/, "")
+                .split("/")
+                .pop() || folderPath;
+            const folderId = await handleFolderAddWithDuplicateCheck(
+              name,
+              folderPath,
+            );
+            if (folderId !== null) addedCount++;
+          }
+          if (addedCount > 0) {
+            toast.success(
+              t("sidebar.folders.addedMultiple", { count: addedCount }),
+            );
+          }
+        })();
       },
       [handleFolderAddWithDuplicateCheck, t],
     );
