@@ -315,6 +315,7 @@ const en = {
       apply: "Apply",
     },
     context: {
+      copy: "Copy",
       addToSearch: "Add tag to search",
       addToGeneration: "Add tag to generation",
     },

@@ -121,6 +121,7 @@ interface TokenChipProps {
   copied?: boolean;
   highlighted?: boolean;
   onCopy?: () => void;
+  onContextCopy?: () => void;
   onAddTagToSearch?: (tag: string) => void;
   onAddTagToGeneration?: (tag: string) => void;
   onChange?: (token: PromptToken) => void;
@@ -156,6 +157,7 @@ function TokenChipCore({
   copied = false,
   highlighted = false,
   onCopy,
+  onContextCopy,
   onAddTagToSearch,
   onAddTagToGeneration,
   onChange,
@@ -829,7 +831,9 @@ function TokenChipCore({
   const hasReadonlyContextMenu =
     !isEditable &&
     contextMenuTag.length > 0 &&
-    (Boolean(onAddTagToSearch) || Boolean(onAddTagToGeneration));
+    (Boolean(onContextCopy) ||
+      Boolean(onAddTagToSearch) ||
+      Boolean(onAddTagToGeneration));
 
   const inlineWeighted = Math.abs(draftWeight - 1.0) > 0.001;
 
@@ -1207,6 +1211,12 @@ function TokenChipCore({
         <ContextMenu>
           <ContextMenuTrigger asChild>{chip}</ContextMenuTrigger>
           <ContextMenuContent>
+            {onContextCopy ? (
+              <ContextMenuItem onSelect={() => onContextCopy()}>
+                <Copy className="h-4 w-4" />
+                {t("tokenChip.context.copy")}
+              </ContextMenuItem>
+            ) : null}
             <ContextMenuItem
               onSelect={() => onAddTagToSearch?.(contextMenuTag)}
               disabled={!onAddTagToSearch}

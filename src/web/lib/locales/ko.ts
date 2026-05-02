@@ -315,6 +315,7 @@ const ko = {
       apply: "적용",
     },
     context: {
+      copy: "복사",
       addToSearch: "검색어에 태그 추가",
       addToGeneration: "생성모드에 태그 추가",
     },
