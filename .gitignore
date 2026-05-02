@@ -33,3 +33,4 @@ database/konomi.db
 database/*.db-journal
 database/*.db-shm
 database/*.db-wal
+database/thumb-cache/
