@@ -89,6 +89,7 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  include: installer.nsh
 
 mac:
   icon: build/icon.icns
