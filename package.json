@@ -55,6 +55,7 @@
     "@konomi/server": "workspace:*",
     "@konomi/web": "workspace:*",
     "@prisma/adapter-mariadb": "^7.7.0",
+    "electron-log": "^5.4.3",
     "mariadb": "^3.5.2"
   },
   "devDependencies": {

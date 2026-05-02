@@ -3,7 +3,15 @@ import { app } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync, rmSync, existsSync } from "fs";
 import type { WebContents } from "electron";
+import electronLog from "electron-log/main";
 import { createLogger } from "@core/lib/logger";
+
+// File logging for the updater. electron-log rotates main.log → main.old.log
+// at maxSize and only keeps that single old file, so disk usage is capped at
+// roughly 2× maxSize (≈10 MB) regardless of session count.
+electronLog.initialize();
+electronLog.transports.file.level = "info";
+electronLog.transports.file.maxSize = 5 * 1024 * 1024;
 
 const log = createLogger("main/updater");
 
@@ -50,7 +58,7 @@ export function initAutoUpdater(wc: WebContents): void {
   const isMac = process.platform === "darwin";
   autoUpdater.autoDownload = !isMac;
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.logger = null; // use our own logging
+  autoUpdater.logger = electronLog;
 
   autoUpdater.on("checking-for-update", () => {
     log.info("Checking for update...");
