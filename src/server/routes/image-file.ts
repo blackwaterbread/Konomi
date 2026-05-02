@@ -5,6 +5,12 @@ import type { FastifyInstance } from "fastify";
 import { readImageMeta, readImageMetaFromBuffer } from "@core/lib/image-meta";
 import { encodeJpeg, resizePng } from "@core/lib/konomi-image";
 import { resizeWebp } from "@core/lib/webp-alpha";
+import {
+  THUMB_CACHE_EXT,
+  cleanLegacyThumbCache,
+  scrambleThumb,
+  unscrambleThumb,
+} from "@core/lib/thumb-cache-codec";
 import { isUnderDataRoot } from "../lib/data-root";
 
 const THUMB_JPEG_QUALITY = 92;
@@ -31,6 +37,7 @@ export function registerImageFileRoutes(app: FastifyInstance) {
   );
 
   const thumbCacheDir = getThumbCacheDir();
+  void cleanLegacyThumbCache(thumbCacheDir);
 
   // Serve image file by absolute path (URL-encoded in query param)
   // Optional ?w=<maxWidth> downscales PNG/WebP to a JPEG thumbnail.
@@ -68,14 +75,13 @@ export function registerImageFileRoutes(app: FastifyInstance) {
           .createHash("md5")
           .update(`${filePath}\0${maxWidth}\0${stat.mtimeMs}`)
           .digest("hex");
-        const cachePath = path.join(thumbCacheDir, `${hash}.jpg`);
+        const cachePath = path.join(thumbCacheDir, `${hash}${THUMB_CACHE_EXT}`);
 
         try {
           const cacheStat = await fs.promises.stat(cachePath);
           if (cacheStat.size > 0) {
-            return reply
-              .type("image/jpeg")
-              .send(fs.createReadStream(cachePath));
+            const scrambled = await fs.promises.readFile(cachePath);
+            return reply.type("image/jpeg").send(unscrambleThumb(scrambled));
           }
         } catch {
           // Cache miss — generate thumbnail
@@ -93,7 +99,7 @@ export function registerImageFileRoutes(app: FastifyInstance) {
             THUMB_JPEG_QUALITY,
           );
           if (jpeg) {
-            fs.promises.writeFile(cachePath, jpeg).catch(() => {});
+            fs.promises.writeFile(cachePath, scrambleThumb(jpeg)).catch(() => {});
             return reply.type("image/jpeg").send(jpeg);
           }
         }

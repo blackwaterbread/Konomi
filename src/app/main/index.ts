@@ -258,6 +258,7 @@ app
     // When ?w is provided, returns a resized JPEG thumbnail to reduce decoded bitmap memory.
     const thumbCacheDir = join(app.getPath("userData"), "thumb-cache");
     fs.mkdirSync(thumbCacheDir, { recursive: true });
+    void cleanLegacyThumbCache(thumbCacheDir);
 
     protocol.handle("konomi", async (request) => {
       try {
@@ -338,6 +339,12 @@ app.on("window-all-closed", () => {
 import crypto from "crypto";
 import { encodeJpeg, resizePng } from "@core/lib/konomi-image";
 import { resizeWebp } from "@core/lib/webp-alpha";
+import {
+  THUMB_CACHE_EXT,
+  cleanLegacyThumbCache,
+  scrambleThumb,
+  unscrambleThumb,
+} from "@core/lib/thumb-cache-codec";
 
 const THUMB_JPEG_QUALITY = 92;
 
@@ -352,16 +359,15 @@ async function serveThumb(
     .createHash("md5")
     .update(`${filePath}\0${maxWidth}\0${stat.mtimeMs}`)
     .digest("hex");
-  const cachePath = join(cacheDir, `${hash}.jpg`);
+  const cachePath = join(cacheDir, `${hash}${THUMB_CACHE_EXT}`);
 
   // Serve from disk cache if available (skip zero-byte corrupt entries)
   try {
     const cacheStat = await fs.promises.stat(cachePath);
     if (cacheStat.size > 0) {
-      const data = Readable.toWeb(
-        fs.createReadStream(cachePath),
-      ) as unknown as BodyInit;
-      return new Response(data, {
+      const scrambled = await fs.promises.readFile(cachePath);
+      const jpeg = unscrambleThumb(scrambled);
+      return new Response(new Uint8Array(jpeg), {
         headers: { "content-type": "image/jpeg", "cache-control": "no-store" },
       });
     }
@@ -384,7 +390,7 @@ async function serveThumb(
   }
 
   // Write cache asynchronously — don't block response
-  fs.promises.writeFile(cachePath, jpegBuffer).catch(() => {});
+  fs.promises.writeFile(cachePath, scrambleThumb(jpegBuffer)).catch(() => {});
 
   return new Response(new Uint8Array(jpegBuffer), {
     headers: { "content-type": "image/jpeg", "cache-control": "no-store" },
