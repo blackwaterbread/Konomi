@@ -9,7 +9,7 @@ const repoRoot = resolve(__dirname, "../..");
 
 export default defineConfig({
   root,
-  publicDir: resolve(repoRoot, "src/app/renderer/public"),
+  publicDir: resolve(root, "public"),
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

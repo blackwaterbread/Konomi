@@ -81,6 +81,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve("src/app/renderer"),
+    publicDir: resolve("src/web/public"),
     define: {
       __APP_VERSION__: appVersion,
     },
