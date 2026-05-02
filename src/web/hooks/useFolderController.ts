@@ -26,6 +26,7 @@ export function useFolderController(
     removeSelectedFolder,
     isolateFolder,
     selectFolders,
+    initializeIfNeeded: initializeSelectionIfNeeded,
   } = useFolderSelection();
   const { collapsedFolderIds, toggleCollapse } = useFolderCollapse();
   const {
@@ -61,9 +62,10 @@ export function useFolderController(
     if (initCalledRef.current) return;
     initCalledRef.current = true;
     if (folders.length > 0) {
+      initializeSelectionIfNeeded(folders.map((f) => f.id));
       await refreshSubfolders(folders.map((f) => f.id));
     }
-  }, [folders, refreshSubfolders]);
+  }, [folders, refreshSubfolders, initializeSelectionIfNeeded]);
 
   // Fallback: when useFolders loads asynchronously (no initialFolders),
   // we still need to trigger subfolder loading once folders are available.
@@ -73,8 +75,9 @@ export function useFolderController(
     if (!hasLoaded || folders.length === 0) return;
     asyncInitFiredRef.current = true;
     initCalledRef.current = true;
+    initializeSelectionIfNeeded(folders.map((f) => f.id));
     void refreshSubfolders(folders.map((f) => f.id));
-  }, [hasLoaded, folders, refreshSubfolders]);
+  }, [hasLoaded, folders, refreshSubfolders, initializeSelectionIfNeeded]);
 
   // A folder is "partial" when it's OFF in selectedFolderIds but has at least
   // one visible subfolder (or root visible while some subfolders are off).

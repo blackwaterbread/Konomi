@@ -66,4 +66,46 @@ describe("useFolderController", () => {
       expect(localStorage.getItem("konomi-selected-folders")).toBe("[3,9]"),
     );
   });
+
+  it("auto-selects every folder on first run when selection storage is absent", async () => {
+    expect(localStorage.getItem("konomi-selected-folders")).toBeNull();
+    preloadMocks.folder.list.mockResolvedValue([
+      createFolder(11, "Alpha"),
+      createFolder(22, "Beta"),
+    ]);
+
+    const { result } = renderHook(() => useFolderController(null));
+
+    await waitFor(() =>
+      expect(result.current.folders.map((folder) => folder.id)).toEqual([
+        11, 22,
+      ]),
+    );
+
+    await waitFor(() =>
+      expect(sortedIds(result.current.selectedFolderIds)).toEqual([11, 22]),
+    );
+    await waitFor(() =>
+      expect(localStorage.getItem("konomi-selected-folders")).toBe("[11,22]"),
+    );
+  });
+
+  it("preserves an explicitly emptied selection across reload", async () => {
+    localStorage.setItem("konomi-selected-folders", JSON.stringify([]));
+    preloadMocks.folder.list.mockResolvedValue([
+      createFolder(11, "Alpha"),
+      createFolder(22, "Beta"),
+    ]);
+
+    const { result } = renderHook(() => useFolderController(null));
+
+    await waitFor(() =>
+      expect(result.current.folders.map((folder) => folder.id)).toEqual([
+        11, 22,
+      ]),
+    );
+
+    expect(sortedIds(result.current.selectedFolderIds)).toEqual([]);
+    expect(localStorage.getItem("konomi-selected-folders")).toBe("[]");
+  });
 });
