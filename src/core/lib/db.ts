@@ -9,8 +9,20 @@ import { createLogger } from "@core/lib/logger";
 const log = createLogger("main/db");
 
 let client: PrismaClient | null = null;
+let readClient: PrismaClient | null = null;
 let rawDb: Database.Database | null = null;
 let migrationsDone = false;
+let walModeEnsured = false;
+/**
+ * Resolves once both Prisma clients have $connect()-ed and applied their
+ * per-connection PRAGMAs. Repos must not run queries before this resolves
+ * — `getDB()` / `getReadDB()` are sync and return the client immediately,
+ * so callers either chain off this promise (utility process awaits it at
+ * the top of every IPC request) or accept that the very first query may
+ * race the PRAGMAs. The race is benign for `synchronous`/`busy_timeout`
+ * tunings but is a safety problem for `query_only = ON` on the reader.
+ */
+let dbReadyPromise: Promise<void> | null = null;
 
 // External DB provider override (used by konomi-server for MySQL)
 let externalGetDB: (() => PrismaClient) | null = null;
@@ -40,6 +52,41 @@ export interface MigrationProgress {
 }
 
 type ProgressCallback = (progress: MigrationProgress) => void;
+
+/**
+ * Switches the SQLite database file to WAL journal mode. `journal_mode` is
+ * persisted in the DB header, so a one-shot temporary connection is enough
+ * — subsequent connections (Prisma adapter, `getRawDB()`) inherit it.
+ *
+ * `wal_autocheckpoint` is per-connection (not persisted), so it's applied
+ * on the actual writer connections (`getDB()` / `getRawDB()`) instead of
+ * here, where the temp connection would just discard it on close.
+ *
+ * Sqlite-only; no-op when an external (MariaDB) provider is wired in.
+ */
+function ensureWalMode(): void {
+  if (walModeEnsured) return;
+  if (dialect !== "sqlite") {
+    walModeEnsured = true;
+    return;
+  }
+  if (!process.env.KONOMI_USER_DATA) {
+    // No data dir yet (test harness, partial bootstrap). Stay un-ensured so
+    // a later call after the env var is wired up still tries.
+    return;
+  }
+  walModeEnsured = true;
+  const dbPath = path.join(process.env.KONOMI_USER_DATA, "konomi.db");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const tmp = new Database(dbPath);
+  try {
+    tmp.pragma("journal_mode = WAL");
+  } catch (err) {
+    log.warn("Failed to enable WAL mode", { error: String(err) });
+  } finally {
+    tmp.close();
+  }
+}
 
 function listMigrationDirs(migrationsPath: string): string[] | null {
   try {
@@ -301,20 +348,102 @@ async function runMariadbMigrations(
 
 /**
  * SQLite crash safety:
- * - better-sqlite3 defaults to DELETE journal mode → auto-rollback on next open
- * - All writes use transactions ($transaction / db.transaction) → atomic
- * - If DB is corrupted beyond journal recovery, delete konomi.db and re-scan
- *   (image files are untouched; only user metadata like favorites/categories is lost)
+ * - WAL journal mode (enabled by ensureWalMode) → atomic commits via the
+ *   `-wal`/`-shm` sidecar files; SQLite recovers automatically on next open
+ *   if a crash leaves an uncheckpointed WAL behind.
+ * - synchronous = NORMAL: durable across OS crashes; only the last in-flight
+ *   transaction can be lost on power loss (acceptable for an image gallery).
+ * - All writes use transactions ($transaction / db.transaction) → atomic.
+ * - If the DB is corrupted beyond recovery, delete konomi.db together with
+ *   konomi.db-wal/-shm and re-scan; image files are untouched and only user
+ *   metadata (favorites/categories) is lost.
  */
+/**
+ * Initialize both Prisma clients (writer + reader) and apply per-connection
+ * PRAGMAs sequentially, exposing the resulting promise so callers can await
+ * full readiness before issuing queries. Without this gate, a user query
+ * could race ahead of `query_only = ON` on the reader and silently grab the
+ * writer lock, defeating the read/write split.
+ *
+ * Idempotent — first call seeds the clients and the promise, subsequent
+ * calls just return the existing promise.
+ */
+function initSqliteClients(): Promise<void> {
+  if (dbReadyPromise) return dbReadyPromise;
+  ensureWalMode();
+  runSqliteMigrations();
+  const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
+
+  const writerAdapter = new PrismaBetterSqlite3({ url: dbPath });
+  client = new PrismaClient({ adapter: writerAdapter });
+
+  const readerAdapter = new PrismaBetterSqlite3({ url: dbPath });
+  readClient = new PrismaClient({ adapter: readerAdapter });
+
+  const writer = client;
+  const reader = readClient;
+
+  dbReadyPromise = (async () => {
+    // $connect forces adapter.connect() (which opens the underlying
+    // better-sqlite3 Database) before we issue any PRAGMA. Sequential
+    // awaits ensure these are queued in order on the engine and visible
+    // to subsequent user queries.
+    await writer.$connect();
+    await reader.$connect();
+    // Writer pragmas — busy_timeout covers the rare case the reader holds
+    // a snapshot lock during checkpoint; wal_autocheckpoint is per-conn,
+    // so it must live here (not on the throwaway temp connection).
+    await writer.$executeRawUnsafe("PRAGMA synchronous = NORMAL");
+    await writer.$executeRawUnsafe("PRAGMA busy_timeout = 5000");
+    await writer.$executeRawUnsafe("PRAGMA wal_autocheckpoint = 1000");
+    // Reader pragmas — query_only is the safety net that turns a stray
+    // write into an immediate error instead of a silent lock-grab.
+    await reader.$executeRawUnsafe("PRAGMA synchronous = NORMAL");
+    await reader.$executeRawUnsafe("PRAGMA busy_timeout = 5000");
+    await reader.$executeRawUnsafe("PRAGMA query_only = ON");
+  })().catch((err) => {
+    log.warn("Failed to apply Prisma SQLite pragmas", { error: String(err) });
+  });
+
+  return dbReadyPromise;
+}
+
+/**
+ * Awaitable readiness gate for the SQLite clients. Resolves once both
+ * Prisma clients have applied their per-connection PRAGMAs, including
+ * the reader's `query_only = ON` safety net. Callers that route queries
+ * through `getDB()` / `getReadDB()` should await this on first use of
+ * the client to avoid racing the PRAGMAs (utility.ts awaits at the top
+ * of every IPC request).
+ *
+ * No-op when an external (MariaDB) provider is wired in — InnoDB doesn't
+ * need the SQLite-specific pragmas and the same client serves reads.
+ */
+export function dbReady(): Promise<void> {
+  if (externalGetDB) return Promise.resolve();
+  return initSqliteClients();
+}
+
 export function getDB(): PrismaClient {
   if (externalGetDB) return externalGetDB();
-  if (!client) {
-    runSqliteMigrations();
-    const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
-    const adapter = new PrismaBetterSqlite3({ url: dbPath });
-    client = new PrismaClient({ adapter });
-  }
-  return client;
+  if (!client) initSqliteClients();
+  return client!;
+}
+
+/**
+ * Reader-only PrismaClient backed by a separate better-sqlite3 connection.
+ * WAL mode lets this connection observe a transactional snapshot in parallel
+ * with writes on `getDB()`'s connection — the whole point of Phase 2 is to
+ * stop scan-write transactions from blocking gallery reads.
+ *
+ * For external (MariaDB) providers we hand back the same client — InnoDB
+ * MVCC already gives us concurrent readers, so a separate connection would
+ * just burn a pool slot for no gain.
+ */
+export function getReadDB(): PrismaClient {
+  if (externalGetDB) return externalGetDB();
+  if (!readClient) initSqliteClients();
+  return readClient!;
 }
 
 /**
@@ -327,20 +456,68 @@ export function getDB(): PrismaClient {
  */
 export function getRawDB(): Database.Database {
   if (!rawDb) {
+    ensureWalMode();
     runSqliteMigrations();
     const dbPath = path.join(process.env.KONOMI_USER_DATA!, "konomi.db");
     rawDb = new Database(dbPath);
+    rawDb.pragma("synchronous = NORMAL");
     rawDb.pragma("busy_timeout = 5000");
+    // wal_autocheckpoint is per-connection; rawDb is the only connection
+    // we open synchronously, so this is the place to bound the WAL size
+    // for any process that hits the raw path before initSqliteClients.
+    rawDb.pragma("wal_autocheckpoint = 1000");
   }
   return rawDb;
 }
 
 export async function disconnectDB(): Promise<void> {
+  // Wait for any in-flight PRAGMA application to finish so $disconnect
+  // doesn't race the engine. Swallowed errors are already logged inside
+  // initSqliteClients.
+  if (dbReadyPromise) {
+    try {
+      await dbReadyPromise;
+    } catch {
+      /* already logged */
+    }
+  }
+  // Disconnect Prisma first so its outstanding WAL writes are committed
+  // before the truncating checkpoint runs.
+  if (client) {
+    try {
+      await client.$disconnect();
+    } catch (err) {
+      log.warn("Prisma $disconnect failed", { error: String(err) });
+    }
+    client = null;
+  }
+  if (readClient) {
+    try {
+      await readClient.$disconnect();
+    } catch (err) {
+      log.warn("Prisma reader $disconnect failed", { error: String(err) });
+    }
+    readClient = null;
+  }
+  dbReadyPromise = null;
   if (rawDb) {
-    rawDb.close();
+    if (dialect === "sqlite") {
+      // Best-effort: shrink the -wal sidecar to 0 bytes and merge pending
+      // commits into the main file. Skipped silently if a reader is still
+      // attached or the checkpoint can't acquire the writer lock.
+      try {
+        rawDb.pragma("wal_checkpoint(TRUNCATE)");
+      } catch (err) {
+        log.warn("WAL checkpoint failed on shutdown", {
+          error: String(err),
+        });
+      }
+    }
+    try {
+      rawDb.close();
+    } catch (err) {
+      log.warn("Raw DB close failed", { error: String(err) });
+    }
     rawDb = null;
   }
-  if (!client) return;
-  await client.$disconnect();
-  client = null;
 }

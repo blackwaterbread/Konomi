@@ -51,20 +51,30 @@ import { createPrismaCategoryRepo } from "@core/lib/repositories/prisma-category
 import { createPrismaImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import { createPromptTagService } from "@core/services/prompt-tag-service";
 import { getPromptsDBPath } from "@core/lib/prompts-db";
-import { getDB, runMigrations, disconnectDB } from "@core/lib/db";
+import {
+  getDB,
+  getReadDB,
+  runMigrations,
+  disconnectDB,
+  dbReady,
+} from "@core/lib/db";
 import Database from "better-sqlite3";
 
 let scanCancelToken: CancelToken | null = null;
 const log = createLogger("main/utility");
 
 // ── Repository & Service initialization ─────────────────────
-const folderRepo = createPrismaFolderRepo(getDB);
-const categoryRepo = createPrismaCategoryRepo(getDB);
-const imageRepo = createPrismaImageRepo(getDB);
+// Repos take separate read/write accessors so high-frequency gallery reads
+// (listPage / listMatchingIds / etc.) hit a reader-only Prisma client whose
+// connection isn't blocked by scan-write transactions on getDB().
+const dbAccessors = { read: getReadDB, write: getDB };
+const folderRepo = createPrismaFolderRepo(dbAccessors);
+const categoryRepo = createPrismaCategoryRepo(dbAccessors);
+const imageRepo = createPrismaImageRepo(dbAccessors);
 
-const promptRepo = createPrismaPromptRepo(getDB);
+const promptRepo = createPrismaPromptRepo(dbAccessors);
 
-const naiConfigRepo = createPrismaNaiConfigRepo(getDB);
+const naiConfigRepo = createPrismaNaiConfigRepo(dbAccessors);
 
 const folderService = createFolderService({
   folderRepo,
@@ -178,6 +188,10 @@ const watchService = createWatchService({
 });
 
 async function handleRequest(type: string, payload: unknown): Promise<unknown> {
+  // Cheap once warm: dbReady resolves synchronously after the first call
+  // initialized the SQLite clients. Blocks the very first request until
+  // PRAGMAs (notably reader's query_only=ON) are applied.
+  await dbReady();
   const emitSearchStatsProgress = (done: number, total: number): void => {
     utilitySender.send("image:searchStatsProgress", { done, total });
   };
@@ -649,17 +663,20 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
   }
 }
 
-// Seed builtins on startup
-categoryService
-  .seedBuiltins()
+// Boot-time DB-touching tasks. All chained off dbReady() so they don't race
+// the SQLite client PRAGMA application (notably reader's query_only=ON).
+const ready = dbReady();
+
+ready
+  .then(() => categoryService.seedBuiltins())
   .then(() => log.info("Seeded builtin categories"))
   .catch((error) =>
     log.errorWithStack("Failed to seed builtin categories", error),
   );
 
 // Eager-load ignored duplicate paths so first request doesn't pay the cost
-duplicateService
-  .ensureIgnoredLoaded()
+ready
+  .then(() => duplicateService.ensureIgnoredLoaded())
   .then(() => log.info("Loaded ignored duplicate paths"))
   .catch((error) =>
     log.errorWithStack("Failed to load ignored duplicate paths", error),
@@ -667,8 +684,8 @@ duplicateService
 
 // Start watching folders immediately in paused mode so file changes that
 // occur before the first scan are queued and flushed after the scan finishes.
-watchService
-  .startAll({ paused: true })
+ready
+  .then(() => watchService.startAll({ paused: true }))
   .then(() => log.info("Watcher started in paused mode"))
   .catch((error) =>
     log.errorWithStack("Failed to start watcher on boot", error),

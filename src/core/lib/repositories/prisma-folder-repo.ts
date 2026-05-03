@@ -1,20 +1,24 @@
 import type { PrismaClient } from "../../../../generated/prisma/client";
 import type { FolderEntity } from "@core/types/repository";
+import { resolveAccessors, type RepoDbAccessors } from "./db-accessors";
 
 export type FolderRepo = ReturnType<typeof createPrismaFolderRepo>;
 
-export function createPrismaFolderRepo(getDb: () => PrismaClient) {
+export function createPrismaFolderRepo(
+  arg: (() => PrismaClient) | RepoDbAccessors,
+) {
+  const { read, write } = resolveAccessors(arg);
   return {
     async findAll(): Promise<FolderEntity[]> {
-      return getDb().folder.findMany({ orderBy: { createdAt: "asc" } });
+      return read().folder.findMany({ orderBy: { createdAt: "asc" } });
     },
 
     async findById(id: number): Promise<FolderEntity | null> {
-      return getDb().folder.findUnique({ where: { id } });
+      return read().folder.findUnique({ where: { id } });
     },
 
     async create(name: string, path: string): Promise<FolderEntity> {
-      const db = getDb();
+      const db = write();
       try {
         return await db.folder.create({ data: { name, path } });
       } catch (e: unknown) {
@@ -30,7 +34,7 @@ export function createPrismaFolderRepo(getDb: () => PrismaClient) {
     },
 
     async delete(id: number): Promise<void> {
-      const db = getDb();
+      const db = write();
       await db.$transaction(async (tx) => {
         await tx.imageCategory.deleteMany({
           where: { image: { folderId: id } },
@@ -41,7 +45,7 @@ export function createPrismaFolderRepo(getDb: () => PrismaClient) {
     },
 
     async rename(id: number, name: string): Promise<FolderEntity> {
-      return getDb().folder.update({ where: { id }, data: { name } });
+      return write().folder.update({ where: { id }, data: { name } });
     },
   };
 }
