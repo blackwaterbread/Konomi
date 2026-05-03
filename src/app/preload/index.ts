@@ -27,9 +27,13 @@ contextBridge.exposeInMainWorld("appInfo", {
     ipcRenderer.on("app:updateDownloaded", handler);
     return () => ipcRenderer.removeListener("app:updateDownloaded", handler);
   },
-  onUpdateProgress: (cb: (data: { percent: number }) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, data: { percent: number }) =>
-      cb(data);
+  onUpdateProgress: (
+    cb: (data: { percent: number; bytesPerSecond: number }) => void,
+  ) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { percent: number; bytesPerSecond: number },
+    ) => cb(data);
     ipcRenderer.on("app:updateProgress", handler);
     return () => ipcRenderer.removeListener("app:updateProgress", handler);
   },

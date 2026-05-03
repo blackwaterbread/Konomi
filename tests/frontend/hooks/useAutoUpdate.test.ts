@@ -73,6 +73,56 @@ describe("useAutoUpdate", () => {
     expect(preloadMocks.appInfo.installUpdate).toHaveBeenCalled();
   });
 
+  it("updates the downloading toast in place with percent and speed", () => {
+    renderHook(() => useAutoUpdate());
+
+    act(() => {
+      preloadEvents.appInfo.updateAvailable.emit({ version: "1.2.0" });
+    });
+
+    act(() => {
+      preloadEvents.appInfo.updateProgress.emit({
+        percent: 42,
+        bytesPerSecond: 1.5 * 1024 * 1024,
+      });
+    });
+
+    const lastCall = (toast.info as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(lastCall?.[0]).toBe("Downloading new version 1.2.0...");
+    expect(lastCall?.[1]).toEqual(
+      expect.objectContaining({
+        id: "konomi-update-progress",
+        description: "42% · 1.5 MB/s",
+      }),
+    );
+  });
+
+  it("dismisses the downloading toast when download completes", () => {
+    const dismissSpy = vi.spyOn(toast, "dismiss");
+    renderHook(() => useAutoUpdate());
+
+    act(() => {
+      preloadEvents.appInfo.updateAvailable.emit({ version: "1.2.0" });
+      preloadEvents.appInfo.updateDownloaded.emit({ version: "1.2.0" });
+    });
+
+    expect(dismissSpy).toHaveBeenCalledWith("konomi-update-progress");
+    dismissSpy.mockRestore();
+  });
+
+  it("ignores progress events that arrive before update-available", () => {
+    renderHook(() => useAutoUpdate());
+
+    act(() => {
+      preloadEvents.appInfo.updateProgress.emit({
+        percent: 10,
+        bytesPerSecond: 1024,
+      });
+    });
+
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
   it("shows install toast from pending update on mount", async () => {
     preloadMocks.appInfo.getPendingUpdate.mockResolvedValue({
       version: "1.2.0",

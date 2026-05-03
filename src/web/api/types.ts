@@ -51,7 +51,9 @@ export interface AppInfoApi {
   getPendingUpdate(): Promise<{ version: string } | null>;
   onUpdateAvailable(cb: (info: { version: string; releaseUrl?: string }) => void): () => void;
   onUpdateDownloaded(cb: (info: { version: string }) => void): () => void;
-  onUpdateProgress(cb: (data: { percent: number }) => void): () => void;
+  onUpdateProgress(
+    cb: (data: { percent: number; bytesPerSecond: number }) => void,
+  ): () => void;
   onUtilityReset(cb: () => void): () => void;
   clearResourceCache(): void;
 }

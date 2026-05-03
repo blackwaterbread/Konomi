@@ -69,7 +69,9 @@ declare global {
       onUpdateDownloaded: (
         cb: (info: { version: string }) => void,
       ) => () => void;
-      onUpdateProgress: (cb: (data: { percent: number }) => void) => () => void;
+      onUpdateProgress: (
+        cb: (data: { percent: number; bytesPerSecond: number }) => void,
+      ) => () => void;
       onUtilityReset: (cb: () => void) => () => void;
       clearResourceCache: () => void;
     };

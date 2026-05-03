@@ -74,6 +74,10 @@ const appUpdateAvailable = createEventChannel<{
   releaseUrl?: string;
 }>();
 const appUpdateDownloaded = createEventChannel<{ version: string }>();
+const appUpdateProgress = createEventChannel<{
+  percent: number;
+  bytesPerSecond: number;
+}>();
 
 export const preloadEvents = {
   db: {
@@ -99,6 +103,7 @@ export const preloadEvents = {
   appInfo: {
     updateAvailable: appUpdateAvailable,
     updateDownloaded: appUpdateDownloaded,
+    updateProgress: appUpdateProgress,
   },
 };
 
@@ -126,7 +131,7 @@ export const preloadMocks = {
     getPendingUpdate: vi.fn().mockResolvedValue(null),
     onUpdateAvailable: appUpdateAvailable.subscribe,
     onUpdateDownloaded: appUpdateDownloaded.subscribe,
-    onUpdateProgress: vi.fn().mockReturnValue(() => {}),
+    onUpdateProgress: appUpdateProgress.subscribe,
     onUtilityReset: vi.fn().mockReturnValue(() => {}),
     clearResourceCache: vi.fn(),
   },
@@ -267,6 +272,7 @@ export function resetPreloadMocks(): void {
   preloadEvents.nai.generatePreview.reset();
   preloadEvents.appInfo.updateAvailable.reset();
   preloadEvents.appInfo.updateDownloaded.reset();
+  preloadEvents.appInfo.updateProgress.reset();
 
   preloadMocks.appInfo.isDevMode.mockReset().mockResolvedValue(false);
   preloadMocks.appInfo.get.mockReset().mockResolvedValue({
@@ -286,7 +292,6 @@ export function resetPreloadMocks(): void {
   preloadMocks.appInfo.checkForUpdates.mockReset().mockResolvedValue(undefined);
   preloadMocks.appInfo.installUpdate.mockReset().mockResolvedValue(undefined);
   preloadMocks.appInfo.getPendingUpdate.mockReset().mockResolvedValue(null);
-  preloadMocks.appInfo.onUpdateProgress.mockReset().mockReturnValue(() => {});
   preloadMocks.appInfo.onUtilityReset.mockReset().mockReturnValue(() => {});
 
   preloadMocks.promptBuilder.listCategories.mockReset().mockResolvedValue([]);
