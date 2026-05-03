@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../../../generated/prisma/client";
 import type { CategoryEntity } from "@core/types/repository";
+import { resolveAccessors, type RepoDbAccessors } from "./db-accessors";
 
 export type CategoryRepo = ReturnType<typeof createPrismaCategoryRepo>;
 
@@ -7,20 +8,25 @@ function normalizeImageIds(imageIds: number[]): number[] {
   return [...new Set(imageIds.filter((id) => Number.isInteger(id)))];
 }
 
-export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
+export function createPrismaCategoryRepo(
+  arg: (() => PrismaClient) | RepoDbAccessors,
+) {
+  const { read, write } = resolveAccessors(arg);
   return {
     async findAll(): Promise<CategoryEntity[]> {
-      return getDb().category.findMany({
+      return read().category.findMany({
         orderBy: [{ isBuiltin: "desc" }, { order: "asc" }],
       });
     },
 
     async findById(id: number): Promise<CategoryEntity | null> {
-      return getDb().category.findUnique({ where: { id } });
+      return read().category.findUnique({ where: { id } });
     },
 
     async create(name: string): Promise<CategoryEntity> {
-      const db = getDb();
+      // Read-then-insert sequence routed through write so the order lookup
+      // sees uncommitted siblings the writer created earlier in the session.
+      const db = write();
       const last = await db.category.findFirst({
         where: { isBuiltin: false },
         orderBy: { order: "desc" },
@@ -31,22 +37,22 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
     },
 
     async delete(id: number): Promise<void> {
-      await getDb().category.delete({ where: { id } });
+      await write().category.delete({ where: { id } });
     },
 
     async rename(id: number, name: string): Promise<CategoryEntity> {
-      return getDb().category.update({ where: { id }, data: { name } });
+      return write().category.update({ where: { id }, data: { name } });
     },
 
     async updateColor(
       id: number,
       color: string | null,
     ): Promise<CategoryEntity> {
-      return getDb().category.update({ where: { id }, data: { color } });
+      return write().category.update({ where: { id }, data: { color } });
     },
 
     async addImage(imageId: number, categoryId: number): Promise<void> {
-      await getDb().imageCategory.upsert({
+      await write().imageCategory.upsert({
         where: { imageId_categoryId: { imageId, categoryId } },
         create: { imageId, categoryId },
         update: {},
@@ -54,7 +60,7 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
     },
 
     async removeImage(imageId: number, categoryId: number): Promise<void> {
-      await getDb().imageCategory.deleteMany({
+      await write().imageCategory.deleteMany({
         where: { imageId, categoryId },
       });
     },
@@ -63,7 +69,7 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
       const uniqueIds = normalizeImageIds(imageIds);
       if (uniqueIds.length === 0) return;
 
-      const db = getDb();
+      const db = write();
       const existing = await db.imageCategory.findMany({
         where: { categoryId, imageId: { in: uniqueIds } },
         select: { imageId: true },
@@ -82,13 +88,13 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
       const uniqueIds = normalizeImageIds(imageIds);
       if (uniqueIds.length === 0) return;
 
-      await getDb().imageCategory.deleteMany({
+      await write().imageCategory.deleteMany({
         where: { categoryId, imageId: { in: uniqueIds } },
       });
     },
 
     async getImageIds(categoryId: number): Promise<number[]> {
-      const rows = await getDb().imageCategory.findMany({
+      const rows = await read().imageCategory.findMany({
         where: { categoryId },
         select: { imageId: true },
       });
@@ -96,7 +102,7 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
     },
 
     async getCategoriesForImage(imageId: number): Promise<number[]> {
-      const rows = await getDb().imageCategory.findMany({
+      const rows = await read().imageCategory.findMany({
         where: { imageId },
         select: { categoryId: true },
       });
@@ -109,7 +115,7 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
       const uniqueIds = normalizeImageIds(imageIds);
       if (uniqueIds.length === 0) return [];
 
-      const rows = await getDb().imageCategory.findMany({
+      const rows = await read().imageCategory.findMany({
         where: { imageId: { in: uniqueIds } },
         select: { categoryId: true, imageId: true },
       });
@@ -130,7 +136,7 @@ export function createPrismaCategoryRepo(getDb: () => PrismaClient) {
     },
 
     async seedBuiltins(): Promise<void> {
-      const db = getDb();
+      const db = write();
       const builtins = [
         { name: "즐겨찾기", order: 0 },
         { name: "랜덤 픽", order: 1 },

@@ -15,6 +15,7 @@ import type {
   SubfolderFilter,
 } from "@core/types/image-query";
 import { getDialect } from "@core/lib/db";
+import { resolveAccessors, type RepoDbAccessors } from "./db-accessors";
 
 // ---------------------------------------------------------------------------
 // Query builder internals
@@ -506,27 +507,30 @@ function normalizeImageEntity(row: ImageEntity): ImageEntity {
 
 export type ImageRepo = ReturnType<typeof createPrismaImageRepo>;
 
-export function createPrismaImageRepo(getDb: () => PrismaClient) {
+export function createPrismaImageRepo(
+  arg: (() => PrismaClient) | RepoDbAccessors,
+) {
+  const { read, write } = resolveAccessors(arg);
   const repo = {
     async findById(id: number): Promise<ImageEntity | null> {
-      const row = await getDb().image.findUnique({ where: { id } }) as ImageEntity | null;
+      const row = await read().image.findUnique({ where: { id } }) as ImageEntity | null;
       return row ? normalizeImageEntity(row) : null;
     },
 
     async findByPath(path: string): Promise<ImageEntity | null> {
-      const row = await getDb().image.findUnique({ where: { path } }) as ImageEntity | null;
+      const row = await read().image.findUnique({ where: { path } }) as ImageEntity | null;
       return row ? normalizeImageEntity(row) : null;
     },
 
     async findSyncRowsByFolderId(folderId: number): Promise<ImageSyncRow[]> {
-      return getDb().image.findMany({
+      return read().image.findMany({
         where: { folderId },
         select: { id: true, path: true, fileModifiedAt: true, source: true },
       });
     },
 
     async upsertBatch(rows: ImageUpsertData[]): Promise<ImageEntity[]> {
-      const db = getDb();
+      const db = write();
       const results = await db.$transaction(
         rows.map((data) =>
           db.image.upsert({
@@ -540,7 +544,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     },
 
     async upsertByPath(data: ImageUpsertData): Promise<ImageEntity> {
-      const row = await getDb().image.upsert({
+      const row = await write().image.upsert({
         where: { path: data.path },
         update: data,
         create: data,
@@ -550,23 +554,23 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
 
     async deleteByIds(ids: number[]): Promise<void> {
       if (ids.length === 0) return;
-      await getDb().image.deleteMany({ where: { id: { in: ids } } });
+      await write().image.deleteMany({ where: { id: { in: ids } } });
     },
 
     async deleteByPath(path: string): Promise<void> {
-      await getDb().image.deleteMany({ where: { path } });
+      await write().image.deleteMany({ where: { path } });
     },
 
     async setFavorite(id: number, isFavorite: boolean): Promise<void> {
-      await getDb().image.update({ where: { id }, data: { isFavorite } });
+      await write().image.update({ where: { id }, data: { isFavorite } });
     },
 
     async countByFolderId(folderId: number): Promise<number> {
-      return getDb().image.count({ where: { folderId } });
+      return read().image.count({ where: { folderId } });
     },
 
     async existsByPath(path: string): Promise<boolean> {
-      const row = await getDb().image.findUnique({
+      const row = await read().image.findUnique({
         where: { path },
         select: { id: true },
       });
@@ -578,7 +582,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       fileCount: number,
       finishedAt: Date,
     ): Promise<void> {
-      await getDb().folder.update({
+      await write().folder.update({
         where: { id: folderId },
         data: {
           lastScanFileCount: fileCount,
@@ -593,7 +597,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       const CHUNK = 5000;
       const result: Array<{ id: number; path: string }> = [];
       let lastId = 0;
-      const db = getDb();
+      const db = read();
       while (true) {
         const images = await db.image.findMany({
           where: { folderId, id: { gt: lastId } },
@@ -612,7 +616,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       const CHUNK = 5000;
       let totalBytes = 0;
       let lastId = 0;
-      const db = getDb();
+      const db = read();
       while (true) {
         const images = await db.image.findMany({
           where: { folderId, id: { gt: lastId } },
@@ -630,7 +634,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     },
 
     async findIdsByPromptContaining(query: string): Promise<number[]> {
-      const images = await getDb().image.findMany({
+      const images = await read().image.findMany({
         where: {
           OR: [
             { prompt: { contains: query } },
@@ -646,7 +650,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       sizes: number[],
     ): Promise<Array<{ id: number; path: string; fileSize: number }>> {
       if (sizes.length === 0) return [];
-      const db = getDb();
+      const db = read();
       const CHUNK = 500;
       const result: Array<{ id: number; path: string; fileSize: number }> = [];
       for (let i = 0; i < sizes.length; i += CHUNK) {
@@ -664,7 +668,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       paths: string[],
     ): Promise<Array<{ path: string } & SearchStatSource>> {
       if (paths.length === 0) return [];
-      const rows = await getDb().image.findMany({
+      const rows = await read().image.findMany({
         where: { path: { in: paths } },
         select: {
           path: true,
@@ -683,7 +687,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       ids: number[],
     ): Promise<SearchStatSource[]> {
       if (ids.length === 0) return [];
-      const rows = await getDb().image.findMany({
+      const rows = await read().image.findMany({
         where: { id: { in: ids } },
         select: {
           width: true,
@@ -710,7 +714,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
         };
       }
 
-      const db = getDb();
+      const db = read();
 
       if (normalized.builtinCategory === "random") {
         const { sql: whereSql, params } = buildImageWhereSql(normalized);
@@ -758,7 +762,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
         return pageResult.rows.map((r) => r.id);
       }
 
-      const rows = await getDb().image.findMany({
+      const rows = await read().image.findMany({
         where: buildImageWhereInput(normalized),
         select: { id: true },
       });
@@ -768,7 +772,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     async listByIds(ids: number[]): Promise<ImageEntity[]> {
       const cleanIds = normalizeIntegerArray(ids);
       if (cleanIds.length === 0) return [];
-      const rows = ((await getDb().image.findMany({
+      const rows = ((await read().image.findMany({
         where: { id: { in: cleanIds } },
       })) as unknown as ImageEntity[]).map(normalizeImageEntity);
       const rowMap = new Map(rows.map((row) => [row.id, row]));
@@ -778,7 +782,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     },
 
     async listIdsByFolderId(folderId: number): Promise<number[]> {
-      const rows = await getDb().image.findMany({
+      const rows = await read().image.findMany({
         where: { folderId },
         select: { id: true },
       });
@@ -786,7 +790,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
     },
 
     async findAllIdAndPath(): Promise<Array<{ id: number; path: string }>> {
-      return getDb().image.findMany({
+      return read().image.findMany({
         select: { id: true, path: true },
       });
     },
@@ -795,7 +799,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       entries: ImageMetadataUpdateEntry[],
     ): Promise<ImageEntity[]> {
       if (entries.length === 0) return [];
-      const db = getDb();
+      const db = write();
       const results = await db.$transaction(
         entries.map((data) =>
           db.image.update({ where: { path: data.path }, data }),
@@ -808,7 +812,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       fileSize: number,
       excludePath: string,
     ): Promise<Array<{ id: number; path: string }>> {
-      return getDb().image.findMany({
+      return read().image.findMany({
         where: { fileSize, NOT: { path: excludePath } },
         select: { id: true, path: true },
       });
@@ -816,7 +820,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
 
     async deleteById(id: number): Promise<boolean> {
       try {
-        await getDb().image.delete({ where: { id } });
+        await write().image.delete({ where: { id } });
         return true;
       } catch {
         return false;
@@ -828,7 +832,7 @@ export function createPrismaImageRepo(getDb: () => PrismaClient) {
       afterId: number,
       limit: number,
     ): Promise<Array<{ id: number; path: string } & SearchStatSource>> {
-      return getDb().image.findMany({
+      return read().image.findMany({
         where: { folderId, id: { gt: afterId } },
         select: {
           id: true,
