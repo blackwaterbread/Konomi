@@ -193,9 +193,14 @@ async function applyImageSearchStatDeltas(
   if (deltas.length === 0) return;
   await ensureImageSearchStatTable();
   const db = getDB();
-  await db.$transaction(async (tx) => {
-    await applySearchStatDeltasInTx(tx, deltas, onProgress);
-  });
+  // Default Prisma interactive-transaction timeout is 5s. Stat deltas during
+  // a large initial scan can easily exceed that on slow NAS-hosted MariaDB.
+  await db.$transaction(
+    async (tx) => {
+      await applySearchStatDeltasInTx(tx, deltas, onProgress);
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
 }
 
 // ── Public mutation API ────────────────────────────────────────

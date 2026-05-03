@@ -73,11 +73,11 @@ model IgnoredDuplicatePath {
 }
 
 model ImageSearchStat {
-  kind      String
-  key       String
+  kind      String   @db.VarChar(32)
+  key       String   @db.VarChar(700)
   width     Int?
   height    Int?
-  model     String?
+  model     String?  @db.VarChar(500)
   count     Int      @default(0)
   updatedAt DateTime @default(now())
 
