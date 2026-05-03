@@ -10,7 +10,7 @@ datasource db {
 model Folder {
   id                 Int       @id @default(autoincrement())
   name               String
-  path               String    @unique
+  path               String    @unique @db.VarChar(700)
   createdAt          DateTime  @default(now())
   lastScanFileCount  Int?
   lastScanFinishedAt DateTime?
@@ -66,7 +66,7 @@ model NaiConfig {
 }
 
 model IgnoredDuplicatePath {
-  path      String   @id
+  path      String   @id @db.VarChar(700)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -105,10 +105,10 @@ model ImageSimilarityCacheMeta {
 
 model Image {
   id             Int      @id @default(autoincrement())
-  path           String   @unique
+  path           String   @unique @db.VarChar(700)
   folderId       Int
-  prompt         String   @default("") @db.Text
-  negativePrompt String   @default("") @db.Text
+  prompt         String   @default("") @db.MediumText
+  negativePrompt String   @default("") @db.MediumText
   model          String   @default("")
   seed           String   @default("")
   width          Int      @default(0)
@@ -119,13 +119,13 @@ model Image {
   cfgRescale     Float    @default(0)
   noiseSchedule  String   @default("")
   varietyPlus    Boolean  @default(false)
-  characterPrompts String   @default("[]") @db.Text
+  characterPrompts String   @default("[]") @db.MediumText
   source         String   @default("unknown")
   isFavorite     Boolean  @default(false)
   pHash                 String   @default("")
-  promptTokens          String   @default("[]") @db.Text
-  negativePromptTokens  String   @default("[]") @db.Text
-  characterPromptTokens String   @default("[]") @db.Text
+  promptTokens          String   @default("[]") @db.MediumText
+  negativePromptTokens  String   @default("[]") @db.MediumText
+  characterPromptTokens String   @default("[]") @db.MediumText
   fileSize       Int      @default(0)
   fileModifiedAt DateTime
   createdAt      DateTime @default(now())

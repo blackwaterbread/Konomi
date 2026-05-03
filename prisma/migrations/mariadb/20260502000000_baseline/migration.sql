@@ -6,7 +6,7 @@
 CREATE TABLE IF NOT EXISTS `Folder` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `name` VARCHAR(191) NOT NULL,
-    `path` VARCHAR(191) NOT NULL,
+    `path` VARCHAR(700) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `lastScanFileCount` INTEGER NULL,
     `lastScanFinishedAt` DATETIME(3) NULL,
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `NaiConfig` (
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS `IgnoredDuplicatePath` (
-    `path` VARCHAR(191) NOT NULL,
+    `path` VARCHAR(700) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `IgnoredDuplicatePath_createdAt_idx`(`createdAt`),
@@ -120,10 +120,10 @@ CREATE TABLE IF NOT EXISTS `ImageSimilarityCacheMeta` (
 -- CreateTable
 CREATE TABLE IF NOT EXISTS `Image` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `path` VARCHAR(191) NOT NULL,
+    `path` VARCHAR(700) NOT NULL,
     `folderId` INTEGER NOT NULL,
-    `prompt` TEXT NOT NULL DEFAULT '',
-    `negativePrompt` TEXT NOT NULL DEFAULT '',
+    `prompt` MEDIUMTEXT NOT NULL DEFAULT '',
+    `negativePrompt` MEDIUMTEXT NOT NULL DEFAULT '',
     `model` VARCHAR(191) NOT NULL DEFAULT '',
     `seed` VARCHAR(191) NOT NULL DEFAULT '',
     `width` INTEGER NOT NULL DEFAULT 0,
@@ -134,13 +134,13 @@ CREATE TABLE IF NOT EXISTS `Image` (
     `cfgRescale` DOUBLE NOT NULL DEFAULT 0,
     `noiseSchedule` VARCHAR(191) NOT NULL DEFAULT '',
     `varietyPlus` BOOLEAN NOT NULL DEFAULT false,
-    `characterPrompts` TEXT NOT NULL DEFAULT '[]',
+    `characterPrompts` MEDIUMTEXT NOT NULL DEFAULT '[]',
     `source` VARCHAR(191) NOT NULL DEFAULT 'unknown',
     `isFavorite` BOOLEAN NOT NULL DEFAULT false,
     `pHash` VARCHAR(191) NOT NULL DEFAULT '',
-    `promptTokens` TEXT NOT NULL DEFAULT '[]',
-    `negativePromptTokens` TEXT NOT NULL DEFAULT '[]',
-    `characterPromptTokens` TEXT NOT NULL DEFAULT '[]',
+    `promptTokens` MEDIUMTEXT NOT NULL DEFAULT '[]',
+    `negativePromptTokens` MEDIUMTEXT NOT NULL DEFAULT '[]',
+    `characterPromptTokens` MEDIUMTEXT NOT NULL DEFAULT '[]',
     `fileSize` INTEGER NOT NULL DEFAULT 0,
     `fileModifiedAt` DATETIME(3) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
