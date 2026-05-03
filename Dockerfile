@@ -143,8 +143,10 @@ ENV KONOMI_HOST=0.0.0.0
 ENV KONOMI_DATA_ROOT=/images
 ENV KONOMI_USER_DATA=/config
 ENV DATABASE_URL=mysql://konomi:konomi@127.0.0.1:3306/konomi
-ENV PUID=911
-ENV PGID=911
+# PUID/PGID intentionally have no defaults — entrypoint.sh requires the
+# operator to set them so the container can read bind-mounted volumes.
+ENV PUID=0
+ENV PGID=0
 ENV TZ=Asia/Seoul
 
 RUN mkdir -p /images /config

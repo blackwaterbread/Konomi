@@ -39,7 +39,11 @@ const PORT = Number(process.env.KONOMI_PORT) || 3000;
 const HOST = process.env.KONOMI_HOST || "0.0.0.0";
 
 async function main() {
-  const app = Fastify({ logger: false });
+  // bodyLimit defaults to 1 MiB. /api/images/page payloads carry
+  // subfolderFilters whose allPaths grow with library depth, and bulk
+  // operations (by-ids, matching-ids) can ship thousands of integers. 16 MiB
+  // gives ample headroom without inviting abuse on a single-user server.
+  const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 });
 
   // ── WebSocket ────────────────────────────
   await app.register(websocket);

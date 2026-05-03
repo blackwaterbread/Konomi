@@ -8,8 +8,10 @@ services:
       - "3000:3000"
     environment:
       - KONOMI_DATA_ROOT=/images
-      - PUID=911
-      - PGID=911
+      # Required: set to the host UID/GID that owns the /images mount.
+      # See docs/docker.md → "Finding your UID / GID".
+      - PUID=0
+      - PGID=0
       - TZ=Asia/Seoul
     volumes:
       # Mount host image directories into /images

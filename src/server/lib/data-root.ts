@@ -6,6 +6,18 @@ const log = createLogger("web/data-root");
 
 export const DATA_ROOT = process.env.KONOMI_DATA_ROOT || "/images";
 
+// NAS / OS metadata folders that may sit beside user volumes (e.g. Synology
+// creates @eaDir alongside shares). Auto-registering these as image folders
+// produces thousands of bogus thumbnails.
+const SKIP_TOP_LEVEL_NAMES = new Set([
+  "@eaDir",
+  "#recycle",
+  "@Recycle",
+  "__MACOSX",
+  "$RECYCLE.BIN",
+  "System Volume Information",
+]);
+
 export interface DetectedDirectory {
   name: string;
   path: string;
@@ -24,6 +36,7 @@ export async function listAvailableDirectories(): Promise<DetectedDirectory[]> {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith(".")) continue;
+      if (SKIP_TOP_LEVEL_NAMES.has(entry.name)) continue;
       dirs.push({
         name: entry.name,
         path: path.join(DATA_ROOT, entry.name),

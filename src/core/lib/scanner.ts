@@ -1,7 +1,71 @@
 import fs from "fs";
 import path from "path";
+import { createLogger } from "./logger";
+
+const log = createLogger("scanner");
 
 export type CancelToken = { cancelled: boolean };
+
+const IMAGE_EXTS = new Set([".png", ".webp"]);
+
+// OS / NAS / cloud-sync metadata directories. These are created automatically
+// next to user files (Synology's @eaDir contains thumbnails like
+// SYNOPHOTO_THUMB_*.png that would otherwise be picked up as user images and
+// inflate the DB).
+const SKIP_DIR_NAMES = new Set([
+  "@eaDir",
+  "#recycle",
+  "@Recycle",
+  ".AppleDouble",
+  ".DS_Store",
+  ".Spotlight-V100",
+  ".Trashes",
+  ".fseventsd",
+  ".TemporaryItems",
+  "__MACOSX",
+  "$RECYCLE.BIN",
+  "System Volume Information",
+  "Thumbs.db",
+  ".thumbnails",
+  ".cache",
+]);
+
+function shouldSkipDir(name: string): boolean {
+  // Dotfile dirs (.git, .svn, etc.) are scan noise.
+  if (name.startsWith(".")) return true;
+  return SKIP_DIR_NAMES.has(name);
+}
+
+// Some filesystems (Synology FUSE shares, NFS, certain SMB mounts) return
+// DT_UNKNOWN from getdents, leaving Dirent.isFile()/isDirectory() both false.
+// In that case we have to stat the entry to learn what it is. The result is
+// cached per directory iteration so each entry is stat'd at most once.
+async function classifyDirent(
+  fullPath: string,
+  entry: fs.Dirent,
+): Promise<"file" | "directory" | "other"> {
+  if (entry.isDirectory()) return "directory";
+  if (entry.isFile()) return "file";
+  if (
+    entry.isSymbolicLink() ||
+    entry.isBlockDevice() ||
+    entry.isCharacterDevice() ||
+    entry.isFIFO() ||
+    entry.isSocket()
+  ) {
+    // Real non-file/dir type — fall through to stat in case it's a symlink to
+    // a file/directory we want to follow.
+  }
+  try {
+    const stat = await fs.promises.stat(fullPath);
+    if (stat.isDirectory()) return "directory";
+    if (stat.isFile()) return "file";
+    return "other";
+  } catch (err) {
+    log.warn(`stat fallback failed for ${fullPath}`, err);
+    return "other";
+  }
+}
 
 export async function* walkImageFiles(
   rootDir: string,
@@ -16,20 +80,25 @@ export async function* walkImageFiles(
       for await (const entry of handle) {
         if (signal?.cancelled) break;
         const fullPath = path.join(currentDir, entry.name);
-        if (entry.isDirectory()) {
+        const kind = await classifyDirent(fullPath, entry);
+        if (kind === "directory") {
+          if (shouldSkipDir(entry.name)) continue;
           stack.push(fullPath);
           continue;
         }
-        if (!entry.isFile()) continue;
-        if (![".png", ".webp"].includes(path.extname(entry.name).toLowerCase()))
-          continue;
+        if (kind !== "file") continue;
+        if (!IMAGE_EXTS.has(path.extname(entry.name).toLowerCase())) continue;
         yield fullPath;
       }
-    } catch {
-      // folder not accessible
+    } catch (err) {
+      log.warn(`failed to read directory ${currentDir}`, err);
     } finally {
       if (handle) {
-        try { await handle.close(); } catch { /* ignore close errors */ }
+        try {
+          await handle.close();
+        } catch {
+          /* ignore close errors */
+        }
       }
     }
   }
@@ -51,6 +120,7 @@ export async function countImageFiles(
   signal?: CancelToken,
 ): Promise<number> {
   let count = 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   for await (const _ of walkImageFiles(dir, signal)) {
     count++;
   }
@@ -83,17 +153,18 @@ export async function verifyImageFolder(
       for await (const entry of handle) {
         if (signal?.cancelled) break;
         const fullPath = path.join(currentDir, entry.name);
-        if (entry.isDirectory()) {
+        const kind = await classifyDirent(fullPath, entry);
+        if (kind === "directory") {
+          if (shouldSkipDir(entry.name)) continue;
           stack.push(fullPath);
           continue;
         }
-        if (!entry.isFile()) continue;
-        if (![".png", ".webp"].includes(path.extname(entry.name).toLowerCase()))
-          continue;
+        if (kind !== "file") continue;
+        if (!IMAGE_EXTS.has(path.extname(entry.name).toLowerCase())) continue;
         fileCount++;
       }
-    } catch {
-      // folder not accessible
+    } catch (err) {
+      log.warn(`failed to read directory ${currentDir}`, err);
     } finally {
       if (handle) {
         await handle.close().catch(() => {});
@@ -147,7 +218,10 @@ export async function withConcurrency<T>(
       return result.value;
     });
     // Subsequent callers wait for *this* pull to finish before starting theirs.
-    pullChain = ticket.then(() => {}, () => {});
+    pullChain = ticket.then(
+      () => {},
+      () => {},
+    );
     return ticket;
   };
 

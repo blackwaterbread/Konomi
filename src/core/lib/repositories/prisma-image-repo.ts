@@ -531,15 +531,25 @@ export function createPrismaImageRepo(
 
     async upsertBatch(rows: ImageUpsertData[]): Promise<ImageEntity[]> {
       const db = write();
-      const results = await db.$transaction(
-        rows.map((data) =>
-          db.image.upsert({
-            where: { path: data.path },
-            update: data,
-            create: data,
-          }),
-        ),
-      ) as unknown as ImageEntity[];
+      // Default Prisma interactive-transaction timeout is 5s, which is tight
+      // for slow NAS-hosted MariaDB when the batch hits cold indexes. Use the
+      // interactive form so we can extend the timeout to 60s.
+      const results = (await db.$transaction(
+        async (tx) => {
+          const out: unknown[] = [];
+          for (const data of rows) {
+            out.push(
+              await tx.image.upsert({
+                where: { path: data.path },
+                update: data,
+                create: data,
+              }),
+            );
+          }
+          return out;
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      )) as unknown as ImageEntity[];
       return results.map(normalizeImageEntity);
     },
 
@@ -801,9 +811,16 @@ export function createPrismaImageRepo(
       if (entries.length === 0) return [];
       const db = write();
       const results = await db.$transaction(
-        entries.map((data) =>
-          db.image.update({ where: { path: data.path }, data }),
-        ),
+        async (tx) => {
+          const out: unknown[] = [];
+          for (const data of entries) {
+            out.push(
+              await tx.image.update({ where: { path: data.path }, data }),
+            );
+          }
+          return out;
+        },
+        { timeout: 60_000, maxWait: 10_000 },
       );
       return (results as unknown as ImageEntity[]).map(normalizeImageEntity);
     },
