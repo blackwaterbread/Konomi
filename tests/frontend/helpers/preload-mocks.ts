@@ -123,6 +123,7 @@ export const preloadMocks = {
     getPromptsDbSchemaVersion: vi.fn().mockResolvedValue(null),
     checkForUpdates: vi.fn().mockResolvedValue(undefined),
     installUpdate: vi.fn().mockResolvedValue(undefined),
+    getPendingUpdate: vi.fn().mockResolvedValue(null),
     onUpdateAvailable: appUpdateAvailable.subscribe,
     onUpdateDownloaded: appUpdateDownloaded.subscribe,
     onUpdateProgress: vi.fn().mockReturnValue(() => {}),
@@ -284,6 +285,7 @@ export function resetPreloadMocks(): void {
     .mockResolvedValue(null);
   preloadMocks.appInfo.checkForUpdates.mockReset().mockResolvedValue(undefined);
   preloadMocks.appInfo.installUpdate.mockReset().mockResolvedValue(undefined);
+  preloadMocks.appInfo.getPendingUpdate.mockReset().mockResolvedValue(null);
   preloadMocks.appInfo.onUpdateProgress.mockReset().mockReturnValue(() => {});
   preloadMocks.appInfo.onUtilityReset.mockReset().mockReturnValue(() => {});
 

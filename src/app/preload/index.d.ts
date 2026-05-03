@@ -62,6 +62,7 @@ declare global {
       getPromptsDbSchemaVersion: () => Promise<number | null>;
       checkForUpdates: () => Promise<void>;
       installUpdate: () => Promise<void>;
+      getPendingUpdate: () => Promise<{ version: string } | null>;
       onUpdateAvailable: (
         cb: (info: { version: string; releaseUrl?: string }) => void,
       ) => () => void;

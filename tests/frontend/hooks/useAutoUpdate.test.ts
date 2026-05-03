@@ -73,6 +73,41 @@ describe("useAutoUpdate", () => {
     expect(preloadMocks.appInfo.installUpdate).toHaveBeenCalled();
   });
 
+  it("shows install toast from pending update on mount", async () => {
+    preloadMocks.appInfo.getPendingUpdate.mockResolvedValue({
+      version: "1.2.0",
+    });
+    renderHook(() => useAutoUpdate());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Update 1.2.0 ready to install",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Install Now" }),
+      }),
+    );
+  });
+
+  it("dedupes install toast when pending and push event share a version", async () => {
+    preloadMocks.appInfo.getPendingUpdate.mockResolvedValue({
+      version: "1.2.0",
+    });
+    renderHook(() => useAutoUpdate());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      preloadEvents.appInfo.updateDownloaded.emit({ version: "1.2.0" });
+    });
+
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
   it("unsubscribes from events on unmount", () => {
     const { unmount } = renderHook(() => useAutoUpdate());
 

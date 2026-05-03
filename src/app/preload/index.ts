@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("appInfo", {
     ipcRenderer.invoke("app:getPromptsDbSchemaVersion"),
   checkForUpdates: () => ipcRenderer.invoke("app:checkForUpdates"),
   installUpdate: () => ipcRenderer.invoke("app:installUpdate"),
+  getPendingUpdate: () => ipcRenderer.invoke("app:getPendingUpdate"),
   onUpdateAvailable: (
     cb: (info: { version: string; releaseUrl?: string }) => void,
   ) => {

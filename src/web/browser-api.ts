@@ -98,6 +98,7 @@ export function createBrowserApi(): KonomiApi {
       getPromptsDbSchemaVersion: async () => null,
       checkForUpdates: async () => {},
       installUpdate: async () => {},
+      getPendingUpdate: async () => null,
       onUpdateAvailable: () => () => {},
       onUpdateDownloaded: () => () => {},
       onUpdateProgress: () => () => {},

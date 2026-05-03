@@ -48,6 +48,7 @@ export interface AppInfoApi {
   getPromptsDbSchemaVersion(): Promise<number | null>;
   checkForUpdates(): Promise<void>;
   installUpdate(): Promise<void>;
+  getPendingUpdate(): Promise<{ version: string } | null>;
   onUpdateAvailable(cb: (info: { version: string; releaseUrl?: string }) => void): () => void;
   onUpdateDownloaded(cb: (info: { version: string }) => void): () => void;
   onUpdateProgress(cb: (data: { percent: number }) => void): () => void;

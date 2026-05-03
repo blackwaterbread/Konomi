@@ -1,5 +1,9 @@
 import { app, ipcMain, dialog, shell } from "electron";
-import { checkForUpdates, installUpdate } from "./lib/updater";
+import {
+  checkForUpdates,
+  getPendingUpdate,
+  installUpdate,
+} from "./lib/updater";
 import fs from "fs";
 import path from "path";
 import { readdir, unlink, readFile } from "fs/promises";
@@ -54,6 +58,7 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle("app:checkForUpdates", () => checkForUpdates());
   ipcMain.handle("app:installUpdate", () => installUpdate());
+  ipcMain.handle("app:getPendingUpdate", () => getPendingUpdate());
 
   // ── File/system handlers (must stay in main process) ───────────────────────
   ipcMain.handle("readNaiMeta", async (_, filePath: string) => {

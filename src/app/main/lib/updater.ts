@@ -86,7 +86,9 @@ export function initAutoUpdater(wc: WebContents): void {
   autoUpdater.on("update-downloaded", (info) => {
     log.info("Update downloaded", { version: info.version });
     savePendingUpdate(info.version);
-    // Skip if already notified this version in this session (e.g. from pending file)
+    // Dedupe with the pull path: getPendingUpdate() may have already notified
+    // the renderer for this same version (e.g. when a re-check immediately
+    // re-emits update-downloaded for an already-staged file).
     if (notifiedVersion === info.version) return;
     notifiedVersion = info.version;
     send("app:updateDownloaded", { version: info.version });
@@ -96,13 +98,6 @@ export function initAutoUpdater(wc: WebContents): void {
     log.errorWithStack("Auto-updater error", err);
   });
 
-  // Re-notify about update downloaded in a previous session
-  const pending = loadPendingUpdate();
-  if (pending) {
-    notifiedVersion = pending.version;
-    setTimeout(() => send("app:updateDownloaded", pending), 2_000);
-  }
-
   // Check 10 seconds after launch (only in packaged builds)
   if (app.isPackaged) {
     setTimeout(() => {
@@ -111,6 +106,23 @@ export function initAutoUpdater(wc: WebContents): void {
       });
     }, 10_000);
   }
+}
+
+// Pull-model entry for the renderer. Replaces a previous push that fired on a
+// 2s timer at startup and lost the toast whenever bootstrap (initial scan,
+// splash) outran the timer. Renderer calls this once after mount.
+export function getPendingUpdate(): { version: string } | null {
+  const pending = loadPendingUpdate();
+  if (!pending) return null;
+  // Already-installed marker (e.g. user ran the staged installer manually, or
+  // the app was relaunched after auto-install). Drop the stale entry so the
+  // toast does not pester them about a version they are already on.
+  if (pending.version === app.getVersion()) {
+    clearPendingUpdate();
+    return null;
+  }
+  notifiedVersion = pending.version;
+  return pending;
 }
 
 export function installUpdate(): void {
