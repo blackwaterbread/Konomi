@@ -31,8 +31,12 @@ ENV LIBWEBP_ROOT=/usr
 ENV LIBJPEG_ROOT=/usr
 RUN node scripts/build-native.mjs
 
-# Generate Prisma client (MariaDB)
-RUN bun run db:generate:server
+# Generate Prisma clients
+# - server: MariaDB client used at runtime via setDBProvider
+# - sqlite: required because src/core/lib/db.ts statically imports the
+#   SQLite-generated PrismaClient as a value (the SQLite branch never
+#   runs in the server, but the import must still resolve at load time)
+RUN bun run db:generate:server && bun run db:generate
 
 # Build web frontend
 RUN bun run build:web
