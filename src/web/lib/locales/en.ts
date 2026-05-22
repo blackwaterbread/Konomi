@@ -917,6 +917,7 @@ const en = {
     folders: {
       openInExplorer: "Open in Explorer",
       rescan: "Rescan Folder",
+      rescanAll: "Refresh All Folders",
       isolate: "Show Only This Folder",
       rename: "Rename Folder",
       delete: "Delete Folder",

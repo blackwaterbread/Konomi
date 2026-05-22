@@ -477,6 +477,10 @@ export default function App({
     [handlePanelChange],
   );
 
+  const handleSidebarRescanAll = useCallback(() => {
+    void runScan({ refreshPage: true });
+  }, [runScan]);
+
   const sidebarFolderState = useMemo(
     () => ({
       folders,
@@ -525,6 +529,7 @@ export default function App({
       onFoldersAdded: handleFoldersAdded,
       onFolderCancelled: handleFolderCancelled,
       onFolderRescan: handleFolderRescan,
+      onRescanAll: handleSidebarRescanAll,
       onSubfolderToggle: toggleSubfolder,
       onSubfolderToggleCollapse: toggleSubfolderCollapse,
       onRootToggle: toggleRoot,
@@ -538,6 +543,7 @@ export default function App({
       handleFolderCancelled,
       handleFolderRemoved,
       handleFolderRescan,
+      handleSidebarRescanAll,
       removeFolder,
       renameFolder,
       reorderFolders,

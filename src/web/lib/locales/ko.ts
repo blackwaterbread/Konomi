@@ -910,6 +910,7 @@ const ko = {
     folders: {
       openInExplorer: "Explorer에서 열기",
       rescan: "폴더 재스캔",
+      rescanAll: "전체 폴더 새로고침",
       isolate: "이 폴더만 보기",
       rename: "폴더 이름 변경",
       delete: "폴더 삭제",

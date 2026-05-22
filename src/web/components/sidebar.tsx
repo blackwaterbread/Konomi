@@ -124,6 +124,7 @@ interface SidebarFolderActions {
   onFoldersAdded?: (folderIds: number[]) => void;
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
+  onRescanAll?: () => void;
   onSubfolderToggle?: (path: string, folderId: number) => void;
   onSubfolderToggleCollapse?: (path: string) => void;
   onRootToggle?: (folderId: number) => void;
@@ -1438,6 +1439,7 @@ interface SidebarFoldersSectionProps {
   onDeleteRequest: (target: { id: number; name: string }) => void;
   onReveal: (folderId: number) => void;
   onRescan: (folder: FolderRecord) => void;
+  onRescanAll?: () => void;
   onDragStart: (id: number) => void;
   onDragOver: (id: number, position: "before" | "after") => void;
   onDrop: (id: number, position: "before" | "after") => void;
@@ -1477,6 +1479,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   onDeleteRequest,
   onReveal,
   onRescan,
+  onRescanAll,
   onDragStart,
   onDragOver,
   onDrop,
@@ -1495,6 +1498,21 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
           <FolderPlus className="h-4 w-4" />
           {t("sidebar.sections.folders")}
         </div>
+        <div className="flex items-center gap-0.5">
+          {onRescanAll && folders.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              onClick={onRescanAll}
+              disabled={addDisabled}
+              title={t("sidebar.folders.rescanAll")}
+              aria-label={t("sidebar.folders.rescanAll")}
+              data-tour="refresh-all-folders"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
         {addDisabled ? (
           <Button
             variant="ghost"
@@ -1538,6 +1556,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
             <Plus className="h-4 w-4" />
           </Button>
         )}
+        </div>
       </div>
       {isFolderVisibilityDefault === false && onResetVisibility && (
         <Button
@@ -1853,6 +1872,7 @@ export const Sidebar = memo(
       onFolderAdded,
       onFolderCancelled,
       onFolderRescan,
+      onRescanAll,
       onSubfolderToggle,
       onSubfolderToggleCollapse,
       onRootToggle,
@@ -2354,6 +2374,7 @@ export const Sidebar = memo(
                 onDeleteRequest={handleDeleteFolderRequest}
                 onReveal={handleRevealFolderInExplorer}
                 onRescan={handleFolderRescanRequest}
+                onRescanAll={onRescanAll}
                 onDragStart={handleFolderDragStart}
                 onDragOver={handleFolderDragOver}
                 onDrop={handleFolderDrop}
