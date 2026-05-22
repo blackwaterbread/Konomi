@@ -1,12 +1,17 @@
+import fs from "fs";
+import path from "path";
 import { parsePromptTokens } from "../lib/token";
 import { withConcurrency } from "../lib/scanner";
 import type { CancelToken } from "../lib/scanner";
 import type {
   ImageEntity,
   ImageMetadataUpdateEntry,
+  ImageUpsertData,
   SearchStatMutation,
+  SearchStatSource,
 } from "../types/repository";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
+import type { FolderRepo } from "../lib/repositories/prisma-folder-repo";
 import type { ImageMeta } from "../types/image-meta";
 import type {
   ImageListQuery,
@@ -29,11 +34,61 @@ export interface SearchStatsAdapter {
 
 export type ImageServiceDeps = {
   imageRepo: ImageRepo;
+  folderRepo?: FolderRepo;
   readMeta?: (filePath: string) => Promise<ImageMeta | null>;
   searchStats?: SearchStatsAdapter;
 };
 
 // ── Helper ─────────────────────────────────────────────────────
+
+function buildUpsertData(
+  filePath: string,
+  folderId: number,
+  stat: fs.Stats,
+  meta: ImageMeta | null,
+): ImageUpsertData {
+  return {
+    path: filePath,
+    folderId,
+    prompt: meta?.prompt ?? "",
+    negativePrompt: meta?.negativePrompt ?? "",
+    characterPrompts: JSON.stringify(meta?.characterPrompts ?? []),
+    promptTokens: JSON.stringify(parsePromptTokens(meta?.prompt ?? "")),
+    negativePromptTokens: JSON.stringify(
+      parsePromptTokens(meta?.negativePrompt ?? ""),
+    ),
+    characterPromptTokens: JSON.stringify(
+      (meta?.characterPrompts ?? []).flatMap(parsePromptTokens),
+    ),
+    source: meta?.source ?? "unknown",
+    model: meta?.model ?? "",
+    seed: meta?.seed || "",
+    width: meta?.width ?? 0,
+    height: meta?.height ?? 0,
+    sampler: meta?.sampler ?? "",
+    steps: meta?.steps ?? 0,
+    cfgScale: meta?.cfgScale ?? 0,
+    cfgRescale: meta?.cfgRescale ?? 0,
+    noiseSchedule: meta?.noiseSchedule ?? "",
+    varietyPlus: meta?.varietyPlus ?? false,
+    fileSize: stat.size,
+    fileModifiedAt: stat.mtime,
+  };
+}
+
+function normalizePathForCompare(p: string): string {
+  const resolved = path.resolve(p);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function isPathUnder(filePath: string, folderPath: string): boolean {
+  const file = normalizePathForCompare(filePath);
+  const folder = normalizePathForCompare(folderPath);
+  if (file === folder) return false;
+  const sep = process.platform === "win32" ? "\\" : "/";
+  const prefix = folder.endsWith(sep) ? folder : folder + sep;
+  return file.startsWith(prefix);
+}
 
 function buildMetadataEntry(
   filePath: string,
@@ -68,10 +123,55 @@ function buildMetadataEntry(
 // ── Factory ────────────────────────────────────────────────────
 
 export function createImageService(deps: ImageServiceDeps) {
-  const { imageRepo, searchStats } = deps;
+  const { imageRepo, folderRepo, searchStats } = deps;
   const readMeta = deps.readMeta ?? (async () => null);
 
   return {
+    // ── External path registration ────────────────────────
+    //
+    // Used to register a file produced by an in-app operation (e.g. NAI
+    // generation) into the gallery without relying on a filesystem watcher.
+    // Resolves the file's folder from the registered folder roots; returns
+    // null if the path is outside every root or the file is missing.
+    // Idempotent — re-registering with an unchanged mtime is a no-op.
+    async registerExternalPath(filePath: string): Promise<ImageEntity | null> {
+      if (!folderRepo) return null;
+      let stat: fs.Stats;
+      try {
+        stat = await fs.promises.stat(filePath);
+      } catch {
+        return null;
+      }
+      if (!stat.isFile()) return null;
+
+      const folders = await folderRepo.findAll();
+      const matched = folders.find((f) => isPathUnder(filePath, f.path));
+      if (!matched) return null;
+
+      const existing = await imageRepo.findByPath(filePath);
+      if (
+        existing &&
+        existing.fileModifiedAt.getTime() === stat.mtime.getTime()
+      ) {
+        return existing;
+      }
+
+      const meta = await readMeta(filePath);
+      const data = buildUpsertData(filePath, matched.id, stat, meta);
+      const image = await imageRepo.upsertByPath(data);
+
+      if (searchStats) {
+        await searchStats.applyMutations([
+          {
+            before: (existing as SearchStatSource | null) ?? null,
+            after: image as SearchStatSource,
+          },
+        ]);
+      }
+
+      return image;
+    },
+
     // ── Listing ────────────────────────────────────────────
 
     async listPage(query?: ImageListQuery): Promise<ImageListResult> {

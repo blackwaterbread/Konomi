@@ -100,15 +100,6 @@ export type { FolderService, FolderServiceDeps, FolderStats } from "./services/f
 export { createCategoryService } from "./services/category-service";
 export type { CategoryService, CategoryServiceDeps } from "./services/category-service";
 
-export { createWatchService } from "./services/watch-service";
-export type {
-  WatchService,
-  WatchServiceDeps,
-  WatchSearchStatsAdapter,
-  WatchDuplicateDetectionAdapter,
-  WatchSimilarityCacheAdapter,
-} from "./services/watch-service";
-
 export { createImageService } from "./services/image-service";
 export type { ImageService, ImageServiceDeps } from "./services/image-service";
 

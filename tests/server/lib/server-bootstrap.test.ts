@@ -40,16 +40,14 @@ function createMockServices(initial: FolderRow[] = []) {
   };
   const categoryService = { seedBuiltins: vi.fn(async () => {}) };
   const duplicateService = { ensureIgnoredLoaded: vi.fn(async () => {}) };
-  const watchService = { startAll: vi.fn(async () => {}) };
 
   return {
     services: {
       folderService,
       categoryService,
       duplicateService,
-      watchService,
     } as unknown as Services,
-    spies: { folderService, categoryService, duplicateService, watchService },
+    spies: { folderService, categoryService, duplicateService },
     getRows: () => rows.slice(),
   };
 }
@@ -160,7 +158,7 @@ describe("bootstrap — reconcileRemovedFolders", () => {
 });
 
 describe("bootstrap — orchestration", () => {
-  it("seeds builtins, loads ignored duplicates, and starts watcher paused", async () => {
+  it("seeds builtins and loads ignored duplicates", async () => {
     const { services, spies } = createMockServices([]);
     listAvailableDirectoriesMock.mockResolvedValue([]);
     dataRootExistsMock.mockResolvedValue(true);
@@ -170,6 +168,5 @@ describe("bootstrap — orchestration", () => {
 
     expect(spies.categoryService.seedBuiltins).toHaveBeenCalledOnce();
     expect(spies.duplicateService.ensureIgnoredLoaded).toHaveBeenCalledOnce();
-    expect(spies.watchService.startAll).toHaveBeenCalledWith({ paused: true });
   });
 });

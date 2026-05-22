@@ -19,9 +19,7 @@ import { createDuplicateService } from "@core/services/duplicate-service";
 import { createPromptBuilderService } from "@core/services/prompt-builder-service";
 import { createPromptTagService } from "@core/services/prompt-tag-service";
 import { createNaiGenService } from "@core/services/nai-gen-service";
-import { createWatchService } from "@core/services/watch-service";
 import { createMaintenanceService } from "@core/services/maintenance-service";
-import { readImageMeta } from "@core/lib/image-meta";
 import { getPromptsDBPath } from "@core/lib/prompts-db";
 import {
   ensureIgnoredDuplicatePathsLoaded,
@@ -35,14 +33,12 @@ import {
 } from "@core/lib/image-infra";
 import {
   applyImageSearchStatsMutations,
-  applyImageSearchStatsMutation,
   decrementImageSearchStatsForRows,
   listImageSearchStatSourcesForFolder,
 } from "@core/lib/search-stats-store";
 import {
   computeAllHashes,
   deleteSimilarityCacheForImageIds,
-  refreshSimilarityCacheForImageIds,
 } from "@core/lib/phash";
 import type { CancelToken } from "@core/lib/scanner";
 import { createLogger } from "@core/lib/logger";
@@ -149,6 +145,7 @@ export function createServices(sender: EventSender) {
 
   const imageService = createImageService({
     imageRepo,
+    folderRepo,
     readMeta: (filePath) => naiPool.run(filePath),
     searchStats: searchStatsAdapter,
   });
@@ -159,26 +156,6 @@ export function createServices(sender: EventSender) {
     ignoredDuplicates: ignoredDuplicatesAdapter,
     searchStats: searchStatsAdapter,
     similarityCache: similarityCacheAdapter,
-  });
-
-  const watchService = createWatchService({
-    imageRepo,
-    folderRepo,
-    sender: maintenanceAwareSender,
-    readMeta: readImageMeta,
-    searchStats: {
-      applyMutation: applyImageSearchStatsMutation,
-      decrementForRows: decrementImageSearchStatsForRows,
-    },
-    duplicateDetection: {
-      findDuplicateForIncomingPath: (p) => duplicateService.findDuplicateForIncomingPath(p),
-      isIgnored: isIgnoredDuplicatePath,
-      forgetIgnored: forgetIgnoredDuplicatePath,
-    },
-    similarityCache: {
-      deleteForImageIds: deleteSimilarityCacheForImageIds,
-      refreshForImageIds: refreshSimilarityCacheForImageIds,
-    },
   });
 
   return {
@@ -193,7 +170,6 @@ export function createServices(sender: EventSender) {
     promptBuilderService,
     promptTagService,
     naiGenService,
-    watchService,
     maintenanceService,
     sender,
     scanState,
@@ -276,9 +252,6 @@ export async function bootstrap(services: Services): Promise<void> {
 
   const registered = await autoRegisterFolders(services);
   if (registered > 0) log.info(`Auto-registered ${registered} folder(s)`);
-
-  await services.watchService.startAll({ paused: true });
-  log.info("Watcher started in paused mode");
 }
 
 export async function runInitialScan(services: Services): Promise<void> {
@@ -305,8 +278,5 @@ export async function runInitialScan(services: Services): Promise<void> {
   } finally {
     services.scanState.active = false;
     services.scanState.cancelToken = null;
-    services.watchService.setScanActive(false, {
-      discardDeferredChanges: true,
-    });
   }
 }

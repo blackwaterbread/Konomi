@@ -33,7 +33,6 @@ export const API_REGISTRY: ApiMethod[] = [
   { namespace: "image", method: "scan", label: "image.scan", params: '{}' },
   { namespace: "image", method: "cancelScan", label: "image.cancelScan" },
   { namespace: "image", method: "setFavorite", label: "image.setFavorite", params: '{"id": 0, "isFavorite": true}' },
-  { namespace: "image", method: "watch", label: "image.watch" },
   { namespace: "image", method: "computeHashes", label: "image.computeHashes" },
   { namespace: "image", method: "resetHashes", label: "image.resetHashes", destructive: true },
   { namespace: "image", method: "rescanMetadata", label: "image.rescanMetadata" },

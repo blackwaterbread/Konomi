@@ -114,7 +114,6 @@ contextBridge.exposeInMainWorld("image", {
   }) => ipcRenderer.invoke("image:scan", options),
   setFavorite: (id: number, isFavorite: boolean) =>
     ipcRenderer.invoke("image:setFavorite", id, isFavorite),
-  watch: () => ipcRenderer.invoke("image:watch"),
   listIgnoredDuplicates: () =>
     ipcRenderer.invoke("image:listIgnoredDuplicates"),
   clearIgnoredDuplicates: () =>

@@ -158,7 +158,6 @@ export function createBrowserApi(): KonomiApi {
       quickVerify: () => rpc("/api/images/quick-verify", {}),
       scan: (options) => rpc("/api/images/scan", options ?? {}),
       setFavorite: (id, isFavorite) => rpc("/api/images/favorite", { id, isFavorite }),
-      watch: async () => {},
       listIgnoredDuplicates: () => rpc("/api/images/ignored-duplicates"),
       clearIgnoredDuplicates: () => rpcDelete("/api/images/ignored-duplicates"),
       revealInExplorer: async () => {},

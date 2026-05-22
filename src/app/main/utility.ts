@@ -14,10 +14,7 @@ import {
   listImageSearchStatSourcesForFolder,
   decrementImageSearchStatsForRows,
   applyImageSearchStatsMutations,
-  applyImageSearchStatsMutation,
 } from "@core/lib/search-stats-store";
-import { createWatchService } from "@core/services/watch-service";
-import { readImageMeta } from "@core/lib/image-meta";
 import type { ImageEntity } from "@core/types/repository";
 import type { ImageListQuery } from "@core/types/image-query";
 import { createScanService } from "@core/services/scan-service";
@@ -28,7 +25,6 @@ import { createPrismaPromptRepo } from "@core/lib/repositories/prisma-prompt-rep
 import {
   computeAllHashes,
   deleteSimilarityCacheForImageIds,
-  refreshSimilarityCacheForImageIds,
   getGroupForImage,
   getSimilarGroups,
   getSimilarityReasons,
@@ -155,6 +151,7 @@ const scanService = createScanService({
 });
 const imageService = createImageService({
   imageRepo,
+  folderRepo,
   readMeta: (filePath) => naiPool.run(filePath),
   searchStats: searchStatsAdapter,
 });
@@ -164,27 +161,6 @@ const duplicateService = createDuplicateService({
   ignoredDuplicates: ignoredDuplicatesAdapter,
   searchStats: searchStatsAdapter,
   similarityCache: similarityCacheAdapter,
-});
-
-const watchService = createWatchService({
-  imageRepo,
-  folderRepo,
-  sender: maintenanceAwareSender,
-  readMeta: readImageMeta,
-  searchStats: {
-    applyMutation: applyImageSearchStatsMutation,
-    decrementForRows: decrementImageSearchStatsForRows,
-  },
-  duplicateDetection: {
-    findDuplicateForIncomingPath: (p) =>
-      duplicateService.findDuplicateForIncomingPath(p),
-    isIgnored: isIgnoredDuplicatePath,
-    forgetIgnored: forgetIgnoredDuplicatePath,
-  },
-  similarityCache: {
-    deleteForImageIds: deleteSimilarityCacheForImageIds,
-    refreshForImageIds: refreshSimilarityCacheForImageIds,
-  },
 });
 
 async function handleRequest(type: string, payload: unknown): Promise<unknown> {
@@ -205,9 +181,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return folderService.list();
     case "folder:create": {
       const { name, path } = payload as { name: string; path: string };
-      const folder = await folderService.create(name, path);
-      watchService.watchFolder(folder.id, folder.path);
-      return folder;
+      return folderService.create(name, path);
     }
     case "folder:findDuplicates": {
       const { path } = payload as { path: string };
@@ -223,30 +197,18 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           keep: "existing" | "incoming" | "ignore";
         }>;
       };
-      // Pause watcher during resolution to prevent it from re-detecting
-      // deleted/retained files as new changes or new duplicates.
-      watchService.setScanActive(true);
-      try {
-        const resolved = await duplicateService.resolve(
-          resolutions,
-          emitSearchStatsProgress,
-        );
-        if (resolved.removedImageIds.length > 0) {
-          utilitySender.send("image:removed", resolved.removedImageIds);
-        }
-        watchService.applyResolvedDuplicates({
-          touchedIncomingPaths: resolved.touchedIncomingPaths,
-          retainedIncomingPaths: resolved.retainedIncomingPaths,
-        });
-        maintenanceService.scheduleAnalysis(0);
-        return null;
-      } finally {
-        watchService.setScanActive(false);
+      const resolved = await duplicateService.resolve(
+        resolutions,
+        emitSearchStatsProgress,
+      );
+      if (resolved.removedImageIds.length > 0) {
+        utilitySender.send("image:removed", resolved.removedImageIds);
       }
+      maintenanceService.scheduleAnalysis(0);
+      return null;
     }
     case "folder:delete": {
       const { id } = payload as { id: number };
-      watchService.stopFolder(id);
       // folderService.delete handles ImageSimilarityCache + ImageSearchStat
       // cleanup internally so the web/data-root paths get the same parity.
       await folderService.delete(id, emitSearchStatsProgress);
@@ -320,7 +282,6 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         | undefined) ?? {};
       scanCancelToken = { cancelled: false };
       scanInFlight = true;
-      watchService.setScanActive(true);
       try {
         const result = await scanService.scanAll({
           signal: scanCancelToken,
@@ -343,7 +304,6 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       } finally {
         scanCancelToken = null;
         scanInFlight = false;
-        watchService.setScanActive(false, { discardDeferredChanges: true });
       }
     }
     case "image:cancelScan":
@@ -354,49 +314,31 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       await imageRepo.setFavorite(id, isFavorite);
       return null;
     }
-    // fs.watch can miss deletion events on some filesystems (network volumes,
-    // some Linux setups), so callers explicitly request DB cleanup after they
-    // unlink/trash a file. setScanActive pauses the watcher so any delayed
-    // file-gone event won't double-decrement search stats.
     case "image:cleanupDeletedByPath": {
       const { path: imagePath } = payload as { path: string };
-      watchService.setScanActive(true);
-      try {
-        const existing = await imageRepo.findByPath(imagePath);
-        if (!existing) return { deletedFromDb: false };
-        await imageRepo.deleteByIds([existing.id]);
-        await deleteSimilarityCacheForImageIds([existing.id]);
-        await decrementImageSearchStatsForRows(
-          [existing],
-          emitSearchStatsProgress,
-        );
-        utilitySender.send("image:removed", [existing.id]);
-        return { deletedFromDb: true };
-      } finally {
-        watchService.setScanActive(false, { discardDeferredChanges: true });
-      }
+      const existing = await imageRepo.findByPath(imagePath);
+      if (!existing) return { deletedFromDb: false };
+      await imageRepo.deleteByIds([existing.id]);
+      await deleteSimilarityCacheForImageIds([existing.id]);
+      await decrementImageSearchStatsForRows(
+        [existing],
+        emitSearchStatsProgress,
+      );
+      utilitySender.send("image:removed", [existing.id]);
+      return { deletedFromDb: true };
     }
     case "image:cleanupDeletedByIds": {
       const { ids } = payload as { ids: number[] };
       if (ids.length === 0) return { deletedFromDb: 0 };
-      watchService.setScanActive(true);
-      try {
-        const rows = await imageRepo.listByIds(ids);
-        if (rows.length === 0) return { deletedFromDb: 0 };
-        const deletedIds = rows.map((r) => r.id);
-        await imageRepo.deleteByIds(deletedIds);
-        await deleteSimilarityCacheForImageIds(deletedIds);
-        await decrementImageSearchStatsForRows(rows, emitSearchStatsProgress);
-        utilitySender.send("image:removed", deletedIds);
-        return { deletedFromDb: deletedIds.length };
-      } finally {
-        watchService.setScanActive(false, { discardDeferredChanges: true });
-      }
+      const rows = await imageRepo.listByIds(ids);
+      if (rows.length === 0) return { deletedFromDb: 0 };
+      const deletedIds = rows.map((r) => r.id);
+      await imageRepo.deleteByIds(deletedIds);
+      await deleteSimilarityCacheForImageIds(deletedIds);
+      await decrementImageSearchStatsForRows(rows, emitSearchStatsProgress);
+      utilitySender.send("image:removed", deletedIds);
+      return { deletedFromDb: deletedIds.length };
     }
-    case "image:watch":
-      // No-op if watcher was already started at boot (paused mode).
-      // Kept for backwards compatibility; the watcher is now auto-started.
-      return null;
     case "image:listIgnoredDuplicates":
       return duplicateService.listIgnored();
     case "image:clearIgnoredDuplicates":
@@ -618,13 +560,28 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return naiGenService.getConfig();
     case "nai:updateConfig":
       return naiGenService.updateConfig(payload as NaiConfigPatch);
-    case "nai:generate":
-      return naiGenService.generate(
+    case "nai:generate": {
+      const outPath = await naiGenService.generate(
         payload as GenerateParams,
         (dataUrl: string) => {
           utilitySender.send("nai:generatePreview", dataUrl);
         },
       );
+      // Watcher-free direct registration: if the output landed inside a
+      // registered folder, surface the new image to the UI immediately.
+      // maintenanceAwareSender also schedules a similarity analysis run.
+      try {
+        const image = await imageService.registerExternalPath(outPath);
+        if (image) {
+          maintenanceAwareSender.send("image:batch", [
+            { ...image, isNew: true },
+          ]);
+        }
+      } catch (err) {
+        log.errorWithStack("registerExternalPath failed", err as Error);
+      }
+      return outPath;
+    }
 
     case "system:shutdown": {
       // Triggered by the bridge on app close. Gives the utility process a
@@ -634,11 +591,6 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       log.info("Shutdown requested");
       maintenanceService.requestShutdown();
       if (scanCancelToken) scanCancelToken.cancelled = true;
-      try {
-        watchService.stopAll();
-      } catch (err) {
-        log.errorWithStack("watchService.stopAll failed", err as Error);
-      }
       try {
         await maintenanceService.flush();
       } catch (err) {
@@ -680,15 +632,6 @@ ready
   .then(() => log.info("Loaded ignored duplicate paths"))
   .catch((error) =>
     log.errorWithStack("Failed to load ignored duplicate paths", error),
-  );
-
-// Start watching folders immediately in paused mode so file changes that
-// occur before the first scan are queued and flushed after the scan finishes.
-ready
-  .then(() => watchService.startAll({ paused: true }))
-  .then(() => log.info("Watcher started in paused mode"))
-  .catch((error) =>
-    log.errorWithStack("Failed to start watcher on boot", error),
   );
 
 process.parentPort.on("message", async (e: Electron.MessageEvent) => {

@@ -75,7 +75,6 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
             dir.name,
             dir.path,
           );
-          services.watchService.watchFolder(folder.id, folder.path);
           newlyRegistered.push(folder.id);
           log.info(`Auto-registered folder: ${dir.name} (${dir.path})`);
         } catch (err) {
@@ -100,7 +99,6 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
           if (!isUnderDataRoot(folder.path)) continue;
           if (detectedPaths.has(normalizeFsPath(folder.path))) continue;
           try {
-            services.watchService.stopFolder(folder.id);
             await services.folderService.delete(folder.id);
             removed++;
             log.info(
@@ -157,7 +155,6 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
     const cancelToken = { cancelled: false };
     services.scanState.active = true;
     services.scanState.cancelToken = cancelToken;
-    services.watchService.setScanActive(true);
     try {
       for (const folderId of folderIds) {
         if (stopped || cancelToken.cancelled) return;
@@ -174,9 +171,6 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
     } finally {
       services.scanState.active = false;
       services.scanState.cancelToken = null;
-      services.watchService.setScanActive(false, {
-        discardDeferredChanges: true,
-      });
     }
   }
 

@@ -315,7 +315,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle("image:setFavorite", (_, id: number, isFavorite: boolean) =>
     bridge.request("image:setFavorite", { id, isFavorite }),
   );
-  ipcMain.handle("image:watch", () => bridge.request("image:watch"));
   ipcMain.handle("image:listIgnoredDuplicates", () =>
     bridge.request("image:listIgnoredDuplicates", undefined),
   );
