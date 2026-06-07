@@ -56,13 +56,35 @@ export function useImageAnalysis({
     ],
   );
 
+  // Keep the latest threshold getters in refs so the analysisActive listener
+  // below can read them without re-subscribing on every threshold change.
+  const getVisualThresholdRef = useRef(getVisualThreshold);
+  const getPromptThresholdRef = useRef(getPromptThreshold);
+  getVisualThresholdRef.current = getVisualThreshold;
+  getPromptThresholdRef.current = getPromptThreshold;
+
   // Subscribe to maintenance run lifecycle from core. Auto-triggered runs
   // (after scan, after watcher batch events) only surface to the UI through
   // these events.
   useEffect(() => {
     const off = window.image.onAnalysisActive(({ active }) => {
       setIsAnalyzing(active);
-      if (!active) setHasAnalyzedOnce(true);
+      if (!active) {
+        setHasAnalyzedOnce(true);
+        // Core auto-analysis (computeAllHashes) refreshes the DB similarity
+        // cache but never builds the in-memory group map that
+        // getGroupForImage relies on. Rebuild it here so the detail panel's
+        // similar-images list works without a manual "지금 분석" run.
+        void window.image
+          .similarGroups(
+            getVisualThresholdRef.current(),
+            getPromptThresholdRef.current(),
+          )
+          .then((groups) => setSimilarGroupCount(groups.length))
+          .catch(() => {
+            // Group rebuild is best-effort; manual analysis can retry.
+          });
+      }
     });
     return () => {
       off();
