@@ -113,6 +113,7 @@ export const preloadMocks = {
     onMigrationProgress: dbMigrationProgress.subscribe,
   },
   appInfo: {
+    isElectron: true,
     isDevMode: vi.fn().mockResolvedValue(false),
     get: vi.fn().mockResolvedValue({
       appName: "Konomi",

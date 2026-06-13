@@ -63,6 +63,7 @@ describe("BootstrapApp", () => {
     applyAppLanguagePreferenceMock.mockReset().mockResolvedValue("en");
     delete document.documentElement.dataset.theme;
     document.documentElement.classList.remove("dark");
+    (window.appInfo as { isElectron: boolean }).isElectron = true;
   });
 
   it("applies stored preferences and waits for the splash minimum before mounting the app", async () => {
@@ -134,6 +135,31 @@ describe("BootstrapApp", () => {
     expect(screen.getByTestId("bootstrap-splash-status")).toHaveTextContent(
       "Preparing the start screen...",
     );
+
+    view.unmount();
+  });
+
+  it("skips the splash on the web build and mounts the app immediately", async () => {
+    (window.appInfo as { isElectron: boolean }).isElectron = false;
+    localStorage.setItem(
+      "konomi-settings",
+      JSON.stringify({ language: "ko", theme: "dark" }),
+    );
+
+    const view = await renderBootstrapApp();
+
+    // No splash at any point; App mounts straight away (folders load themselves).
+    expect(screen.queryByTestId("bootstrap-splash")).not.toBeInTheDocument();
+    expect(screen.getByTestId("bootstrapped-app")).toHaveTextContent("null");
+    // Theme is applied synchronously before paint, not deferred to App.
+    expect(document.documentElement.dataset.theme).toBe("dark");
+
+    await act(async () => {
+      await flushPromises();
+    });
+
+    expect(screen.queryByTestId("bootstrap-splash")).not.toBeInTheDocument();
+    expect(applyAppLanguagePreferenceMock).toHaveBeenCalledWith("ko");
 
     view.unmount();
   });

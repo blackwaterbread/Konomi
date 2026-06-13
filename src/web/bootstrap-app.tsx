@@ -166,12 +166,31 @@ function ClickableToaster() {
 export function BootstrapApp() {
   const { t } = useTranslation();
   const storedSettings = useMemo(() => readStoredSettings(), []);
+  // Web (Docker) build: migrations run server-side and App loads its own
+  // folders, so there's nothing real to wait on — skip the splash and mount
+  // immediately. Electron keeps the splash (real migrations + initial scan).
+  const skipSplash = useMemo(() => !window.appInfo?.isElectron, []);
+  // App mounts straight away when skipping the splash, and its useAppAppearance
+  // owns ongoing theme management — but apply the stored theme once here,
+  // synchronously before the first paint, to avoid a flash of the wrong theme.
+  const themeAppliedRef = useRef(false);
+  if (skipSplash && !themeAppliedRef.current) {
+    themeAppliedRef.current = true;
+    const isDark =
+      storedSettings.theme === "auto"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : storedSettings.theme === "dark";
+    document.documentElement.dataset.theme = isDark ? "dark" : "white";
+    document.documentElement.classList.toggle("dark", isDark);
+  }
   const [folderCount, setFolderCount] = useState<number | null>(
     bootstrapResult.folderCount,
   );
   const [migrating, setMigrating] = useState(false);
-  const [mountApp, setMountApp] = useState(bootstrapCompleted);
-  const [renderSplash, setRenderSplash] = useState(!bootstrapCompleted);
+  const [mountApp, setMountApp] = useState(bootstrapCompleted || skipSplash);
+  const [renderSplash, setRenderSplash] = useState(
+    !bootstrapCompleted && !skipSplash,
+  );
   const [splashFadingOut, setSplashFadingOut] = useState(false);
   const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const splashShownAtRef = useRef<number | null>(null);
@@ -205,6 +224,7 @@ export function BootstrapApp() {
   }, [renderSplash]);
 
   useEffect(() => {
+    if (skipSplash) return;
     if (bootstrapCompleted) {
       setFolderCount(bootstrapResult.folderCount);
       setMountApp(true);
@@ -263,7 +283,7 @@ export function BootstrapApp() {
       clearSplashTimers();
       offMigrationProgress();
     };
-  }, [clearSplashTimers]);
+  }, [clearSplashTimers, skipSplash]);
 
   const statusText = useMemo(() => {
     if (migrating) {
