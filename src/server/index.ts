@@ -50,14 +50,35 @@ async function main() {
 
   const clients = new Set<WebSocket>();
 
-  app.get("/ws", { websocket: true }, (socket) => {
-    clients.add(socket);
-    socket.on("close", () => clients.delete(socket));
-  });
-
   // ── Services ─────────────────────────────
   const sender = createWebSocketSender(() => clients);
   const services = createServices(sender);
+
+  app.get("/ws", { websocket: true }, (socket) => {
+    clients.add(socket);
+    socket.on("close", () => clients.delete(socket));
+    // Hello frame: tell the freshly-connected (or reconnected) client the
+    // current background-work state so it mirrors an in-progress scan /
+    // analysis it didn't initiate. `image:scanActive {active:false}` is also
+    // the signal the browser client uses to resolve a scan() whose
+    // completion event was lost while the socket was down.
+    try {
+      socket.send(
+        JSON.stringify({
+          event: "image:scanActive",
+          data: { active: services.scanState.active },
+        }),
+      );
+      socket.send(
+        JSON.stringify({
+          event: "image:analysisActive",
+          data: { active: services.maintenanceService.isRunning() },
+        }),
+      );
+    } catch {
+      /* socket may close between add and send; ignore */
+    }
+  });
 
   // ── Error logging ────────────────────────
   app.setErrorHandler(
@@ -134,7 +155,6 @@ async function main() {
       if (services.scanState.cancelToken) {
         services.scanState.cancelToken.cancelled = true;
       }
-      services.watchService.stopAll();
       for (const socket of clients) socket.close();
       clients.clear();
       await app.close();
@@ -143,6 +163,12 @@ async function main() {
       // would resolve in-flight worker tasks to null mid-scan.
       await initialScanPromise.catch(() => {
         /* logged inside runInitialScan */
+      });
+      // A background scan started by the HTTP endpoint is fire-and-forget, so
+      // app.close() above doesn't cover it. Await it here (its token was
+      // cancelled above) before tearing down worker pools.
+      await services.scanState.inFlight?.catch(() => {
+        /* errors already broadcast as image:scanComplete */
       });
       await dataRootWatcher.awaitInFlight();
       await services.maintenanceService.flush();

@@ -7,7 +7,6 @@ import { listAvailableDirectories, isUnderDataRoot } from "../lib/data-root";
 export function registerFolderRoutes(app: FastifyInstance, services: Services) {
   const {
     folderService,
-    watchService,
     duplicateService,
     maintenanceService,
     sender,
@@ -28,13 +27,11 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
       return reply.code(403).send({ error: "Path is not under data root" });
     }
     const folder = await folderService.create(name, path);
-    watchService.watchFolder(folder.id, folder.path);
     return folder;
   });
 
   app.delete<{ Params: { id: string } }>("/api/folders/:id", async (req) => {
     const id = Number(req.params.id);
-    watchService.stopFolder(id);
     // folderService.delete handles ImageSimilarityCache + ImageSearchStat
     // cleanup internally so no per-call-site bookkeeping is needed.
     await folderService.delete(id, (done, total) =>
@@ -89,23 +86,14 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
   });
 
   app.post<{ Body: { resolutions: any[] } }>("/api/folders/duplicates/resolve", async (req) => {
-    watchService.setScanActive(true);
-    try {
-      const resolved = await duplicateService.resolve(
-        req.body.resolutions,
-        (done, total) => sender.send("image:searchStatsProgress", { done, total }),
-      );
-      if (resolved.removedImageIds.length > 0) {
-        sender.send("image:removed", resolved.removedImageIds);
-      }
-      watchService.applyResolvedDuplicates({
-        touchedIncomingPaths: resolved.touchedIncomingPaths,
-        retainedIncomingPaths: resolved.retainedIncomingPaths,
-      });
-      maintenanceService.scheduleAnalysis(0);
-      return null;
-    } finally {
-      watchService.setScanActive(false);
+    const resolved = await duplicateService.resolve(
+      req.body.resolutions,
+      (done, total) => sender.send("image:searchStatsProgress", { done, total }),
+    );
+    if (resolved.removedImageIds.length > 0) {
+      sender.send("image:removed", resolved.removedImageIds);
     }
+    maintenanceService.scheduleAnalysis(0);
+    return null;
   });
 }

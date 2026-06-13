@@ -77,6 +77,106 @@ export function connectWebSocket(): WebSocket {
   return ws;
 }
 
+// ── Background scan coordination ───────────────────────────────
+//
+// The server runs scans fire-and-forget: POST /api/images/scan returns
+// immediately ({ started } or { alreadyRunning }) so the HTTP connection is
+// released right away (no reverse-proxy read-timeout on multi-minute scans).
+// The actual result arrives over the WebSocket. We resolve when the scan goes
+// inactive — `image:scanActive { active: false }`, which the server also
+// re-sends as a hello frame on (re)connect, so a completion lost during a
+// socket drop still resolves us. `image:scanComplete` carries the cancelled
+// flag.
+function scanAndWait(
+  options?: {
+    detectDuplicates?: boolean;
+    folderIds?: number[];
+    orderedFolderIds?: number[];
+    skipFolderIds?: number[];
+  },
+): Promise<{ cancelled: boolean }> {
+  return new Promise((resolve, reject) => {
+    let cancelled = false;
+    let posted = false;
+    let sawInactive = false;
+    let settled = false;
+
+    const cleanup = () => {
+      offComplete();
+      offActive();
+    };
+    const resolveDone = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ cancelled });
+    };
+
+    const offComplete = onEvent("image:scanComplete", (d: { cancelled?: boolean }) => {
+      cancelled = d?.cancelled ?? false;
+    });
+    const offActive = onEvent("image:scanActive", (d: { active?: boolean }) => {
+      if (d?.active !== false) return;
+      sawInactive = true;
+      if (posted) resolveDone();
+    });
+
+    // Listeners are attached BEFORE the request so a fast scan's completion
+    // can't slip through the gap.
+    rpc<{ started?: boolean; alreadyRunning?: boolean }>(
+      "/api/images/scan",
+      options ?? {},
+    )
+      .then((res) => {
+        posted = true;
+        if (res?.started) {
+          // Our own fresh scan just started: any inactive seen before now
+          // belonged to a prior scan — wait for the next transition.
+          sawInactive = false;
+        } else if (sawInactive) {
+          // Attached to an already-running scan that finished in the gap.
+          resolveDone();
+        }
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(err);
+      });
+  });
+}
+
+// Generic fire-and-forget: POST returns immediately ({ started } /
+// { alreadyRunning }); the real result arrives over the WebSocket as
+// `completeEvent`. Used for long foreground jobs (rescan-metadata) so the
+// HTTP connection isn't held open past a reverse-proxy read timeout. The
+// listener is attached before the POST so a fast job's completion can't slip
+// through, and the completion event is emitted exactly once per server-side
+// run, so there's no prior-event ambiguity (unlike scanActive toggles).
+function postAndWait<T>(
+  url: string,
+  body: unknown,
+  completeEvent: string,
+  pick: (data: any) => T,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const off = onEvent(completeEvent, (d) => {
+      if (settled) return;
+      settled = true;
+      off();
+      resolve(pick(d));
+    });
+    rpc(url, body ?? {}).catch((err) => {
+      if (settled) return;
+      settled = true;
+      off();
+      reject(err);
+    });
+  });
+}
+
 // ── Implementation ─────────────────────────────────────────────
 
 export function createBrowserApi(): KonomiApi {
@@ -156,7 +256,7 @@ export function createBrowserApi(): KonomiApi {
       bulkDelete: (ids) => rpc("/api/images/bulk-delete", { ids }),
       listByIds: (ids) => rpc("/api/images/by-ids", { ids }),
       quickVerify: () => rpc("/api/images/quick-verify", {}),
-      scan: (options) => rpc("/api/images/scan", options ?? {}),
+      scan: (options) => scanAndWait(options),
       setFavorite: (id, isFavorite) => rpc("/api/images/favorite", { id, isFavorite }),
       listIgnoredDuplicates: () => rpc("/api/images/ignored-duplicates"),
       clearIgnoredDuplicates: () => rpcDelete("/api/images/ignored-duplicates"),
@@ -164,7 +264,13 @@ export function createBrowserApi(): KonomiApi {
       delete: (path) => rpc("/api/images/delete", { path }),
       computeHashes: () => rpc("/api/images/compute-hashes", {}),
       resetHashes: () => rpc("/api/images/reset-hashes", {}),
-      rescanMetadata: () => rpc("/api/images/rescan-metadata", {}),
+      rescanMetadata: () =>
+        postAndWait(
+          "/api/images/rescan-metadata",
+          {},
+          "image:rescanMetadataComplete",
+          (d: { count?: number }) => d?.count ?? 0,
+        ),
       rescanImageMetadata: (paths) => rpc("/api/images/rescan-image-metadata", { paths }),
       similarGroups: (threshold, jaccardThreshold) =>
         rpc("/api/images/similar-groups", { threshold, jaccardThreshold }),

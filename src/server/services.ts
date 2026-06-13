@@ -104,10 +104,29 @@ export function createServices(sender: EventSender) {
     active: boolean;
     cancelToken: CancelToken | null;
     shuttingDown: boolean;
+    /**
+     * Promise for the in-flight background scan started by the HTTP scan
+     * endpoint. Shutdown awaits it (after cancelling the token) so worker
+     * pools aren't torn down mid-scan. The initial scan and data-root-watcher
+     * scans are tracked separately by their own callers.
+     */
+    inFlight: Promise<void> | null;
   } = {
     active: false,
     cancelToken: null,
     shuttingDown: false,
+    inFlight: null,
+  };
+
+  // Single chokepoint for toggling scan-active. Mutates scanState AND
+  // broadcasts `image:scanActive` so every connected client (including ones
+  // that didn't initiate the scan, or reconnected mid-scan) mirrors the
+  // state. `image:scanActive {active:false}` is the universal "a scan
+  // finished" signal the browser client waits on — every scan path (manual
+  // endpoint, initial scan, data-root-watcher) routes through here.
+  const setScanActive = (active: boolean): void => {
+    scanState.active = active;
+    sender.send("image:scanActive", { active });
   };
 
   const maintenanceService = createMaintenanceService({
@@ -173,6 +192,7 @@ export function createServices(sender: EventSender) {
     maintenanceService,
     sender,
     scanState,
+    setScanActive,
   };
 }
 
@@ -264,8 +284,8 @@ export async function runInitialScan(services: Services): Promise<void> {
     return;
   }
   const cancelToken = { cancelled: false };
-  services.scanState.active = true;
   services.scanState.cancelToken = cancelToken;
+  services.setScanActive(true);
   try {
     log.info("Initial scan starting");
     await services.scanService.scanAll({ signal: cancelToken });
@@ -276,7 +296,7 @@ export async function runInitialScan(services: Services): Promise<void> {
   } catch (err) {
     log.errorWithStack("Initial scan failed", err as Error);
   } finally {
-    services.scanState.active = false;
     services.scanState.cancelToken = null;
+    services.setScanActive(false);
   }
 }

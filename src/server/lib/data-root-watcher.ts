@@ -153,8 +153,8 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
     // Take ownership of scanState so maintenance defers and shutdown can
     // cancel via scanState.cancelToken — same contract as runInitialScan.
     const cancelToken = { cancelled: false };
-    services.scanState.active = true;
     services.scanState.cancelToken = cancelToken;
+    services.setScanActive(true);
     try {
       for (const folderId of folderIds) {
         if (stopped || cancelToken.cancelled) return;
@@ -169,8 +169,14 @@ export function createDataRootWatcher(services: Services): DataRootWatcher {
         err as Error,
       );
     } finally {
-      services.scanState.active = false;
       services.scanState.cancelToken = null;
+      // Mirror the manual endpoint: emit a completion event so any client
+      // that attached to this scan (via the `alreadyRunning` path) resolves,
+      // then flip scan-active off (which is itself a completion signal).
+      services.sender.send("image:scanComplete", {
+        cancelled: cancelToken.cancelled,
+      });
+      services.setScanActive(false);
     }
   }
 
