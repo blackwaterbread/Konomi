@@ -1,4 +1,14 @@
-export type PromptToken = { text: string; weight: number };
+export type PromptToken = {
+  text: string;
+  weight: number;
+  /**
+   * Original source text of this token, kept only when it carries formatting
+   * that `text` + `weight` cannot reproduce (spacing inside `w::tag ::`,
+   * bracket emphasis, the author's own weight literal). Omitted when the token
+   * round-trips exactly, so the stored JSON stays small.
+   */
+  raw?: string;
+};
 
 const MULT = 1.05;
 
@@ -106,14 +116,26 @@ function parseWeightedPart(raw: string, inheritedPower = 0): PromptToken[] {
 
   const normalized = normalizeTokenText(text);
   if (!normalized) return [];
-  return [{ text: normalized, weight: Math.pow(MULT, totalPower) }];
+  const token: PromptToken = {
+    text: normalized,
+    weight: Math.pow(MULT, totalPower),
+  };
+  // Only a leaf reached without inherited bracket power still contains its own
+  // emphasis; deeper leaves lost their wrapper to the split above, so their
+  // source text no longer round-trips the weight.
+  if (inheritedPower === 0 && trimmed !== normalized) token.raw = trimmed;
+  return [token];
 }
 
 export function parsePromptTokens(prompt: string): PromptToken[] {
   const result: PromptToken[] = [];
 
   // Extract explicit weight::content:: blocks before comma-splitting
-  const segments: Array<{ text: string; explicitWeight: number | null }> = [];
+  const segments: Array<{
+    text: string;
+    explicitWeight: number | null;
+    weightLiteral: string | null;
+  }> = [];
   const re = /(-?[\d.]+)::([\s\S]*?)::/g;
   let lastIdx = 0;
   let m: RegExpExecArray | null;
@@ -123,20 +145,40 @@ export function parsePromptTokens(prompt: string): PromptToken[] {
       segments.push({
         text: prompt.slice(lastIdx, m.index),
         explicitWeight: null,
+        weightLiteral: null,
       });
-    segments.push({ text: m[2], explicitWeight: parseFloat(m[1]) });
+    segments.push({
+      text: m[2],
+      explicitWeight: parseFloat(m[1]),
+      weightLiteral: m[1],
+    });
     lastIdx = m.index + m[0].length;
   }
   if (lastIdx < prompt.length)
-    segments.push({ text: prompt.slice(lastIdx), explicitWeight: null });
+    segments.push({
+      text: prompt.slice(lastIdx),
+      explicitWeight: null,
+      weightLiteral: null,
+    });
 
   for (const seg of segments) {
     const tokens = parseWeightedPart(seg.text);
+    if (seg.explicitWeight === null) {
+      result.push(...tokens);
+      continue;
+    }
+    // The whole `w::...::` block shares one weight. Its source only round-trips
+    // when it produced a single token — otherwise the weight sits outside the
+    // per-token text and cannot be split back out.
+    const raw =
+      tokens.length === 1 ? `${seg.weightLiteral}::${seg.text}::` : null;
     for (const token of tokens) {
-      result.push({
+      const next: PromptToken = {
         text: token.text,
-        weight: seg.explicitWeight !== null ? seg.explicitWeight : token.weight,
-      });
+        weight: seg.explicitWeight,
+      };
+      if (raw !== null) next.raw = raw;
+      result.push(next);
     }
   }
 

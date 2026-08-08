@@ -64,12 +64,17 @@ function parseBracketWeight(raw: string): PromptToken {
   return { text, weight: Math.pow(MULT, power), raw: raw.trim() };
 }
 
+function formatTokenWeight(weight: number): string {
+  if (!Number.isFinite(weight)) return "1";
+  return weight.toFixed(2).replace(/\.?0+$/, "");
+}
+
 export function tokenToRawString(token: AnyToken): string {
   if (isGroupRef(token)) {
     const exprSuffix = token.weightExpression === "keyword" ? "k" : "";
     const weightSuffix =
       token.weight !== undefined && Math.abs(token.weight - 1.0) > 0.001
-        ? `#${token.weight.toFixed(2).replace(/\.?0+$/, "")}${exprSuffix}`
+        ? `#${formatTokenWeight(token.weight)}${exprSuffix}`
         : exprSuffix
           ? `#1${exprSuffix}`
           : "";
@@ -83,7 +88,7 @@ export function tokenToRawString(token: AnyToken): string {
   }
   if (token.raw && token.raw.trim()) return token.raw.trim();
   if (Math.abs(token.weight - 1.0) <= 0.001) return token.text;
-  return `${token.weight.toFixed(2)}::${token.text}::`;
+  return `${formatTokenWeight(token.weight)}::${token.text}::`;
 }
 
 export function splitPromptPartsWithRanges(
@@ -218,7 +223,11 @@ export function parseRawToken(raw: string): AnyToken {
 export function parsePromptTokens(prompt: string): AnyToken[] {
   const result: AnyToken[] = [];
 
-  const segments: Array<{ text: string; explicitWeight: number | null }> = [];
+  const segments: Array<{
+    text: string;
+    explicitWeight: number | null;
+    weightLiteral: string | null;
+  }> = [];
   const re = /(-?[\d.]+)::([\s\S]*?)::/g;
   let lastIdx = 0;
   let m: RegExpExecArray | null;
@@ -228,15 +237,32 @@ export function parsePromptTokens(prompt: string): AnyToken[] {
       segments.push({
         text: prompt.slice(lastIdx, m.index),
         explicitWeight: null,
+        weightLiteral: null,
       });
-    segments.push({ text: m[2], explicitWeight: parseFloat(m[1]) });
+    segments.push({
+      text: m[2],
+      explicitWeight: parseFloat(m[1]),
+      weightLiteral: m[1],
+    });
     lastIdx = m.index + m[0].length;
   }
   if (lastIdx < prompt.length)
-    segments.push({ text: prompt.slice(lastIdx), explicitWeight: null });
+    segments.push({
+      text: prompt.slice(lastIdx),
+      explicitWeight: null,
+      weightLiteral: null,
+    });
 
   for (const seg of segments) {
-    for (const { raw: part } of splitPromptPartsWithRanges(seg.text)) {
+    const parts = splitPromptPartsWithRanges(seg.text);
+    // The whole `w::...::` block shares one weight, so its source only
+    // round-trips when it holds a single token — otherwise the weight sits
+    // outside the per-token text and cannot be split back out.
+    const explicitRaw =
+      seg.explicitWeight !== null && parts.length === 1
+        ? `${seg.weightLiteral}::${seg.text}::`
+        : null;
+    for (const { raw: part } of parts) {
       const trimmedPart = part.trim();
       const wildcard = parseWildcardToken(trimmedPart);
       if (wildcard) {
@@ -250,14 +276,13 @@ export function parsePromptTokens(prompt: string): AnyToken[] {
       }
       const token = parseBracketWeight(part);
       if (!token.text) continue;
-      result.push({
+      const next: PromptToken = {
         text: token.text,
         weight: seg.explicitWeight !== null ? seg.explicitWeight : token.weight,
-        raw:
-          seg.explicitWeight !== null
-            ? `${seg.explicitWeight}::${part.trim()}::`
-            : part.trim(),
-      });
+      };
+      const raw = seg.explicitWeight !== null ? explicitRaw : trimmedPart;
+      if (raw !== null) next.raw = raw;
+      result.push(next);
     }
   }
 

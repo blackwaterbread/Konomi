@@ -113,9 +113,9 @@ export const TokenContainer = memo(function TokenContainer({
   const handleCopy = useCallback(
     async (key: string, token: PromptToken) => {
       if (isEditable) return;
-      const raw = tokenToRawString(token);
+      const text = token.text.trim() || tokenToRawString(token);
       try {
-        await navigator.clipboard.writeText(raw);
+        await navigator.clipboard.writeText(text);
         setCopiedKey(key);
       } catch {
         setCopiedKey(null);
