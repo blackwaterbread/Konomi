@@ -124,12 +124,20 @@ function scanAndWait(
 
     // Listeners are attached BEFORE the request so a fast scan's completion
     // can't slip through the gap.
-    rpc<{ started?: boolean; alreadyRunning?: boolean }>(
-      "/api/images/scan",
-      options ?? {},
-    )
+    rpc<{
+      started?: boolean;
+      alreadyRunning?: boolean;
+      skippedSubPaths?: string[];
+    }>("/api/images/scan", options ?? {})
       .then((res) => {
         posted = true;
+        // Subtrees the server refused because another scan holds the lock.
+        // Delivered in the response rather than broadcast, because the
+        // rejection belongs to this request alone; replay it locally so the
+        // same `onScanSkipped` listeners handle it.
+        if (res?.skippedSubPaths && res.skippedSubPaths.length > 0) {
+          dispatchEvent("image:scanSkipped", { subPaths: res.skippedSubPaths });
+        }
         if (res?.started) {
           // Our own fresh scan just started: any inactive seen before now
           // belonged to a prior scan — wait for the next transition.

@@ -81,13 +81,17 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     // For a subfolder-scoped request that resolution is a lie: the running
     // scan is walking some other target, so the requested subtree is never
     // touched, yet the client resolves clean and reports a successful rescan.
-    // Report the drop on the same channel `scanAll` uses for a subtree it
-    // could not read, so the user sees why nothing changed.
+    // Report the drop so the user sees why nothing changed — but in the
+    // response, not on the WebSocket. `image:scanSkipped` is broadcast to
+    // every connected client, and this rejection is scoped to one request:
+    // other sessions would be warned about a rescan they never asked for. The
+    // caller replays it onto its own listeners.
     if (scanState.active) {
-      if (subPaths && subPaths.length > 0) {
-        sender.send("image:scanSkipped", { subPaths });
-      }
-      return { started: false, alreadyRunning: true };
+      return {
+        started: false,
+        alreadyRunning: true,
+        skippedSubPaths: subPaths && subPaths.length > 0 ? subPaths : undefined,
+      };
     }
 
     const cancelToken = { cancelled: false };
