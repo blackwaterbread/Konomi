@@ -56,12 +56,23 @@ export function subfolderKey(path: string): string {
  * on-disk casing every hidden subfolder silently reappeared and the stale keys
  * stayed in localStorage forever.
  *
- * Case is matched here only as a repair against a known-good list, never as a
- * general comparison rule — `subfolderKey` still refuses to fold it, for the
- * reason documented there. An entry is rewritten solely when exactly one
- * reported path differs from it by case or separator alone; an ambiguous or
- * unrecognised entry is left untouched, because the list can be partial while a
- * scan is still running and dropping it would lose a real override.
+ * Two repairs run here, and they are not equally safe:
+ *
+ * - Separators and a trailing one are repaired unconditionally. `subfolderKey`
+ *   already treats those spellings as the same path, so re-pointing an entry at
+ *   the reported one can never land on a different subfolder.
+ * - Case is repaired only for an entry that is *entirely* lower-case, which is
+ *   the old format's signature. Case is not a general comparison rule here —
+ *   `subfolderKey` still refuses to fold it, for the reason documented there.
+ *   Without the gate this never stops running: on a case-sensitive backend a
+ *   genuine `sketch` that is briefly absent from the reported list (it is
+ *   partial while a scan runs) would be re-pointed at its distinct sibling
+ *   `Sketch`, hiding the wrong subfolder. The gate is self-limiting too — a
+ *   repaired entry carries the on-disk casing afterwards and stops qualifying.
+ *
+ * An entry is rewritten solely when exactly one reported path matches; an
+ * ambiguous or unrecognised entry is left untouched, because dropping it would
+ * lose a real override.
  *
  * Returns `null` when nothing needed rewriting, so the common path does not
  * churn state.
@@ -71,12 +82,17 @@ function remapDeselectedPaths(
   knownPaths: string[],
 ): Set<string> | null {
   const exact = new Set(knownPaths);
+  const bySeparator = new Map<string, string[]>();
   const byFoldedCase = new Map<string, string[]>();
+  const bucket = (map: Map<string, string[]>, key: string, value: string) => {
+    const list = map.get(key);
+    if (list) list.push(value);
+    else map.set(key, [value]);
+  };
   for (const p of knownPaths) {
-    const folded = subfolderKey(p).toLowerCase();
-    const bucket = byFoldedCase.get(folded) ?? [];
-    bucket.push(p);
-    byFoldedCase.set(folded, bucket);
+    const key = subfolderKey(p);
+    bucket(bySeparator, key, p);
+    bucket(byFoldedCase, key.toLowerCase(), p);
   }
 
   let changed = false;
@@ -86,7 +102,10 @@ function remapDeselectedPaths(
       next.add(entry);
       continue;
     }
-    const candidates = byFoldedCase.get(subfolderKey(entry).toLowerCase());
+    const key = subfolderKey(entry);
+    const candidates =
+      bySeparator.get(key) ??
+      (key === key.toLowerCase() ? byFoldedCase.get(key) : undefined);
     if (candidates && candidates.length === 1) {
       next.add(candidates[0]);
       changed = true;

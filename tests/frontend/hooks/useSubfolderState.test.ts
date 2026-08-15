@@ -65,6 +65,58 @@ describe("useSubfolderState visibility overrides", () => {
     });
   });
 
+  it("does not re-point an override that already carries on-disk casing", async () => {
+    // Not the old format — this entry was stored under the spelling the backend
+    // reports. On a case-sensitive backend `Sketch` is a different directory,
+    // and repairing case here would move the override onto it the moment
+    // `sketch` drops out of a partial list.
+    localStorage.setItem(
+      VISIBILITY_KEY,
+      JSON.stringify({ "1": ["/library/Sketch"] }),
+    );
+    preloadMocks.folder.listSubdirectories.mockResolvedValue([
+      { path: "/library/sketch", depth: 1 },
+    ]);
+
+    const { result } = renderHook(() => useSubfolderState());
+
+    await act(async () => {
+      await result.current.refreshSubfolders([1]);
+    });
+
+    expect(result.current.isSubfolderVisible("/library/sketch", 1)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(VISIBILITY_KEY) ?? "{}")).toEqual({
+      "1": ["/library/Sketch"],
+    });
+  });
+
+  it("repairs a separator-only mismatch whatever the casing", async () => {
+    // Separators are not case: `subfolderKey` already calls these the same
+    // path, so re-spelling can never land on a different subfolder.
+    localStorage.setItem(
+      VISIBILITY_KEY,
+      JSON.stringify({ "1": ["C:/Library/Alpha/"] }),
+    );
+    preloadMocks.folder.listSubdirectories.mockResolvedValue([
+      { path: "C:\\Library\\Alpha", depth: 1 },
+    ]);
+
+    const { result } = renderHook(() => useSubfolderState());
+
+    await act(async () => {
+      await result.current.refreshSubfolders([1]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSubfolderVisible("C:\\Library\\Alpha", 1)).toBe(
+        false,
+      );
+    });
+    expect(JSON.parse(localStorage.getItem(VISIBILITY_KEY) ?? "{}")).toEqual({
+      "1": ["C:\\Library\\Alpha"],
+    });
+  });
+
   it("keeps an unrecognised override so a partial list cannot drop it", async () => {
     // `refreshSubfolders` runs mid-scan too, when the subfolder list is still
     // filling in. An entry matching nothing yet is a real override, not a
