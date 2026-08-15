@@ -52,8 +52,10 @@ const imageSearchStatsProgress = createEventChannel<{
 const imageScanFolder = createEventChannel<{
   folderId: number;
   folderName?: string;
+  subPath?: string;
   active: boolean;
 }>();
+const imageScanSkipped = createEventChannel<{ subPaths: string[] }>();
 const imageDupCheckProgress = createEventChannel<{
   done: number;
   total: number;
@@ -93,6 +95,7 @@ export const preloadEvents = {
     scanProgress: imageScanProgress,
     searchStatsProgress: imageSearchStatsProgress,
     scanFolder: imageScanFolder,
+    scanSkipped: imageScanSkipped,
     dupCheckProgress: imageDupCheckProgress,
     scanPhase: imageScanPhase,
     rescanMetadataProgress: imageRescanMetadataProgress,
@@ -203,6 +206,7 @@ export const preloadMocks = {
     onSearchStatsProgress: imageSearchStatsProgress.subscribe,
     cancelScan: vi.fn().mockResolvedValue(undefined),
     onScanFolder: imageScanFolder.subscribe,
+    onScanSkipped: imageScanSkipped.subscribe,
     onDupCheckProgress: imageDupCheckProgress.subscribe,
     onScanPhase: imageScanPhase.subscribe,
     onRescanMetadataProgress: imageRescanMetadataProgress.subscribe,

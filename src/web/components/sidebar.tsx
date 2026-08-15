@@ -69,6 +69,7 @@ import infoImageUrl from "@/assets/images/info.webp";
 import type { Category, Folder as FolderRecord } from "@preload/index.d";
 import {
   normalizeSubfolderPath,
+  subfolderKey,
   type Subfolder,
 } from "@/hooks/useSubfolderState";
 import { useTranslation } from "react-i18next";
@@ -96,6 +97,8 @@ interface SidebarFolderState {
   collapsedFolderIds?: Set<number>;
   rollbackRequest?: { id: number; folderIds: number[] } | null;
   scanningFolderIds?: Set<number>;
+  /** Keyed by `subfolderKey`; populated during subfolder-scoped scans. */
+  scanningSubPaths?: Set<string>;
   scanning?: boolean;
   subfoldersByFolder?: Map<number, Subfolder[]>;
   collapsedSubfolderPaths?: Set<string>;
@@ -124,6 +127,7 @@ interface SidebarFolderActions {
   onFoldersAdded?: (folderIds: number[]) => void;
   onFolderCancelled?: (id: number) => void;
   onFolderRescan?: (id: number) => void;
+  onSubfolderRescan?: (folderId: number, subfolderPath: string) => void;
   onRescanAll?: () => void;
   onSubfolderToggle?: (path: string, folderId: number) => void;
   onSubfolderToggleCollapse?: (path: string) => void;
@@ -831,6 +835,20 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
                   <Folder className="h-3.5 w-3.5 sm:h-2.5 sm:w-2.5" />
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 sm:h-5 sm:w-5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-muted-foreground hover:text-primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRescan(folder);
+                }}
+                disabled={scanning || isAnalyzing}
+                title={t("sidebar.folders.rescan")}
+                aria-label={t("sidebar.folders.rescan")}
+              >
+                <RefreshCw className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+              </Button>
               {isElectron && (
                 <Button
                   variant="ghost"
@@ -878,6 +896,7 @@ const SidebarFolderRow = memo(function SidebarFolderRow({
             onRescan(folder);
           }}
         >
+          <RefreshCw className="h-4 w-4" />
           {t("sidebar.folders.rescan")}
         </ContextMenuItem>
         <ContextMenuSeparator />
@@ -964,9 +983,12 @@ interface SidebarSubfolderRowProps {
   hasChildren?: boolean;
   isCollapsed?: boolean;
   isolateDisabled?: boolean;
+  isScanning?: boolean;
+  rescanDisabled?: boolean;
   onToggle?: (path: string, folderId: number) => void;
   onToggleCollapse?: (path: string) => void;
   onIsolate?: (folderId: number, subfolderPath: string) => void;
+  onRescan?: (folderId: number, subfolderPath: string) => void;
 }
 
 const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
@@ -975,9 +997,12 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
   hasChildren = false,
   isCollapsed = false,
   isolateDisabled,
+  isScanning = false,
+  rescanDisabled,
   onToggle,
   onToggleCollapse,
   onIsolate,
+  onRescan,
 }: SidebarSubfolderRowProps) {
   const { t } = useTranslation();
   const { appInfo } = useApi();
@@ -1030,25 +1055,53 @@ const SidebarSubfolderRow = memo(function SidebarSubfolderRow({
           <span className="flex-1 min-w-0 text-sm truncate">
             {subfolder.name}
           </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-9 w-9 sm:h-5 sm:w-5",
-              isVisible
-                ? "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-primary"
-                : "text-muted-foreground/40 hover:text-primary",
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle?.(subfolder.path, subfolder.folderId);
-            }}
-          >
-            <Eye className="h-4 w-4 sm:h-3 sm:w-3" />
-          </Button>
+          {isScanning ? (
+            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-9 w-9 sm:h-5 sm:w-5",
+                  isVisible
+                    ? "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-primary"
+                    : "text-muted-foreground/40 hover:text-primary",
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle?.(subfolder.path, subfolder.folderId);
+                }}
+              >
+                <Eye className="h-4 w-4 sm:h-3 sm:w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 sm:h-5 sm:w-5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 hover-none:opacity-100 text-muted-foreground hover:text-primary"
+                disabled={rescanDisabled}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRescan?.(subfolder.folderId, subfolder.path);
+                }}
+                title={t("sidebar.folders.rescanSubfolder")}
+                aria-label={t("sidebar.folders.rescanSubfolder")}
+              >
+                <RefreshCw className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+              </Button>
+            </>
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem
+          disabled={rescanDisabled}
+          onSelect={() => onRescan?.(subfolder.folderId, subfolder.path)}
+        >
+          <RefreshCw className="h-4 w-4" />
+          {t("sidebar.folders.rescanSubfolder")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem
           disabled={isolateDisabled}
           onSelect={() => onIsolate?.(subfolder.folderId, subfolder.path)}
@@ -1414,6 +1467,7 @@ interface SidebarFoldersSectionProps {
   selectedFolderIds?: Set<number>;
   collapsedFolderIds?: Set<number>;
   scanningFolderIds?: Set<number>;
+  scanningSubPaths?: Set<string>;
   draggingFolderId: number | null;
   folderDropTargetId: number | null;
   folderDropPosition: "before" | "after";
@@ -1439,6 +1493,7 @@ interface SidebarFoldersSectionProps {
   onDeleteRequest: (target: { id: number; name: string }) => void;
   onReveal: (folderId: number) => void;
   onRescan: (folder: FolderRecord) => void;
+  onSubfolderRescan?: (folderId: number, subfolderPath: string) => void;
   onRescanAll?: () => void;
   onDragStart: (id: number) => void;
   onDragOver: (id: number, position: "before" | "after") => void;
@@ -1454,6 +1509,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   selectedFolderIds,
   collapsedFolderIds,
   scanningFolderIds,
+  scanningSubPaths,
   draggingFolderId,
   folderDropTargetId,
   folderDropPosition,
@@ -1479,6 +1535,7 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
   onDeleteRequest,
   onReveal,
   onRescan,
+  onSubfolderRescan,
   onRescanAll,
   onDragStart,
   onDragOver,
@@ -1660,9 +1717,17 @@ const SidebarFoldersSection = memo(function SidebarFoldersSection({
                             hasChildren={parentPaths.has(normPath)}
                             isCollapsed={isRowCollapsed}
                             isolateDisabled={scanning || isAnalyzing}
+                            isScanning={
+                              scanningSubPaths?.has(subfolderKey(sf.path)) ===
+                              true
+                            }
+                            rescanDisabled={
+                              scanning || checkingDuplicates || isAnalyzing
+                            }
                             onToggle={onSubfolderToggle}
                             onToggleCollapse={onSubfolderToggleCollapse}
                             onIsolate={onSubfolderIsolate}
+                            onRescan={onSubfolderRescan}
                           />,
                         );
                       }
@@ -1850,6 +1915,7 @@ export const Sidebar = memo(
       collapsedFolderIds,
       rollbackRequest,
       scanningFolderIds,
+      scanningSubPaths,
       scanning,
       subfoldersByFolder,
       collapsedSubfolderPaths,
@@ -1872,6 +1938,7 @@ export const Sidebar = memo(
       onFolderAdded,
       onFolderCancelled,
       onFolderRescan,
+      onSubfolderRescan,
       onRescanAll,
       onSubfolderToggle,
       onSubfolderToggleCollapse,
@@ -1920,11 +1987,13 @@ export const Sidebar = memo(
       checkingDuplicates,
       pendingFolder,
       handleFolderRescanWithDuplicateCheck,
+      handleSubfolderRescanWithDuplicateCheck,
       handleFolderAddWithDuplicateCheck,
     } = useDuplicateResolutionDialog({
       addFolder: createFolder,
       onFolderAdded,
       onFolderRescan,
+      onSubfolderRescan,
       onCheckingDuplicatesChange,
       seedSubfolders,
     });
@@ -1989,6 +2058,21 @@ export const Sidebar = memo(
         }
       },
       [handleFolderRescanWithDuplicateCheck, t],
+    );
+
+    const handleSubfolderRescanRequest = useCallback(
+      async (folderId: number, subfolderPath: string) => {
+        try {
+          await handleSubfolderRescanWithDuplicateCheck(folderId, subfolderPath);
+        } catch (e: unknown) {
+          toast.error(
+            t("error.scanFailed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+        }
+      },
+      [handleSubfolderRescanWithDuplicateCheck, t],
     );
 
     const handleRevealFolderInExplorer = useCallback(
@@ -2349,6 +2433,7 @@ export const Sidebar = memo(
                 selectedFolderIds={selectedFolderIds}
                 collapsedFolderIds={collapsedFolderIds}
                 scanningFolderIds={scanningFolderIds}
+                scanningSubPaths={scanningSubPaths}
                 draggingFolderId={draggingFolderId}
                 folderDropTargetId={folderDropTargetId}
                 folderDropPosition={folderDropPosition}
@@ -2374,6 +2459,7 @@ export const Sidebar = memo(
                 onDeleteRequest={handleDeleteFolderRequest}
                 onReveal={handleRevealFolderInExplorer}
                 onRescan={handleFolderRescanRequest}
+                onSubfolderRescan={handleSubfolderRescanRequest}
                 onRescanAll={onRescanAll}
                 onDragStart={handleFolderDragStart}
                 onDragOver={handleFolderDragOver}

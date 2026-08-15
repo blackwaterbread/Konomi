@@ -13,6 +13,11 @@ const log = createLogger("web/data-root-watcher");
 const RECONCILE_DEBOUNCE_MS = 1000;
 const POLL_INTERVAL_MS = 60_000;
 
+/**
+ * Local to the DATA_ROOT reconciliation, which compares detected directory
+ * entries against registered folder roots — not file identity. Kept separate
+ * from `@core/lib/path-key.normalizePathKey`; see the registry of folds there.
+ */
 function normalizeFsPath(p: string): string {
   const resolved = path.resolve(p);
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;

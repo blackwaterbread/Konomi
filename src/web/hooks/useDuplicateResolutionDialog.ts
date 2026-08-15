@@ -55,6 +55,7 @@ type UseDuplicateResolutionDialogOptions = {
   addFolder: (name: string, path: string) => Promise<Folder>;
   onFolderAdded?: (folderId: number) => void;
   onFolderRescan?: (folderId: number) => void;
+  onSubfolderRescan?: (folderId: number, subPath: string) => void;
   onCheckingDuplicatesChange?: (checking: boolean) => void;
   seedSubfolders?: (
     folderId: number,
@@ -72,16 +73,25 @@ type FolderRescanPendingInfo = {
   id: number;
   name: string;
   path: string;
+  /** Set when the rescan targets a single subtree instead of the folder root. */
+  subPath?: string;
 };
 
 const toLocalSrc = (filePath: string) => imageUrl(filePath);
 
-const normalizeFolderPath = (folderPath: string): string => {
-  const normalized = folderPath.replace(/\\/g, "/").replace(/\/+$/, "").trim();
-  return navigator.userAgent.toLowerCase().includes("windows")
-    ? normalized.toLowerCase()
-    : normalized;
-};
+/**
+ * Fold for the "already added?" pre-check.
+ *
+ * Case is deliberately not folded. `navigator.userAgent` describes the machine
+ * running the browser, not the one holding the files — on a self-hosted server
+ * a Windows client would fold paths a Linux filesystem keeps distinct. Only the
+ * backend knows, and it already rejects a re-registered path through
+ * `folderService.create`; this check exists purely to fail fast before
+ * `findDuplicates` hashes the folder, so a case-only collision slipping through
+ * to the backend error is the correct outcome, not a miss.
+ */
+const normalizeFolderPath = (folderPath: string): string =>
+  folderPath.trim().replace(/\\/g, "/").replace(/\/+$/, "");
 
 const mergeDuplicateGroups = (
   a: FolderDuplicateGroup,
@@ -174,6 +184,7 @@ export function useDuplicateResolutionDialog({
   addFolder,
   onFolderAdded,
   onFolderRescan,
+  onSubfolderRescan,
   onCheckingDuplicatesChange,
   seedSubfolders,
 }: UseDuplicateResolutionDialogOptions): {
@@ -182,6 +193,10 @@ export function useDuplicateResolutionDialog({
     path: string,
   ) => Promise<number | null>;
   handleFolderRescanWithDuplicateCheck: (folder: Folder) => Promise<void>;
+  handleSubfolderRescanWithDuplicateCheck: (
+    folderId: number,
+    subPath: string,
+  ) => Promise<void>;
   folderAddResolvedSeq: number;
   checkingDuplicates: boolean;
   pendingFolder: PendingFolder | null;
@@ -334,14 +349,13 @@ export function useDuplicateResolutionDialog({
   );
 
   const openFolderRescanDialog = useCallback(
-    (folder: Folder, duplicates: FolderDuplicateGroup[]) => {
+    (
+      pending: FolderRescanPendingInfo,
+      duplicates: FolderDuplicateGroup[],
+    ) => {
       setMode("rescan");
       setFolderAddPendingInfo(null);
-      setFolderRescanPendingInfo({
-        id: folder.id,
-        name: folder.name,
-        path: folder.path,
-      });
+      setFolderRescanPendingInfo(pending);
       setItems(duplicates);
       const nextChoices = createChoicesForItems(duplicates, "existing");
       setChoices(nextChoices);
@@ -353,17 +367,50 @@ export function useDuplicateResolutionDialog({
     [],
   );
 
+  // Both rescan entry points hash files before the dialog can open. Without
+  // the flag the sidebar stays enabled during that window, and a second
+  // request would overwrite the pending info the first one is about to use.
   const handleFolderRescanWithDuplicateCheck = useCallback(
     async (folder: Folder) => {
-      const duplicates = await window.folder.findDuplicates(folder.path);
-      if (duplicates.length > 0) {
-        openFolderRescanDialog(folder, duplicates);
-        return;
-      }
+      setCheckingDuplicates(true);
+      try {
+        const duplicates = await window.folder.findDuplicates(folder.path);
+        if (duplicates.length > 0) {
+          openFolderRescanDialog(
+            { id: folder.id, name: folder.name, path: folder.path },
+            duplicates,
+          );
+          return;
+        }
 
-      onFolderRescan?.(folder.id);
+        onFolderRescan?.(folder.id);
+      } finally {
+        setCheckingDuplicates(false);
+      }
     },
-    [onFolderRescan, openFolderRescanDialog],
+    [onFolderRescan, openFolderRescanDialog, setCheckingDuplicates],
+  );
+
+  const handleSubfolderRescanWithDuplicateCheck = useCallback(
+    async (folderId: number, subPath: string) => {
+      setCheckingDuplicates(true);
+      try {
+        const duplicates = await window.folder.findDuplicates(subPath);
+        if (duplicates.length > 0) {
+          const name = subPath.replace(/\\/g, "/").split("/").pop() ?? subPath;
+          openFolderRescanDialog(
+            { id: folderId, name, path: subPath, subPath },
+            duplicates,
+          );
+          return;
+        }
+
+        onSubfolderRescan?.(folderId, subPath);
+      } finally {
+        setCheckingDuplicates(false);
+      }
+    },
+    [onSubfolderRescan, openFolderRescanDialog, setCheckingDuplicates],
   );
 
   const onApplyAll = useCallback(
@@ -408,7 +455,7 @@ export function useDuplicateResolutionDialog({
 
       await window.folder.resolveDuplicates(resolutions);
 
-      const pendingRescanFolderId = folderRescanPendingInfo?.id ?? null;
+      const pendingRescan = folderRescanPendingInfo;
 
       if (mode === "folderAdd" && folderAddPendingInfo) {
         const createdFolder = await addFolder(
@@ -423,8 +470,12 @@ export function useDuplicateResolutionDialog({
       }
 
       resetDialogState();
-      if (mode === "rescan" && pendingRescanFolderId !== null) {
-        onFolderRescan?.(pendingRescanFolderId);
+      if (mode === "rescan" && pendingRescan) {
+        if (pendingRescan.subPath) {
+          onSubfolderRescan?.(pendingRescan.id, pendingRescan.subPath);
+        } else {
+          onFolderRescan?.(pendingRescan.id);
+        }
       }
     } catch (e: unknown) {
       toast.error(
@@ -444,6 +495,7 @@ export function useDuplicateResolutionDialog({
     mode,
     onFolderAdded,
     onFolderRescan,
+    onSubfolderRescan,
     resetDialogState,
     seedSubfolders,
   ]);
@@ -536,6 +588,7 @@ export function useDuplicateResolutionDialog({
   return {
     handleFolderAddWithDuplicateCheck,
     handleFolderRescanWithDuplicateCheck,
+    handleSubfolderRescanWithDuplicateCheck,
     folderAddResolvedSeq,
     checkingDuplicates,
     pendingFolder,

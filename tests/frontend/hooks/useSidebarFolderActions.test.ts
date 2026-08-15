@@ -20,6 +20,9 @@ function renderSidebarFolderActions(options?: {
     const [activeScanFolderIds, setActiveScanFolderIds] = useState<Set<number>>(
       new Set(),
     );
+    const [activeScanSubPaths, setActiveScanSubPaths] = useState<Set<string>>(
+      new Set(),
+    );
     const [rollbackFolderIds, setRollbackFolderIds] = useState<Set<number>>(
       new Set(),
     );
@@ -43,6 +46,7 @@ function renderSidebarFolderActions(options?: {
       runScan,
       scanningRef,
       setActiveScanFolderIds,
+      setActiveScanSubPaths,
       setRollbackFolderIds,
       refreshSubfolders: async () => {},
     });
@@ -51,6 +55,7 @@ function renderSidebarFolderActions(options?: {
       ...actions,
       selectedFolderIds,
       activeScanFolderIds,
+      activeScanSubPaths,
       rollbackFolderIds,
     };
   });
@@ -139,5 +144,43 @@ describe("useSidebarFolderActions", () => {
       analyzing.result.current.handleFolderRescan(7);
     });
     expect(analyzing.runScan).not.toHaveBeenCalled();
+  });
+
+  it("scopes a subfolder rescan to its subtree and marks it active under a separator-folded key", () => {
+    const idle = renderSidebarFolderActions();
+
+    act(() => {
+      idle.result.current.handleSubfolderRescan(3, "C:\\Lib\\Alpha");
+    });
+
+    expect(idle.runScan).toHaveBeenCalledWith({
+      folderIds: [3],
+      // The path goes to the backend untouched — it already carries the
+      // on-disk spelling `getSubfolderPaths` reported.
+      subPaths: ["C:\\Lib\\Alpha"],
+    });
+    // Only separators are folded: `image:scanFolder` echoes that same
+    // spelling, so case must survive or two sibling subfolders that differ
+    // only by case would share one spinner.
+    expect(idle.result.current.activeScanSubPaths.has("C:/Lib/Alpha")).toBe(
+      true,
+    );
+    expect(idle.result.current.activeScanFolderIds.has(3)).toBe(true);
+  });
+
+  it("does not start a subfolder rescan while scanning or analysing", () => {
+    const scanning = renderSidebarFolderActions({ scanning: true });
+    act(() => {
+      scanning.result.current.handleSubfolderRescan(3, "C:\\Lib\\Alpha");
+    });
+    expect(scanning.runScan).not.toHaveBeenCalled();
+    expect(scanning.result.current.activeScanSubPaths.size).toBe(0);
+
+    const analyzing = renderSidebarFolderActions({ isAnalyzing: true });
+    act(() => {
+      analyzing.result.current.handleSubfolderRescan(3, "C:\\Lib\\Alpha");
+    });
+    expect(analyzing.runScan).not.toHaveBeenCalled();
+    expect(analyzing.result.current.activeScanSubPaths.size).toBe(0);
   });
 });

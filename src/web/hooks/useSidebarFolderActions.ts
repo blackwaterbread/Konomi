@@ -1,12 +1,14 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { createLogger } from "@/lib/logger";
+import { subfolderKey } from "@/hooks/useSubfolderState";
 
 const log = createLogger("renderer/useSidebarFolderActions");
 
 interface RunScanOptions {
   detectDuplicates?: boolean;
   folderIds?: number[];
+  subPaths?: string[];
   refreshPage?: boolean;
   refreshSearchPresetStats?: boolean;
 }
@@ -20,6 +22,7 @@ interface UseSidebarFolderActionsOptions {
   ) => Promise<{ ok: boolean; cancelled: boolean }>;
   scanningRef: MutableRefObject<boolean>;
   setActiveScanFolderIds: Dispatch<SetStateAction<Set<number>>>;
+  setActiveScanSubPaths: Dispatch<SetStateAction<Set<string>>>;
   setRollbackFolderIds: Dispatch<SetStateAction<Set<number>>>;
   refreshSubfolders: (folderIds: number[]) => Promise<void>;
 }
@@ -34,6 +37,7 @@ export function useSidebarFolderActions({
   runScan,
   scanningRef,
   setActiveScanFolderIds,
+  setActiveScanSubPaths,
   setRollbackFolderIds,
   refreshSubfolders,
 }: UseSidebarFolderActionsOptions) {
@@ -158,18 +162,33 @@ export function useSidebarFolderActions({
         next.add(folderId);
         return next;
       });
-      void runScan({ folderIds: [folderId] }).then(({ ok, cancelled }) => {
-        if (ok && !cancelled) {
-          void refreshSubfolders([folderId]);
-        }
-      });
+      // `runScan` already refreshes the scanned folders' subfolder lists on
+      // success, and with `allowEmpty` so a subtree that lost its last image
+      // can actually disappear — a second pass here would re-fetch without it.
+      void runScan({ folderIds: [folderId] });
+    },
+    [isAnalyzing, runScan, scanningRef, setActiveScanFolderIds],
+  );
+
+  const handleSubfolderRescan = useCallback(
+    (folderId: number, subPath: string) => {
+      if (scanningRef.current || isAnalyzing) return;
+      log.info("Subfolder rescan requested", { folderId, subPath });
+      // Optimistic spinner state: `image:scanFolder` echoes the requested
+      // spelling back, so the event converges on the key set here.
+      setActiveScanSubPaths((prev) => new Set([...prev, subfolderKey(subPath)]));
+      setActiveScanFolderIds((prev) => new Set([...prev, folderId]));
+      // `runScan` already refreshes the scanned folders' subfolder lists on
+      // success, and with `allowEmpty` so a subtree that lost its last image
+      // can actually disappear.
+      void runScan({ folderIds: [folderId], subPaths: [subPath] });
     },
     [
       isAnalyzing,
-      refreshSubfolders,
       runScan,
       scanningRef,
       setActiveScanFolderIds,
+      setActiveScanSubPaths,
     ],
   );
 
@@ -179,5 +198,6 @@ export function useSidebarFolderActions({
     handleFolderCancelled,
     handleFolderRemoved,
     handleFolderRescan,
+    handleSubfolderRescan,
   };
 }

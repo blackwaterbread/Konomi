@@ -471,6 +471,9 @@ const en = {
     scanInProgressForHashReset:
       "A scan is already running. Please wait until it completes before recalculating hashes.",
     scanFailed: "Scan failed: {{message}}",
+    scanSubPathSkipped: "Could not read {{path}} — it was not rescanned.",
+    scanSubPathsSkipped:
+      "Could not read {{count}} folders including {{path}} — they were not rescanned.",
     analysisFailed: "Image analysis failed: {{message}}",
     imageListLoadFailed: "Failed to load image list: {{message}}",
     folderListLoadFailed: "Failed to load folder list: {{message}}",
@@ -917,6 +920,7 @@ const en = {
     folders: {
       openInExplorer: "Open in Explorer",
       rescan: "Rescan Folder",
+      rescanSubfolder: "Rescan This Subfolder Only",
       rescanAll: "Refresh All Folders",
       isolate: "Show Only This Folder",
       rename: "Rename Folder",

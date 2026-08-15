@@ -121,7 +121,8 @@ declare global {
         folderIds?: number[];
         orderedFolderIds?: number[];
         skipFolderIds?: number[];
-      }) => Promise<{ cancelled: boolean }>;
+        subPaths?: string[];
+      }) => Promise<{ cancelled: boolean; skippedSubPaths?: string[] }>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
       listIgnoredDuplicates: () => Promise<string[]>;
       clearIgnoredDuplicates: () => Promise<number>;
@@ -178,8 +179,14 @@ declare global {
         cb: (data: {
           folderId: number;
           folderName?: string;
+          /** Set when only this subtree of the folder is being scanned. */
+          subPath?: string;
           active: boolean;
         }) => void,
+      ) => () => void;
+      /** Requested subPaths the scan could not reach (unreadable directory). */
+      onScanSkipped: (
+        cb: (data: { subPaths: string[] }) => void,
       ) => () => void;
     };
     db: {

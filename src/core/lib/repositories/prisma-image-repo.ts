@@ -233,6 +233,13 @@ function normalizeQuery(query: ImageListQuery): NormalizedQuery {
 
 // ── Prisma WHERE builder ───────────────────────────────────────
 
+/**
+ * The subfolder prefix conditions below compare `Image.path` in SQL rather than
+ * folding through `normalizePathKey` first, so their case sensitivity is the
+ * database's, not ours: `startsWith`/`LIKE` is case-insensitive under SQLite's
+ * and MariaDB's default collations. Known and accepted — revisit if either the
+ * collation or the engine changes. See the registry of folds in `lib/path-key`.
+ */
 function buildImageWhereInput(
   query: NormalizedQuery,
 ): Prisma.ImageWhereInput {

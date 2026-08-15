@@ -93,6 +93,7 @@ function scanAndWait(
     folderIds?: number[];
     orderedFolderIds?: number[];
     skipFolderIds?: number[];
+    subPaths?: string[];
   },
 ): Promise<{ cancelled: boolean }> {
   return new Promise((resolve, reject) => {
@@ -291,6 +292,7 @@ export function createBrowserApi(): KonomiApi {
       onSearchStatsProgress: (cb) => onEvent("image:searchStatsProgress", cb),
       onRescanMetadataProgress: (cb) => onEvent("image:rescanMetadataProgress", cb),
       onScanFolder: (cb) => onEvent("image:scanFolder", cb),
+      onScanSkipped: (cb) => onEvent("image:scanSkipped", cb),
     },
 
     category: {

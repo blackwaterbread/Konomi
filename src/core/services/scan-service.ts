@@ -1,10 +1,24 @@
 import fs from "fs";
 import path from "path";
-import { walkImageFiles, countImageFiles, withConcurrency } from "../lib/scanner";
+import {
+  walkImageFiles,
+  countImageFiles,
+  withConcurrency,
+} from "../lib/scanner";
 import { readImageMeta } from "../lib/image-meta";
 import { parsePromptTokens } from "../lib/token";
 import { createLogger } from "../lib/logger";
+import { normalizePathKey } from "../lib/path-key";
+import {
+  buildDuplicateGroupsFromBuckets,
+  buildExistingSizeBuckets,
+  buildIncomingSizeBuckets,
+  buildSignatureBuckets,
+  collectCandidateSizes,
+  countEntriesForSizes,
+} from "../lib/duplicate-detect";
 import type { CancelToken } from "../lib/scanner";
+import type { FolderDuplicateGroup, HashFile } from "../lib/duplicate-detect";
 import type {
   FolderEntity,
   ImageUpsertData,
@@ -14,6 +28,18 @@ import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
 import type { FolderRepo } from "../lib/repositories/prisma-folder-repo";
 import type { EventSender } from "../types/event-sender";
 import type { ImageMeta } from "../types/image-meta";
+import type {
+  IgnoredDuplicateChecker,
+  SearchStatsAdapter,
+  SimilarityCacheAdapter,
+} from "../types/adapters";
+
+export type {
+  FolderDuplicateExistingEntry,
+  FolderDuplicateIncomingEntry,
+  FolderDuplicateGroup,
+  FolderDuplicateGroupResolution,
+} from "../lib/duplicate-detect";
 
 const log = createLogger("scan-service");
 
@@ -21,7 +47,6 @@ const log = createLogger("scan-service");
 const BATCH_SIZE = 20;
 const SYNC_SCAN_CONCURRENCY = 24;
 const SIZE_SCAN_CONCURRENCY = 32;
-const HASH_SCAN_CONCURRENCY = 12;
 const STAT_CONCURRENCY = 128;
 
 // ── Types ──────────────────────────────────────────────────────
@@ -35,36 +60,9 @@ export type ScanPhase =
 export type ClassifyResult = {
   newFiles: string[];
   changedFiles: string[];
+  /** `normalizePathKey` keys, not walkable paths. */
   discoveredPaths: Set<string>;
   unchangedCount: number;
-};
-
-export type FolderDuplicateExistingEntry = {
-  imageId: number;
-  path: string;
-  fileName: string;
-};
-
-export type FolderDuplicateIncomingEntry = {
-  path: string;
-  fileName: string;
-};
-
-export type FolderDuplicateGroup = {
-  id: string;
-  hash: string;
-  previewPath: string;
-  previewFileName: string;
-  existingEntries: FolderDuplicateExistingEntry[];
-  incomingEntries: FolderDuplicateIncomingEntry[];
-};
-
-export type FolderDuplicateGroupResolution = {
-  id: string;
-  hash: string;
-  keep: "existing" | "incoming" | "ignore";
-  existingEntries: Array<{ imageId: number; path: string }>;
-  incomingPaths: string[];
 };
 
 type ProgressCallback = (done: number, total: number) => void;
@@ -74,23 +72,17 @@ export type QuickVerifyResult = {
   unchangedFolderIds: number[];
 };
 
-// ── Adapter interfaces ─────────────────────────────────────────
-// Infrastructure-specific operations that consumers must implement.
-
-export interface SearchStatsAdapter {
-  applyMutations(
-    mutations: SearchStatMutation[],
-    onProgress?: ProgressCallback,
-  ): Promise<void>;
-}
-
-export interface IgnoredDuplicateAdapter {
-  isIgnored(filePath: string): Promise<boolean>;
-}
-
-export interface SimilarityCacheAdapter {
-  deleteForImageIds(ids: number[]): Promise<void>;
-}
+/** One directory subtree to walk. `root` is the folder root unless `partial`. */
+type ScanTarget = {
+  folder: FolderEntity;
+  root: string;
+  partial: boolean;
+  /**
+   * The subtree no longer exists on disk. Nothing is walked; the target only
+   * exists so its stale DB rows get pruned.
+   */
+  missing?: boolean;
+};
 
 // ── Deps & options ─────────────────────────────────────────────
 
@@ -101,13 +93,24 @@ export type ScanServiceDeps = {
   /** Async metadata reader (e.g. backed by a WorkerPool). Falls back to sync readImageMeta. */
   readMeta?: (filePath: string) => Promise<ImageMeta | null>;
   /** SHA-1 file hasher for duplicate detection */
-  hashFile?: (filePath: string) => Promise<string | null>;
+  hashFile?: HashFile;
   /** Search stats subsystem */
   searchStats?: SearchStatsAdapter;
   /** Ignored-duplicate path checker */
-  ignoredDuplicates?: IgnoredDuplicateAdapter;
+  ignoredDuplicates?: IgnoredDuplicateChecker;
   /** Similarity cache cleanup */
   similarityCache?: SimilarityCacheAdapter;
+};
+
+export type ScanResult = {
+  cancelled: boolean;
+  /**
+   * Requested `subPaths` that could not be scanned because the directory was
+   * unreadable — a permission error or transient IO, not a deletion. The scan
+   * otherwise succeeds, so without this the caller reports a clean run over a
+   * subtree it never touched.
+   */
+  skippedSubPaths: string[];
 };
 
 export type ScanOptions = {
@@ -115,6 +118,12 @@ export type ScanOptions = {
   folderIds?: number[];
   orderedFolderIds?: number[];
   skipFolderIds?: number[];
+  /**
+   * Restrict the scan to these directory subtrees instead of whole folder
+   * roots. Each path must live under one of the resolved folders; paths that
+   * match no folder are ignored.
+   */
+  subPaths?: string[];
   detectDuplicates?: boolean;
   onDuplicateGroup?: (group: FolderDuplicateGroup) => void;
   onDupCheckProgress?: ProgressCallback;
@@ -123,6 +132,61 @@ export type ScanOptions = {
 };
 
 // ── Pure helpers ───────────────────────────────────────────────
+
+function isSamePath(a: string, b: string): boolean {
+  return normalizePathKey(a) === normalizePathKey(b);
+}
+
+function isPathUnder(child: string, root: string): boolean {
+  const c = normalizePathKey(child);
+  const r = normalizePathKey(root);
+  return c === r || c.startsWith(r + "/");
+}
+
+/**
+ * True only when `p` is confirmed absent (ENOENT). Any other failure — denied
+ * permissions, a dropped network share, transient IO — leaves the answer
+ * unknown, and an unknown path must never be read as deleted: its rows would
+ * be pruned on the strength of a read error.
+ */
+async function isConfirmedMissing(p: string): Promise<boolean> {
+  try {
+    await fs.promises.stat(p);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  }
+}
+
+/**
+ * Readable enough to walk. Used everywhere a scan decides to skip a root.
+ *
+ * `fs.access` cannot answer this. Its default mode is `F_OK`, so a directory
+ * that exists but cannot be listed passes the check, becomes a scan target,
+ * and `walkImageFiles` then swallows the `opendir` failure — a silent success
+ * over a subtree nothing ever read, which is precisely the permission case
+ * `skippedSubPaths` exists to report. `R_OK` does not close the gap either:
+ * libuv only reports the readonly attribute on win32, so ACL-denied
+ * directories still pass there. Opening the directory is the only check that
+ * asks the same question the walk does.
+ */
+async function isAccessible(p: string): Promise<boolean> {
+  let handle: fs.Dir | null = null;
+  try {
+    handle = await fs.promises.opendir(p);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        /* ignore close errors */
+      }
+    }
+  }
+}
 
 function buildUpsertData(
   filePath: string,
@@ -159,15 +223,16 @@ function buildUpsertData(
   };
 }
 
-async function fileSize(filePath: string): Promise<number | null> {
-  try {
-    const stat = await fs.promises.stat(filePath);
-    return stat.isFile() ? stat.size : null;
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Classifies one directory subtree against the rows already recorded for it.
+ *
+ * `existingMap` and the returned `discoveredPaths` are both keyed by
+ * `normalizePathKey`. A walked path and the row that recorded it can spell the
+ * same file differently — a case-only rename on win32 is enough — and an exact
+ * compare would then call that file new: the walk inserts a second row under
+ * the new spelling while the old row survives the prune, because `stat` on a
+ * case-insensitive filesystem never answers ENOENT for it.
+ */
 export async function classifyFolderFiles(
   folderPath: string,
   existingMap: Map<string, { fileModifiedAt: Date; source: string }>,
@@ -182,8 +247,8 @@ export async function classifyFolderFiles(
     walkImageFiles(folderPath, signal),
     STAT_CONCURRENCY,
     async (filePath) => {
-      discoveredPaths.add(filePath);
-      const existingRow = existingMap.get(filePath);
+      discoveredPaths.add(normalizePathKey(filePath));
+      const existingRow = existingMap.get(normalizePathKey(filePath));
       if (!existingRow) {
         newFiles.push(filePath);
       } else if (existingRow.source === "unknown") {
@@ -207,119 +272,16 @@ export async function classifyFolderFiles(
     newFiles,
     changedFiles,
     discoveredPaths,
-    unchangedCount: discoveredPaths.size - newFiles.length - changedFiles.length,
+    unchangedCount:
+      discoveredPaths.size - newFiles.length - changedFiles.length,
   };
-}
-
-// ── Duplicate detection helpers ────────────────────────────────
-
-type ExistingSizeBuckets = Map<number, FolderDuplicateExistingEntry[]>;
-type IncomingSizeBuckets = Map<number, FolderDuplicateIncomingEntry[]>;
-
-async function buildIncomingSizeBuckets(
-  incomingPaths: string[],
-  signal?: CancelToken,
-): Promise<IncomingSizeBuckets> {
-  const buckets: IncomingSizeBuckets = new Map();
-  await withConcurrency(
-    incomingPaths,
-    SIZE_SCAN_CONCURRENCY,
-    async (incomingPath) => {
-      const size = await fileSize(incomingPath);
-      if (size === null) return;
-      const bucket = buckets.get(size) ?? [];
-      bucket.push({
-        path: incomingPath,
-        fileName: path.basename(incomingPath),
-      });
-      buckets.set(size, bucket);
-    },
-    signal,
-  );
-  return buckets;
-}
-
-function collectCandidateSizes(
-  incomingSizeBuckets: IncomingSizeBuckets,
-  existingSizeBuckets: ExistingSizeBuckets,
-): number[] {
-  const sizes: number[] = [];
-  for (const [size, incomingEntries] of incomingSizeBuckets.entries()) {
-    const existingEntries = existingSizeBuckets.get(size) ?? [];
-    if (incomingEntries.length > 1 || existingEntries.length > 0) {
-      sizes.push(size);
-    }
-  }
-  return sizes;
-}
-
-async function buildSignatureBuckets<
-  T extends { path: string },
->(
-  sizeBuckets: Map<number, T[]>,
-  candidateSizes: number[],
-  hashFile: (filePath: string) => Promise<string | null>,
-  signal?: CancelToken,
-  onItemDone?: () => void,
-): Promise<Map<string, T[]>> {
-  const buckets = new Map<string, T[]>();
-  const targets = candidateSizes.flatMap((size) =>
-    (sizeBuckets.get(size) ?? []).map((entry) => ({ size, entry })),
-  );
-  await withConcurrency(
-    targets,
-    HASH_SCAN_CONCURRENCY,
-    async ({ size, entry }) => {
-      const hash = await hashFile(entry.path);
-      onItemDone?.();
-      if (!hash) return;
-      const signature = `${size}:${hash}`;
-      const bucket = buckets.get(signature) ?? [];
-      bucket.push(entry);
-      buckets.set(signature, bucket);
-    },
-    signal,
-  );
-  return buckets;
-}
-
-function buildDuplicateGroupsFromBuckets(
-  incomingBuckets: Map<string, FolderDuplicateIncomingEntry[]>,
-  existingBuckets: Map<string, FolderDuplicateExistingEntry[]>,
-  incomingPathSet: Set<string>,
-): FolderDuplicateGroup[] {
-  const groups: FolderDuplicateGroup[] = [];
-  for (const [signature, incomingEntries] of incomingBuckets.entries()) {
-    const existingEntries = (existingBuckets.get(signature) ?? []).filter(
-      (entry) => !incomingPathSet.has(entry.path),
-    );
-    const hasCrossDuplicate =
-      existingEntries.length > 0 && incomingEntries.length > 0;
-    const hasIncomingOnlyDuplicate = incomingEntries.length > 1;
-    if (!hasCrossDuplicate && !hasIncomingOnlyDuplicate) continue;
-
-    const hash = signature.split(":")[1] ?? signature;
-    const previewEntry = existingEntries[0] ?? incomingEntries[0];
-    if (!previewEntry) continue;
-
-    groups.push({
-      id: signature,
-      hash,
-      previewPath: previewEntry.path,
-      previewFileName: previewEntry.fileName,
-      existingEntries,
-      incomingEntries,
-    });
-  }
-  return groups;
 }
 
 // ── Service factory ────────────────────────────────────────────
 
 export function createScanService(deps: ScanServiceDeps) {
   const { imageRepo, folderRepo, sender } = deps;
-  const defaultReadMeta = (fp: string) =>
-    Promise.resolve(readImageMeta(fp));
+  const defaultReadMeta = (fp: string) => Promise.resolve(readImageMeta(fp));
   const metaReader = deps.readMeta ?? defaultReadMeta;
   const hashFile = deps.hashFile ?? (() => Promise.resolve(null));
 
@@ -345,9 +307,7 @@ export function createScanService(deps: ScanServiceDeps) {
               .orderedFolderIds!.map((id) => folderMap.get(id))
               .filter((f): f is FolderEntity => f !== undefined);
             const orderedSet = new Set(options.orderedFolderIds);
-            const remaining = candidates.filter(
-              (f) => !orderedSet.has(f.id),
-            );
+            const remaining = candidates.filter((f) => !orderedSet.has(f.id));
             return [...result, ...remaining];
           })()
         : candidates;
@@ -360,9 +320,123 @@ export function createScanService(deps: ScanServiceDeps) {
     return skipSet ? ordered.filter((f) => !skipSet.has(f.id)) : ordered;
   }
 
-  // ── Duplicate pre-scan ────────────────────────────────────
-  async function runDuplicatePreScan(
+  /**
+   * Expands the resolved folders into the directory subtrees to walk. Without
+   * `subPaths` that is one target per folder root; with them, one target per
+   * requested subfolder (folders contributing no subfolder are dropped).
+   */
+  async function resolveScanTargets(
     foldersToScan: FolderEntity[],
+    options?: ScanOptions,
+  ): Promise<{ targets: ScanTarget[]; skippedSubPaths: string[] }> {
+    // `isPathUnder` is a string fold and does not collapse `..`, so a caller
+    // could otherwise walk out of the folder while still matching its prefix —
+    // `<root>/sub/../../elsewhere` starts with `<root>/sub`. The web server
+    // takes `subPaths` straight from a client request, so the containment check
+    // has to run on a path that cannot contain traversal segments any more.
+    // `path.resolve` also settles separators and any trailing one, which is
+    // what lets the renderer key its spinner on the same string.
+    //
+    // Deduplicated before any of it runs: the `seen` guard below only fires
+    // after the accessibility probes, so a repeated path would stat twice and
+    // — when unreadable — be reported twice, turning one bad directory into
+    // "2 folders" in the notice the user reads.
+    const subPaths: string[] = [];
+    const requestedKeys = new Set<string>();
+    for (const raw of options?.subPaths ?? []) {
+      if (raw.trim() === "") continue;
+      const resolvedPath = path.resolve(raw);
+      const key = normalizePathKey(resolvedPath);
+      if (requestedKeys.has(key)) continue;
+      requestedKeys.add(key);
+      subPaths.push(resolvedPath);
+    }
+    if (subPaths.length === 0) {
+      return {
+        targets: foldersToScan.map((folder) => ({
+          folder,
+          root: folder.path,
+          partial: false,
+        })),
+        skippedSubPaths: [],
+      };
+    }
+
+    const targets: ScanTarget[] = [];
+    const seen = new Set<string>();
+    const matchedSubPaths = new Set<string>();
+    const skippedSubPaths: string[] = [];
+    for (const folder of foldersToScan) {
+      for (const subPath of subPaths) {
+        if (!isPathUnder(subPath, folder.path)) continue;
+        matchedSubPaths.add(subPath);
+        // A subtree that is gone still needs a target, otherwise its rows are
+        // never pruned and the phantom subfolder lingers in the sidebar. A
+        // directory that merely failed to read (permissions, transient IO)
+        // must not wipe the subtree, so prune only when it is confirmed gone.
+        //
+        // ENOENT on the subtree only means "deleted" while the folder root is
+        // still reachable. An unmounted share or a moved folder root answers
+        // ENOENT for everything beneath it, and pruning on that would wipe a
+        // live index — exactly what the full-folder scan refuses to do when
+        // its root is inaccessible.
+        const reachable = await isAccessible(subPath);
+        const missing =
+          !reachable &&
+          (await isAccessible(folder.path)) &&
+          (await isConfirmedMissing(subPath));
+        if (!reachable && !missing) {
+          log.info(`skipping unreadable scan root: ${subPath}`);
+          skippedSubPaths.push(subPath);
+          continue;
+        }
+        const key = `${folder.id}:${normalizePathKey(subPath)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        targets.push({
+          folder,
+          root: subPath,
+          partial: !isSamePath(subPath, folder.path),
+          missing,
+        });
+      }
+    }
+
+    // A subPath under no resolved folder scans nothing at all, and without a
+    // trace of it the scan just reports success over an empty target list.
+    for (const subPath of subPaths) {
+      if (!matchedSubPaths.has(subPath)) {
+        log.info(`ignoring subPath outside every resolved folder: ${subPath}`);
+        skippedSubPaths.push(subPath);
+      }
+    }
+
+    // A requested subtree nested inside another requested subtree of the same
+    // folder would be walked (and pruned) twice; keep only the outermost ones.
+    return {
+      targets: targets.filter(
+        (target) =>
+          !targets.some(
+            (other) =>
+              other !== target &&
+              other.folder.id === target.folder.id &&
+              !isSamePath(other.root, target.root) &&
+              isPathUnder(target.root, other.root),
+          ),
+      ),
+      skippedSubPaths,
+    };
+  }
+
+  // ── Duplicate pre-scan ────────────────────────────────────
+  /**
+   * `existingPathSet` holds `normalizePathKey` keys of every indexed row, and
+   * the returned `duplicateIncomingPaths` holds them too — `syncFolder` looks
+   * a walked file up in it to decide whether to skip the upsert, which is the
+   * same "is this the same file?" question every other comparison here folds.
+   */
+  async function runDuplicatePreScan(
+    targets: ScanTarget[],
     signal: CancelToken | undefined,
     existingPathSet: Set<string>,
     onProgress?: ProgressCallback,
@@ -377,14 +451,15 @@ export function createScanService(deps: ScanServiceDeps) {
     const incomingCandidates: string[] = [];
     let lastProgressAt = 0;
 
-    for (const folder of foldersToScan) {
+    for (const target of targets) {
       if (signal?.cancelled) break;
+      if (target.missing) continue;
       await withConcurrency(
-        walkImageFiles(folder.path, signal),
+        walkImageFiles(target.root, signal),
         SIZE_SCAN_CONCURRENCY,
         async (incomingPath) => {
           totalFiles++;
-          if (existingPathSet.has(incomingPath)) return;
+          if (existingPathSet.has(normalizePathKey(incomingPath))) return;
           if (deps.ignoredDuplicates) {
             if (await deps.ignoredDuplicates.isIgnored(incomingPath)) return;
           }
@@ -417,17 +492,8 @@ export function createScanService(deps: ScanServiceDeps) {
     const incomingFileSizes = [...incomingSizeBuckets.keys()];
 
     // Build existing size buckets via repository
-    const existingSizeBuckets: ExistingSizeBuckets = new Map();
     const existingRows = await imageRepo.findByFileSize(incomingFileSizes);
-    for (const row of existingRows) {
-      const bucket = existingSizeBuckets.get(row.fileSize) ?? [];
-      bucket.push({
-        imageId: row.id,
-        path: row.path,
-        fileName: path.basename(row.path),
-      });
-      existingSizeBuckets.set(row.fileSize, bucket);
-    }
+    const existingSizeBuckets = buildExistingSizeBuckets(existingRows);
 
     const candidateSizes = collectCandidateSizes(
       incomingSizeBuckets,
@@ -435,15 +501,9 @@ export function createScanService(deps: ScanServiceDeps) {
     );
 
     if (candidateSizes.length > 0) {
-      const existingTargetCount = candidateSizes.reduce(
-        (sum, size) => sum + (existingSizeBuckets.get(size)?.length ?? 0),
-        0,
-      );
-      const incomingTargetCount = candidateSizes.reduce(
-        (sum, size) => sum + (incomingSizeBuckets.get(size)?.length ?? 0),
-        0,
-      );
-      const dupCheckTotal = existingTargetCount + incomingTargetCount;
+      const dupCheckTotal =
+        countEntriesForSizes(existingSizeBuckets, candidateSizes) +
+        countEntriesForSizes(incomingSizeBuckets, candidateSizes);
       let dupCheckDone = 0;
       const onItemDone =
         onDupCheckProgress && dupCheckTotal > 0
@@ -471,13 +531,13 @@ export function createScanService(deps: ScanServiceDeps) {
       const duplicateGroups = buildDuplicateGroupsFromBuckets(
         incomingSignatureBuckets,
         existingSignatureBuckets,
-        new Set(incomingCandidates),
+        new Set(incomingCandidates.map(normalizePathKey)),
       );
 
       for (const group of duplicateGroups) {
         onDuplicateGroup?.(group);
         for (const entry of group.incomingEntries) {
-          duplicateIncomingPaths.add(entry.path);
+          duplicateIncomingPaths.add(normalizePathKey(entry.path));
         }
       }
     }
@@ -487,16 +547,26 @@ export function createScanService(deps: ScanServiceDeps) {
 
   // ── Per-folder sync ───────────────────────────────────────
   async function syncFolder(
-    folder: FolderEntity,
+    target: ScanTarget,
     signal: CancelToken | undefined,
     duplicateIncomingPaths: Set<string>,
     progressState: { done: number; total: number; lastProgressAt: number },
     onProgress?: ProgressCallback,
     onSearchStatsProgress?: ProgressCallback,
   ): Promise<number[]> {
+    const { folder, root, partial, missing } = target;
     const deletedIds: number[] = [];
-    const existing = await imageRepo.findSyncRowsByFolderId(folder.id);
-    const existingMap = new Map(existing.map((e) => [e.path, e] as const));
+    const folderRows = await imageRepo.findSyncRowsByFolderId(folder.id);
+    // A partial scan only walks one subtree, so rows outside it must stay out
+    // of both the "unchanged" map and the stale-row pruning below.
+    const existing = partial
+      ? folderRows.filter((row) => isPathUnder(row.path, root))
+      : folderRows;
+    // Both keyed by `normalizePathKey`, for the reason `classifyFolderFiles`
+    // documents: the walk and the row can spell one file differently.
+    const existingMap = new Map(
+      existing.map((e) => [normalizePathKey(e.path), e] as const),
+    );
     const discoveredPathSet = new Set<string>();
 
     const pending: ImageUpsertData[] = [];
@@ -509,7 +579,8 @@ export function createScanService(deps: ScanServiceDeps) {
       // Collect search stat "before" snapshots
       if (deps.searchStats) {
         const batchPaths = batch.map((row) => row.path);
-        const beforeRows = await imageRepo.findSearchStatSourcesByPaths(batchPaths);
+        const beforeRows =
+          await imageRepo.findSearchStatSourcesByPaths(batchPaths);
         const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
         for (const row of batch) {
           deferredStatMutations.push({
@@ -522,20 +593,20 @@ export function createScanService(deps: ScanServiceDeps) {
       const images = await imageRepo.upsertBatch(batch);
       const annotated = images.map((img) => ({
         ...img,
-        isNew: !existingMap.has(img.path),
+        isNew: !existingMap.has(normalizePathKey(img.path)),
       }));
       sender.send("image:batch", annotated);
     };
 
     const processFile = async (filePath: string): Promise<void> => {
       try {
-        if (duplicateIncomingPaths.has(filePath)) return;
+        if (duplicateIncomingPaths.has(normalizePathKey(filePath))) return;
         if (deps.ignoredDuplicates) {
           if (await deps.ignoredDuplicates.isIgnored(filePath)) return;
         }
 
         const stat = await fs.promises.stat(filePath);
-        const existingRow = existingMap.get(filePath);
+        const existingRow = existingMap.get(normalizePathKey(filePath));
         if (
           existingRow &&
           existingRow.fileModifiedAt.getTime() === stat.mtime.getTime() &&
@@ -545,7 +616,17 @@ export function createScanService(deps: ScanServiceDeps) {
         }
 
         const meta = await metaReader(filePath);
-        pending.push(buildUpsertData(filePath, folder.id, stat, meta));
+        // Written under the spelling the row already carries, not the one the
+        // walk reported. `upsertBatch` matches on `where: { path }` and
+        // SQLite's unique index on `path` is binary, so a file reached under
+        // different casing than its row would be INSERTed beside it — and the
+        // prune cannot clean that up, because both spellings fold to the same
+        // discovered key. `findSearchStatSourcesByPaths` looks the row up by
+        // exact path too, so the stale spelling also keeps the stat delta
+        // honest.
+        pending.push(
+          buildUpsertData(existingRow?.path ?? filePath, folder.id, stat, meta),
+        );
         if (pending.length >= BATCH_SIZE) await flushBatch();
       } catch {
         // skip unreadable files
@@ -559,34 +640,62 @@ export function createScanService(deps: ScanServiceDeps) {
       }
     };
 
-    // Phase 1: stat-only classification
-    const { newFiles, changedFiles, discoveredPaths } =
-      await classifyFolderFiles(folder.path, existingMap, signal, () => {
-        progressState.done++;
-        const progressNow = Date.now();
-        if (progressNow - progressState.lastProgressAt >= 100) {
-          progressState.lastProgressAt = progressNow;
-          onProgress?.(progressState.done, progressState.total);
-        }
-      });
-    for (const p of discoveredPaths) discoveredPathSet.add(p);
+    // Phases 1–2 are skipped for a missing subtree: there is nothing to walk,
+    // so `discoveredPathSet` stays empty and every row under it is pruned.
+    if (!missing) {
+      // Phase 1: stat-only classification
+      const { newFiles, changedFiles, discoveredPaths } =
+        await classifyFolderFiles(root, existingMap, signal, () => {
+          progressState.done++;
+          const progressNow = Date.now();
+          if (progressNow - progressState.lastProgressAt >= 100) {
+            progressState.lastProgressAt = progressNow;
+            onProgress?.(progressState.done, progressState.total);
+          }
+        });
+      for (const p of discoveredPaths) discoveredPathSet.add(p);
 
-    // Phase 2: metadata extraction for new + changed files
-    if (!signal?.cancelled && newFiles.length + changedFiles.length > 0) {
+      // Phase 2: metadata extraction for new + changed files
+      if (!signal?.cancelled && newFiles.length + changedFiles.length > 0) {
+        await withConcurrency(
+          [...newFiles, ...changedFiles],
+          SYNC_SCAN_CONCURRENCY,
+          processFile,
+          signal,
+        );
+      }
+
+      await flushBatch();
+    }
+
+    // A cancelled walk stopped partway, so `discoveredPathSet` holds only the
+    // files reached before the stop and cannot support a statement about the
+    // subtree as a whole. Phase 3 re-verifies each row it is about to delete,
+    // but Phase 4 has no such check and a count taken here would understate
+    // the folder — and neither has any work worth doing on a cancelled scan.
+    const walkCompleted = !signal?.cancelled;
+
+    // Phase 3: prune stale DB rows.
+    //
+    // Absence from the walk is not proof the file is gone. A cancelled walk
+    // stops partway, a narrowed one never looks outside its subtree, and
+    // `walkImageFiles` swallows a directory it cannot open — every one of those
+    // reads as "missing" while the file sits on disk. Only an ENOENT on the
+    // row's own path justifies deleting it, the same rule `resolveScanTargets`
+    // applies before pruning a whole subtree.
+    const staleRows: (typeof existing)[number][] = [];
+    if (walkCompleted) {
       await withConcurrency(
-        [...newFiles, ...changedFiles],
-        SYNC_SCAN_CONCURRENCY,
-        processFile,
+        existing.filter(
+          (row) => !discoveredPathSet.has(normalizePathKey(row.path)),
+        ),
+        STAT_CONCURRENCY,
+        async (row) => {
+          if (await isConfirmedMissing(row.path)) staleRows.push(row);
+        },
         signal,
       );
     }
-
-    await flushBatch();
-
-    // Phase 3: prune stale DB rows
-    const staleRows = existing.filter(
-      (row) => !discoveredPathSet.has(row.path),
-    );
     if (staleRows.length > 0) {
       for (let i = 0; i < staleRows.length; i += 400) {
         const chunk = staleRows.slice(i, i + 400);
@@ -612,12 +721,16 @@ export function createScanService(deps: ScanServiceDeps) {
       );
     }
 
-    // Update folder scan fingerprint
-    await imageRepo.updateFolderScanMeta(
-      folder.id,
-      discoveredPathSet.size,
-      new Date(),
-    );
+    // Phase 4: update folder scan fingerprint. A partial scan only saw one
+    // subtree, so its file count would understate the folder — leave the
+    // fingerprint alone.
+    if (!partial && walkCompleted) {
+      await imageRepo.updateFolderScanMeta(
+        folder.id,
+        discoveredPathSet.size,
+        new Date(),
+      );
+    }
 
     return deletedIds;
   }
@@ -626,13 +739,19 @@ export function createScanService(deps: ScanServiceDeps) {
   return {
     buildUpsertData,
 
-    async scanAll(options?: ScanOptions): Promise<{ cancelled: boolean }> {
+    async scanAll(options?: ScanOptions): Promise<ScanResult> {
       const signal = options?.signal;
       const startedAt = Date.now();
-      const detectDuplicates = Boolean(options?.onDuplicateGroup);
+      // A group the caller cannot see is a file silently dropped from the
+      // upsert, so detection needs both the intent and somewhere to report to.
+      const detectDuplicates =
+        (options?.detectDuplicates ?? true) &&
+        Boolean(options?.onDuplicateGroup);
       const deletedSimilarityIds = new Set<number>();
       let folderCount = 0;
       let success = false;
+      let skippedSubPaths: string[] = [];
+      const lateSkippedSubPaths: string[] = [];
       const progressState = { done: 0, total: 0, lastProgressAt: 0 };
 
       log.info(`scanAll start detectDuplicates=${detectDuplicates}`);
@@ -641,7 +760,17 @@ export function createScanService(deps: ScanServiceDeps) {
         options?.onPhase?.("loadingLibrary");
         const allFolders = await folderRepo.findAll();
         const foldersToScan = resolveFolders(allFolders, options);
-        folderCount = foldersToScan.length;
+        const resolved = await resolveScanTargets(foldersToScan, options);
+        const targets = resolved.targets;
+        skippedSubPaths = resolved.skippedSubPaths;
+        folderCount = targets.length;
+
+        // Emitted before the work starts so the notice survives a cancel: the
+        // renderer resolves its scan promise on cancellation without reading
+        // the result, and web clients never see the return value at all.
+        if (skippedSubPaths.length > 0) {
+          sender.send("image:scanSkipped", { subPaths: skippedSubPaths });
+        }
 
         // ── Duplicate pre-scan ──────────────────────────────
         let duplicateIncomingPaths = new Set<string>();
@@ -650,13 +779,16 @@ export function createScanService(deps: ScanServiceDeps) {
         if (detectDuplicates && !signal?.cancelled) {
           // Load all existing paths for O(1) existence check
           const allPaths = new Set<string>();
-          for (const folder of foldersToScan) {
+          const seenFolderIds = new Set<number>();
+          for (const { folder } of targets) {
+            if (seenFolderIds.has(folder.id)) continue;
+            seenFolderIds.add(folder.id);
             const rows = await imageRepo.findSyncRowsByFolderId(folder.id);
-            for (const row of rows) allPaths.add(row.path);
+            for (const row of rows) allPaths.add(normalizePathKey(row.path));
           }
 
           const result = await runDuplicatePreScan(
-            foldersToScan,
+            targets,
             signal,
             allPaths,
             (done, total) => {
@@ -674,9 +806,10 @@ export function createScanService(deps: ScanServiceDeps) {
         // ── Count files if no pre-scan ──────────────────────
         options?.onPhase?.("syncing");
         if (!preScannedTotals && !signal?.cancelled) {
-          for (const folder of foldersToScan) {
+          for (const target of targets) {
             if (signal?.cancelled) break;
-            progressState.total += await countImageFiles(folder.path, signal);
+            if (target.missing) continue;
+            progressState.total += await countImageFiles(target.root, signal);
           }
           sender.send("image:scanProgress", {
             done: progressState.done,
@@ -684,26 +817,34 @@ export function createScanService(deps: ScanServiceDeps) {
           });
         }
 
-        // ── Per-folder sync ─────────────────────────────────
-        for (const folder of foldersToScan) {
+        // ── Per-target sync ─────────────────────────────────
+        for (const target of targets) {
           if (signal?.cancelled) break;
 
-          try {
-            await fs.promises.access(folder.path);
-          } catch {
-            log.info(`skipping inaccessible folder: ${folder.path}`);
+          // A `missing` target is deliberately gone — it runs so syncFolder can
+          // prune its rows, so the accessibility guard must not skip it.
+          if (!target.missing && !(await isAccessible(target.root))) {
+            log.info(`skipping inaccessible scan root: ${target.root}`);
+            // A root that passed `resolveScanTargets` and then became
+            // unreachable is the same silent success the pre-check notice
+            // exists to prevent, so it joins the same report. Only for an
+            // explicitly requested subtree: a full-folder scan skipping a
+            // disconnected drive is routine and must not raise a notice.
+            if (target.partial) lateSkippedSubPaths.push(target.root);
             continue;
           }
 
+          const subPath = target.partial ? target.root : undefined;
           sender.send("image:scanFolder", {
-            folderId: folder.id,
-            folderName: folder.name,
+            folderId: target.folder.id,
+            folderName: target.folder.name,
+            subPath,
             active: true,
           });
 
           try {
             const deleted = await syncFolder(
-              folder,
+              target,
               signal,
               duplicateIncomingPaths,
               progressState,
@@ -714,13 +855,19 @@ export function createScanService(deps: ScanServiceDeps) {
             for (const id of deleted) deletedSimilarityIds.add(id);
           } finally {
             sender.send("image:scanFolder", {
-              folderId: folder.id,
+              folderId: target.folder.id,
+              subPath,
               active: false,
             });
           }
         }
 
-        if (signal?.cancelled) return { cancelled: true };
+        if (lateSkippedSubPaths.length > 0) {
+          skippedSubPaths = [...skippedSubPaths, ...lateSkippedSubPaths];
+          sender.send("image:scanSkipped", { subPaths: lateSkippedSubPaths });
+        }
+
+        if (signal?.cancelled) return { cancelled: true, skippedSubPaths };
 
         // Clean up similarity cache for deleted images
         if (deletedSimilarityIds.size > 0 && deps.similarityCache) {
@@ -734,11 +881,11 @@ export function createScanService(deps: ScanServiceDeps) {
           total: progressState.total,
         });
         success = true;
-        return { cancelled: false };
+        return { cancelled: false, skippedSubPaths };
       } finally {
         const elapsed = Date.now() - startedAt;
         log.info(
-          `scanAll end elapsed=${elapsed}ms folders=${folderCount} processed=${progressState.done}/${progressState.total} detectDuplicates=${detectDuplicates} cancelled=${signal?.cancelled === true} success=${success}`,
+          `scanAll end elapsed=${elapsed}ms folders=${folderCount} processed=${progressState.done}/${progressState.total} detectDuplicates=${detectDuplicates} skippedSubPaths=${skippedSubPaths.length} cancelled=${signal?.cancelled === true} success=${success}`,
         );
       }
     },
@@ -762,12 +909,11 @@ export function createScanService(deps: ScanServiceDeps) {
         });
 
         await syncFolder(
-          folder,
+          { folder, root: folder.path, partial: false },
           signal,
           new Set(),
           progressState,
-          (done, total) =>
-            sender.send("image:scanProgress", { done, total }),
+          (done, total) => sender.send("image:scanProgress", { done, total }),
         );
       } finally {
         sender.send("image:scanFolder", { folderId, active: false });
@@ -784,12 +930,8 @@ export function createScanService(deps: ScanServiceDeps) {
       let total = 0;
       for (const folder of folders) {
         if (signal?.cancelled) break;
-        try {
-          await fs.promises.access(folder.path);
-          total += await countImageFiles(folder.path, signal);
-        } catch {
-          // inaccessible
-        }
+        if (!(await isAccessible(folder.path))) continue;
+        total += await countImageFiles(folder.path, signal);
       }
 
       let done = 0;
@@ -799,9 +941,7 @@ export function createScanService(deps: ScanServiceDeps) {
 
       for (const folder of folders) {
         if (signal?.cancelled) break;
-        try {
-          await fs.promises.access(folder.path);
-        } catch {
+        if (!(await isAccessible(folder.path))) {
           unchangedFolderIds.push(folder.id);
           continue;
         }
@@ -809,7 +949,11 @@ export function createScanService(deps: ScanServiceDeps) {
         const existing = await imageRepo.findSyncRowsByFolderId(folder.id);
         const existingMap = new Map(
           existing.map(
-            (e) => [e.path, { fileModifiedAt: e.fileModifiedAt, source: e.source }] as const,
+            (e) =>
+              [
+                normalizePathKey(e.path),
+                { fileModifiedAt: e.fileModifiedAt, source: e.source },
+              ] as const,
           ),
         );
 
@@ -830,8 +974,21 @@ export function createScanService(deps: ScanServiceDeps) {
         done += result.newFiles.length + result.changedFiles.length;
         onProgress?.(done, total);
 
-        const hasStaleRows = existing.some(
-          (row) => !result.discoveredPaths.has(row.path),
+        // Same rule as the prune: a row the walk did not reach is only stale
+        // once its file answers ENOENT. An unreadable subdirectory otherwise
+        // marks the folder changed on every boot, and each of those reports
+        // costs a full rescan that cannot fix what a failed readdir hid.
+        let hasStaleRows = false;
+        await withConcurrency(
+          existing.filter(
+            (row) => !result.discoveredPaths.has(normalizePathKey(row.path)),
+          ),
+          STAT_CONCURRENCY,
+          async (row) => {
+            if (hasStaleRows) return;
+            if (await isConfirmedMissing(row.path)) hasStaleRows = true;
+          },
+          signal,
         );
         const hasChanges =
           result.newFiles.length > 0 ||

@@ -64,4 +64,74 @@ describe("folder db integration", () => {
       service.create("Images Again", path.join(folderPath, ".")),
     ).rejects.toThrow();
   });
+
+  describe("getSubfolderPaths", () => {
+    async function seedImages(folderId: number, paths: string[]) {
+      const { getDB } = await import("@core/lib/db");
+      for (const p of paths) {
+        await getDB().image.create({
+          data: {
+            path: p,
+            folderId,
+            prompt: "",
+            negativePrompt: "",
+            characterPrompts: "[]",
+            source: "nai",
+            model: "",
+            seed: "",
+            width: 0,
+            height: 0,
+            sampler: "",
+            steps: 0,
+            cfgScale: 0,
+            cfgRescale: 0,
+            noiseSchedule: "",
+            varietyPlus: false,
+            fileSize: 1,
+            fileModifiedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    // The returned path is walked, prefix-matched against `Image.path`, and
+    // compared with scan events. A folded spelling names no directory, and
+    // every one of those consumers then needs its own compensation for it.
+    it("reports the on-disk spelling, not a folded one", async () => {
+      const service = await createService();
+      const folderPath = path.join(ctx.userDataDir, "Library");
+      fs.mkdirSync(folderPath, { recursive: true });
+      const folder = await service.create("Library", folderPath);
+
+      await seedImages(folder.id, [
+        path.join(folderPath, "MixedCase", "a.png"),
+        path.join(folderPath, "MixedCase", "Deeper", "b.png"),
+      ]);
+
+      await expect(service.getSubfolderPaths(folder.id)).resolves.toEqual([
+        { path: path.join(folderPath, "MixedCase"), depth: 1 },
+        { path: path.join(folderPath, "MixedCase", "Deeper"), depth: 2 },
+      ]);
+    });
+
+    it.runIf(process.platform === "win32")(
+      "collapses rows that spell one directory differently",
+      async () => {
+        const service = await createService();
+        const folderPath = path.join(ctx.userDataDir, "Library");
+        fs.mkdirSync(folderPath, { recursive: true });
+        const folder = await service.create("Library", folderPath);
+
+        // A case-only rename can leave the library holding both spellings.
+        await seedImages(folder.id, [
+          path.join(folderPath, "Sub", "a.png"),
+          path.join(folderPath, "sub", "b.png"),
+        ]);
+
+        const subfolders = await service.getSubfolderPaths(folder.id);
+        expect(subfolders).toHaveLength(1);
+        expect(subfolders[0].depth).toBe(1);
+      },
+    );
+  });
 });

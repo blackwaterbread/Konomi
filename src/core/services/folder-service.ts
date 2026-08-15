@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { normalizePathKey } from "../lib/path-key";
 import type {
   FolderEntity,
   SearchStatSource,
@@ -35,6 +36,13 @@ export type FolderStats = {
   createdAt: Date;
 };
 
+/**
+ * Not `normalizePathKey`, on purpose: this answers "is this folder already
+ * registered?" — a uniqueness check where two spellings of one directory must
+ * collide even through a symlink, hence `realpath`. File identity inside a
+ * folder is a different question with a different fold; see the registry in
+ * `lib/path-key.ts`.
+ */
 async function normalizeFolderPath(folderPath: string): Promise<string> {
   const resolved = path.resolve(folderPath.trim());
   try {
@@ -101,34 +109,56 @@ export function createFolderService(deps: FolderServiceDeps) {
       return folderRepo.findById(id);
     },
 
+    /**
+     * Subfolder paths carry the spelling `Image.path` recorded, which is the
+     * on-disk casing the scan walked.
+     *
+     * Case is folded to *group* rows, never to build the result. A folded path
+     * is a string that names no directory: every consumer either walks it
+     * (`scanService` subPath targets), prefix-matches `Image.path` with it
+     * (subfolder filters), or compares it against a scan event — and each one
+     * needed its own compensation for a spelling the library invented.
+     */
     async getSubfolderPaths(folderId: number): Promise<{ path: string; depth: number }[]> {
       const folder = await folderRepo.findById(folderId);
       if (!folder) return [];
 
-      const sep = process.platform === "win32" ? "\\" : "/";
-      const folderNorm =
-        process.platform === "win32"
-          ? folder.path.toLowerCase()
-          : folder.path;
-      const prefix = folderNorm.endsWith(sep) ? folderNorm : folderNorm + sep;
+      // Both separators count on win32 only, matching `normalizePathKey`: `\`
+      // is an ordinary filename character on POSIX, so treating it as a
+      // separator there splits a file named `a\b.png` into a subfolder `a`
+      // that does not exist — a phantom row in the sidebar, and a subPath the
+      // rescan would then be asked to walk.
+      const isWin = process.platform === "win32";
+      const sep = isWin ? "\\" : "/";
+      const segmentSep = isWin ? /[\\/]/ : /\//;
+      const root = folder.path.replace(isWin ? /[\\/]+$/ : /\/+$/, "");
+      // Measured on the slash-folded form minus the case fold: `toLowerCase`
+      // can change a string's length (U+0130 lower-cases to two code units),
+      // and an index taken from the folded key would slice into the first
+      // segment. Slash replacement is length-preserving, so the index is valid
+      // on the original string too.
+      const prefixLen = root.replace(/\\/g, "/").length + 1;
+      const rootKey = normalizePathKey(root);
 
       const images = await imageRepo.getPathsByFolderId(folderId);
-      const subfolderMap = new Map<string, number>();
+      // Keyed by `normalizePathKey` so rows spelling one directory differently
+      // — a case-only rename on win32 is enough — collapse to a single entry.
+      const subfolderMap = new Map<string, { path: string; depth: number }>();
       for (const img of images) {
-        const imgNorm =
-          process.platform === "win32" ? img.path.toLowerCase() : img.path;
-        if (!imgNorm.startsWith(prefix)) continue;
-        const rel = imgNorm.slice(prefix.length);
-        const parts = rel.split(sep);
+        if (!normalizePathKey(img.path).startsWith(rootKey + "/")) continue;
+        const parts = img.path.slice(prefixLen).split(segmentSep);
         for (let i = 1; i < parts.length; i++) {
-          const subPath = prefix + parts.slice(0, i).join(sep);
-          if (!subfolderMap.has(subPath)) subfolderMap.set(subPath, i);
+          const subPath = root + sep + parts.slice(0, i).join(sep);
+          const key = normalizePathKey(subPath);
+          if (!subfolderMap.has(key)) {
+            subfolderMap.set(key, { path: subPath, depth: i });
+          }
         }
       }
 
-      return [...subfolderMap.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([path, depth]) => ({ path, depth }));
+      return [...subfolderMap.values()].sort((a, b) =>
+        a.path.localeCompare(b.path),
+      );
     },
 
     async getStats(id: number): Promise<FolderStats | null> {

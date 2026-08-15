@@ -14,6 +14,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useApi } from "@/api";
 import type { Folder as FolderRecord } from "@preload/index.d";
 
+/**
+ * Folds case unconditionally, which this screen — web/Docker only, so a Linux
+ * backend — is the least entitled to do. It only decides whether a detected
+ * directory is already registered, and `POST /api/folders` rejects a duplicate
+ * anyway, so a case-only collision slipping through is a backend error rather
+ * than a wrong result. Known and deliberately left alone; see the registry of
+ * folds in `@core/lib/path-key`.
+ */
 function normalize(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }

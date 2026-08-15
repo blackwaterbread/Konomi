@@ -308,6 +308,7 @@ export function registerIpcHandlers(): void {
         folderIds?: number[];
         orderedFolderIds?: number[];
         skipFolderIds?: number[];
+        subPaths?: string[];
       },
     ) => bridge.request("image:scan", options ?? {}),
   );

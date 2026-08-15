@@ -27,6 +27,12 @@ let cachedRoots: string[] = [];
 let rootsLoadedAt = 0;
 let pendingRootsLoad: Promise<string[]> | null = null;
 
+/**
+ * Not `@core/lib/path-key.normalizePathKey`, on purpose: this fold authorizes
+ * protocol reads and is paired with the `realpath` below, so a symlink or an
+ * 8.3 short name cannot present one file as two paths. See the registry of
+ * folds in `path-key.ts` before adding another.
+ */
 function normalizePathForCompare(filePath: string): string {
   const normalized = path.normalize(filePath);
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;

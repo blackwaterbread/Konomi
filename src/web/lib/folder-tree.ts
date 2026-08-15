@@ -5,6 +5,14 @@ export type FolderTreeNode = {
   children: FolderTreeNode[];
 };
 
+/**
+ * Folds case unconditionally, unlike every other renderer fold — on a
+ * case-sensitive backend this can nest two genuinely distinct folder roots
+ * under one another. Known and deliberately left alone: correcting it changes
+ * which folders appear nested, so it needs its own change with its own
+ * verification rather than a drive-by. See the registry of folds in
+ * `@core/lib/path-key`.
+ */
 function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/$/, "").toLowerCase();
 }

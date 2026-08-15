@@ -114,7 +114,8 @@ export interface ImageApi {
     folderIds?: number[];
     orderedFolderIds?: number[];
     skipFolderIds?: number[];
-  }): Promise<{ cancelled: boolean }>;
+    subPaths?: string[];
+  }): Promise<{ cancelled: boolean; skippedSubPaths?: string[] }>;
   setFavorite(id: number, isFavorite: boolean): Promise<void>;
   listIgnoredDuplicates(): Promise<string[]>;
   clearIgnoredDuplicates(): Promise<number>;
@@ -147,7 +148,17 @@ export interface ImageApi {
   onDupCheckProgress(cb: ProgressCallback): () => void;
   onSearchStatsProgress(cb: ProgressCallback): () => void;
   onRescanMetadataProgress(cb: ProgressCallback): () => void;
-  onScanFolder(cb: (data: { folderId: number; folderName?: string; active: boolean }) => void): () => void;
+  onScanFolder(
+    cb: (data: {
+      folderId: number;
+      folderName?: string;
+      /** Set when only this subtree of the folder is being scanned. */
+      subPath?: string;
+      active: boolean;
+    }) => void,
+  ): () => void;
+  /** Requested subPaths the scan could not reach (unreadable directory). */
+  onScanSkipped(cb: (data: { subPaths: string[] }) => void): () => void;
 }
 
 // ── Category API ───────────────────────────────────────────────

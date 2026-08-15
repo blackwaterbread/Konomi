@@ -82,17 +82,25 @@ export type {
   ScanService,
   ScanServiceDeps,
   ScanOptions,
+  ScanResult,
   ScanPhase,
   ClassifyResult,
   QuickVerifyResult,
+} from "./services/scan-service";
+
+export type {
   FolderDuplicateExistingEntry,
   FolderDuplicateIncomingEntry,
   FolderDuplicateGroup,
   FolderDuplicateGroupResolution,
+} from "./lib/duplicate-detect";
+
+export type {
   SearchStatsAdapter,
-  IgnoredDuplicateAdapter,
   SimilarityCacheAdapter,
-} from "./services/scan-service";
+  IgnoredDuplicateChecker,
+  IgnoredDuplicateAdapter,
+} from "./types/adapters";
 
 export { createFolderService } from "./services/folder-service";
 export type { FolderService, FolderServiceDeps, FolderStats } from "./services/folder-service";

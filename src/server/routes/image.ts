@@ -62,15 +62,31 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
       folderIds?: number[];
       orderedFolderIds?: number[];
       skipFolderIds?: number[];
+      subPaths?: string[];
     };
   }>("/api/images/scan", async (req) => {
-    const { detectDuplicates = false, folderIds, orderedFolderIds, skipFolderIds } = req.body ?? {};
+    const {
+      detectDuplicates = false,
+      folderIds,
+      orderedFolderIds,
+      skipFolderIds,
+      subPaths,
+    } = req.body ?? {};
 
     // Single-flight: the initial scan, data-root-watcher, and any client may
     // all try to scan. Only one runs at a time. A client whose request is
     // rejected here still gets the running scan's `image:scanComplete` /
     // `image:scanActive {active:false}` and resolves against it.
+    //
+    // For a subfolder-scoped request that resolution is a lie: the running
+    // scan is walking some other target, so the requested subtree is never
+    // touched, yet the client resolves clean and reports a successful rescan.
+    // Report the drop on the same channel `scanAll` uses for a subtree it
+    // could not read, so the user sees why nothing changed.
     if (scanState.active) {
+      if (subPaths && subPaths.length > 0) {
+        sender.send("image:scanSkipped", { subPaths });
+      }
       return { started: false, alreadyRunning: true };
     }
 
@@ -90,6 +106,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
           folderIds,
           orderedFolderIds,
           skipFolderIds,
+          subPaths,
           detectDuplicates,
           onDuplicateGroup: detectDuplicates
             ? (group) => sender.send("image:watchDuplicate", group)

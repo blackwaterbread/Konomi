@@ -396,8 +396,17 @@ describe("Sidebar", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: "Rescan Folder" }));
+    // The row exposes rescan twice — a hover button and a context-menu item —
+    // so both entry points are asserted to route through the guard.
+    const rescanControls = screen.getAllByRole("button", {
+      name: "Rescan Folder",
+    });
+    expect(rescanControls).toHaveLength(2);
+    for (const control of rescanControls) {
+      await user.click(control);
+    }
 
+    expect(handleFolderRescanWithDuplicateCheck).toHaveBeenCalledTimes(2);
     expect(handleFolderRescanWithDuplicateCheck).toHaveBeenCalledWith(folder);
   });
 

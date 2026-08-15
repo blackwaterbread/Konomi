@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export type Subfolder = {
   path: string;
@@ -17,8 +17,84 @@ export type SubfolderFilter = {
 const VISIBILITY_KEY = "konomi-subfolder-visibility";
 const ROOT_SENTINEL = "__root__";
 
+/**
+ * The "no overrides" result, shared rather than rebuilt.
+ *
+ * `subfolderFilters` feeds a gallery query memo as a dependency, so a fresh
+ * `[]` on every clear would re-run the query for a filter set that did not
+ * change. This was a `useRef`, which meant reading `.current` during render —
+ * something the React compiler cannot reason about. A module constant is
+ * stable across every render *and* every hook instance, and the value is only
+ * ever read.
+ */
+const NO_FILTERS: SubfolderFilter[] = [];
+
 export function normalizeSubfolderPath(path: string): string {
   return path.replace(/\\/g, "/");
+}
+
+/**
+ * Comparison key for a subfolder path.
+ *
+ * Case is deliberately not folded: the renderer cannot know whether the backend
+ * runs on a case-insensitive filesystem, and folding unconditionally would
+ * merge two genuinely distinct subfolders on a case-sensitive one. It does not
+ * need to — every subfolder path the sidebar handles comes from
+ * `getSubfolderPaths`, which reports the on-disk spelling, and that is what the
+ * scan walks and echoes back on `image:scanFolder`. Only separators and a
+ * trailing one can still differ.
+ */
+export function subfolderKey(path: string): string {
+  return normalizeSubfolderPath(path).replace(/\/+$/, "");
+}
+
+/**
+ * Re-spells stored visibility overrides onto the paths the backend now reports.
+ *
+ * `getSubfolderPaths` used to lower-case its result on win32. The overrides
+ * persisted under those folded spellings, so once it started reporting the
+ * on-disk casing every hidden subfolder silently reappeared and the stale keys
+ * stayed in localStorage forever.
+ *
+ * Case is matched here only as a repair against a known-good list, never as a
+ * general comparison rule — `subfolderKey` still refuses to fold it, for the
+ * reason documented there. An entry is rewritten solely when exactly one
+ * reported path differs from it by case or separator alone; an ambiguous or
+ * unrecognised entry is left untouched, because the list can be partial while a
+ * scan is still running and dropping it would lose a real override.
+ *
+ * Returns `null` when nothing needed rewriting, so the common path does not
+ * churn state.
+ */
+function remapDeselectedPaths(
+  stored: Set<string>,
+  knownPaths: string[],
+): Set<string> | null {
+  const exact = new Set(knownPaths);
+  const byFoldedCase = new Map<string, string[]>();
+  for (const p of knownPaths) {
+    const folded = subfolderKey(p).toLowerCase();
+    const bucket = byFoldedCase.get(folded) ?? [];
+    bucket.push(p);
+    byFoldedCase.set(folded, bucket);
+  }
+
+  let changed = false;
+  const next = new Set<string>();
+  for (const entry of stored) {
+    if (entry === ROOT_SENTINEL || exact.has(entry)) {
+      next.add(entry);
+      continue;
+    }
+    const candidates = byFoldedCase.get(subfolderKey(entry).toLowerCase());
+    if (candidates && candidates.length === 1) {
+      next.add(candidates[0]);
+      changed = true;
+    } else {
+      next.add(entry);
+    }
+  }
+  return changed ? next : null;
 }
 
 function readDeselected(): Map<number, Set<string>> {
@@ -60,27 +136,51 @@ export function useSubfolderState() {
     Set<string>
   >(new Set());
 
-  const loadSubfolders = useCallback(async (folderId: number) => {
-    const entries = await window.folder.listSubdirectories(folderId);
-    setSubfoldersByFolder((prev) => {
-      // DB에 아직 이미지가 없으면 빈 배열이 돌아오는데,
-      // 이미 seed된 데이터가 있으면 보존한다 (스캔 완료 후 다시 갱신됨)
-      if (entries.length === 0 && (prev.get(folderId)?.length ?? 0) > 0) {
-        return prev;
-      }
-      const next = new Map(prev);
-      next.set(
-        folderId,
-        entries.map((e) => ({
-          path: e.path,
-          name: e.path.replace(/\\/g, "/").split("/").pop() ?? e.path,
+  const reconcileVisibilitySpelling = useCallback(
+    (folderId: number, knownPaths: string[]) => {
+      if (knownPaths.length === 0) return;
+      setDeselected((prev) => {
+        const stored = prev.get(folderId);
+        if (!stored || stored.size === 0) return prev;
+        const remapped = remapDeselectedPaths(stored, knownPaths);
+        if (!remapped) return prev;
+        const next = new Map(prev);
+        next.set(folderId, remapped);
+        writeDeselected(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const loadSubfolders = useCallback(
+    async (folderId: number) => {
+      const entries = await window.folder.listSubdirectories(folderId);
+      setSubfoldersByFolder((prev) => {
+        // DB에 아직 이미지가 없으면 빈 배열이 돌아오는데,
+        // 이미 seed된 데이터가 있으면 보존한다 (스캔 완료 후 다시 갱신됨)
+        if (entries.length === 0 && (prev.get(folderId)?.length ?? 0) > 0) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(
           folderId,
-          depth: e.depth,
-        })),
+          entries.map((e) => ({
+            path: e.path,
+            name: e.path.replace(/\\/g, "/").split("/").pop() ?? e.path,
+            folderId,
+            depth: e.depth,
+          })),
+        );
+        return next;
+      });
+      reconcileVisibilitySpelling(
+        folderId,
+        entries.map((e) => e.path),
       );
-      return next;
-    });
-  }, []);
+    },
+    [reconcileVisibilitySpelling],
+  );
 
   const refreshSubfolders = useCallback(
     async (folderIds: number[], options?: { allowEmpty?: boolean }) => {
@@ -133,6 +233,12 @@ export function useSubfolderState() {
         }
         return changed ? next : prev;
       });
+      for (const { id, entries } of results) {
+        reconcileVisibilitySpelling(
+          id,
+          entries.map((e) => e.path),
+        );
+      }
       if (disappearedPaths.length > 0) {
         setCollapsedSubfolderPaths((prev) => {
           if (prev.size === 0) return prev;
@@ -146,7 +252,7 @@ export function useSubfolderState() {
       }
       setSubfolderReady(true);
     },
-    [],
+    [reconcileVisibilitySpelling],
   );
 
   const isSubfolderVisible = useCallback(
@@ -217,7 +323,8 @@ export function useSubfolderState() {
     (folderId: number, subfolderPath: string) => {
       setDeselected((prev) => {
         const next = new Map(prev);
-        const allPaths = subfoldersByFolder.get(folderId)?.map((s) => s.path) ?? [];
+        const allPaths =
+          subfoldersByFolder.get(folderId)?.map((s) => s.path) ?? [];
         const hidden = new Set<string>([ROOT_SENTINEL]);
         for (const p of allPaths) {
           if (p !== subfolderPath) hidden.add(p);
@@ -310,10 +417,8 @@ export function useSubfolderState() {
     });
   }, []);
 
-  const emptyFiltersRef = useRef<SubfolderFilter[]>([]);
-
   const subfolderFilters = useMemo<SubfolderFilter[]>(() => {
-    if (deselected.size === 0) return emptyFiltersRef.current;
+    if (deselected.size === 0) return NO_FILTERS;
     const filters: SubfolderFilter[] = [];
     for (const [folderId, deselectedPaths] of deselected) {
       if (deselectedPaths.size === 0) continue;

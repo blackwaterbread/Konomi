@@ -272,12 +272,14 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         folderIds,
         orderedFolderIds,
         skipFolderIds,
+        subPaths,
       } = (payload as
         | {
             detectDuplicates?: boolean;
             folderIds?: number[];
             orderedFolderIds?: number[];
             skipFolderIds?: number[];
+            subPaths?: string[];
           }
         | undefined) ?? {};
       scanCancelToken = { cancelled: false };
@@ -288,6 +290,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           folderIds,
           orderedFolderIds,
           skipFolderIds,
+          subPaths,
           detectDuplicates,
           onDuplicateGroup: detectDuplicates
             ? (group) => utilitySender.send("image:watchDuplicate", group)

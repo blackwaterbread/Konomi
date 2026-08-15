@@ -21,7 +21,18 @@ export type ScanProgressEvent = {
 export type ScanFolderEvent = {
   folderId: number;
   folderName?: string;
+  /** Set when only this subtree of the folder is being scanned. */
+  subPath?: string;
   active: boolean;
+};
+
+/**
+ * Requested `subPaths` the scan could not reach. Pushed rather than returned
+ * because the web client resolves its scan on a WebSocket event and never sees
+ * the return value.
+ */
+export type ScanSkippedEvent = {
+  subPaths: string[];
 };
 
 export type ImageBatchEvent = {
@@ -51,4 +62,5 @@ export type KonomiEventMap = {
   "image:removed": ImageRemovedEvent;
   "image:scanProgress": ScanProgressEvent;
   "image:scanFolder": ScanFolderEvent;
+  "image:scanSkipped": ScanSkippedEvent;
 };

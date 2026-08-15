@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld("image", {
     folderIds?: number[];
     orderedFolderIds?: number[];
     skipFolderIds?: number[];
+    subPaths?: string[];
   }) => ipcRenderer.invoke("image:scan", options),
   setFavorite: (id: number, isFavorite: boolean) =>
     ipcRenderer.invoke("image:setFavorite", id, isFavorite),
@@ -271,15 +272,29 @@ contextBridge.exposeInMainWorld("image", {
     cb: (data: {
       folderId: number;
       folderName?: string;
+      subPath?: string;
       active: boolean;
     }) => void,
   ) => {
     const handler = (
       _: Electron.IpcRendererEvent,
-      data: { folderId: number; folderName?: string; active: boolean },
+      data: {
+        folderId: number;
+        folderName?: string;
+        subPath?: string;
+        active: boolean;
+      },
     ) => cb(data);
     ipcRenderer.on("image:scanFolder", handler);
     return () => ipcRenderer.removeListener("image:scanFolder", handler);
+  },
+  onScanSkipped: (cb: (data: { subPaths: string[] }) => void) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      data: { subPaths: string[] },
+    ) => cb(data);
+    ipcRenderer.on("image:scanSkipped", handler);
+    return () => ipcRenderer.removeListener("image:scanSkipped", handler);
   },
 });
 contextBridge.exposeInMainWorld("db", {

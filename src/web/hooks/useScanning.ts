@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import i18n from "@/lib/i18n";
 import { createLogger } from "@/lib/logger";
+import { subfolderKey } from "@/hooks/useSubfolderState";
 
 const log = createLogger("renderer/useScanning");
 
@@ -21,6 +22,12 @@ export function useScanning({
 }) {
   const [scanning, setScanning] = useState(false);
   const [activeScanFolderIds, setActiveScanFolderIds] = useState<Set<number>>(
+    new Set(),
+  );
+  // Keyed by `subfolderKey`; only populated while a subfolder-scoped scan runs.
+  // `image:scanFolder` reports the requested spelling, so these keys match the
+  // subfolder paths the sidebar already holds.
+  const [activeScanSubPaths, setActiveScanSubPaths] = useState<Set<string>>(
     new Set(),
   );
   const [rollbackFolderIds, setRollbackFolderIds] = useState<Set<number>>(
@@ -52,18 +59,43 @@ export function useScanning({
 
   useEffect(() => {
     const offScanFolder = window.image.onScanFolder(
-      ({ folderId, active }) => {
+      ({ folderId, subPath, active }) => {
         setActiveScanFolderIds((prev) => {
           const next = new Set(prev);
           if (active) next.add(folderId);
           else next.delete(folderId);
           return next;
         });
+        if (!subPath) return;
+        setActiveScanSubPaths((prev) => {
+          const key = subfolderKey(subPath);
+          const next = new Set(prev);
+          if (active) next.add(key);
+          else next.delete(key);
+          return next;
+        });
       },
     );
 
+    // A subtree the scan could not read is not an error — the scan still
+    // succeeds — so without this the user sees a spinner run and stop over a
+    // folder nothing happened to.
+    const offScanSkipped = window.image.onScanSkipped(({ subPaths }) => {
+      if (!subPaths || subPaths.length === 0) return;
+      log.info("Scan skipped subPaths", { subPaths });
+      toast.warning(
+        i18n.t(
+          subPaths.length === 1
+            ? "error.scanSubPathSkipped"
+            : "error.scanSubPathsSkipped",
+          { count: subPaths.length, path: subPaths[0] },
+        ),
+      );
+    });
+
     return () => {
       offScanFolder();
+      offScanSkipped();
     };
   }, []);
 
@@ -72,6 +104,7 @@ export function useScanning({
       detectDuplicates?: boolean;
       folderIds?: number[];
       skipFolderIds?: number[];
+      subPaths?: string[];
       refreshPage?: boolean;
       refreshSearchPresetStats?: boolean;
     }): Promise<{ ok: boolean; cancelled: boolean }> => {
@@ -83,6 +116,7 @@ export function useScanning({
         detectDuplicates,
         folderIds,
         skipFolderIds,
+        subPaths,
         refreshPage = true,
         refreshSearchPresetStats = true,
       } = options ?? {};
@@ -104,7 +138,13 @@ export function useScanning({
         }
       })();
       const scanPromise = window.image
-        .scan({ detectDuplicates, folderIds, orderedFolderIds, skipFolderIds })
+        .scan({
+          detectDuplicates,
+          folderIds,
+          orderedFolderIds,
+          skipFolderIds,
+          subPaths,
+        })
         .then((result) => {
           const cancelled = result?.cancelled === true;
           log.info("Scan completed", {
@@ -151,6 +191,7 @@ export function useScanning({
           scanningRef.current = false;
           setScanning(false);
           setActiveScanFolderIds(new Set());
+          setActiveScanSubPaths(new Set());
           scanPromiseRef.current = null;
         });
       scanPromiseRef.current = scanPromise;
@@ -197,6 +238,8 @@ export function useScanning({
     setScanning,
     activeScanFolderIds,
     setActiveScanFolderIds,
+    activeScanSubPaths,
+    setActiveScanSubPaths,
     rollbackFolderIds,
     setRollbackFolderIds,
     scanCancelConfirmOpen,

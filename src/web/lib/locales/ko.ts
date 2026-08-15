@@ -468,6 +468,9 @@ const ko = {
     scanInProgressForHashReset:
       "스캔이 진행 중입니다. 스캔 완료 후 해시 재계산을 실행해 주세요.",
     scanFailed: "스캔 실패: {{message}}",
+    scanSubPathSkipped: "{{path}} 폴더를 읽을 수 없어 재스캔하지 못했습니다.",
+    scanSubPathsSkipped:
+      "{{path}} 등 {{count}}개 폴더를 읽을 수 없어 재스캔하지 못했습니다.",
     analysisFailed: "이미지 분석 실패: {{message}}",
     imageListLoadFailed: "이미지 목록 로드 실패: {{message}}",
     folderListLoadFailed: "폴더 목록 로드 실패: {{message}}",
@@ -910,6 +913,7 @@ const ko = {
     folders: {
       openInExplorer: "Explorer에서 열기",
       rescan: "폴더 재스캔",
+      rescanSubfolder: "이 하위 폴더만 재스캔",
       rescanAll: "전체 폴더 새로고침",
       isolate: "이 폴더만 보기",
       rename: "폴더 이름 변경",
