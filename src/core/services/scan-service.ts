@@ -363,63 +363,72 @@ export function createScanService(deps: ScanServiceDeps) {
     }
 
     const targets: ScanTarget[] = [];
-    const seen = new Set<string>();
-    const matchedSubPaths = new Set<string>();
     const skippedSubPaths: string[] = [];
-    for (const folder of foldersToScan) {
-      for (const subPath of subPaths) {
-        if (!isPathUnder(subPath, folder.path)) continue;
-        matchedSubPaths.add(subPath);
-        // A subtree that is gone still needs a target, otherwise its rows are
-        // never pruned and the phantom subfolder lingers in the sidebar. A
-        // directory that merely failed to read (permissions, transient IO)
-        // must not wipe the subtree, so prune only when it is confirmed gone.
-        //
-        // ENOENT on the subtree only means "deleted" while the folder root is
-        // still reachable. An unmounted share or a moved folder root answers
-        // ENOENT for everything beneath it, and pruning on that would wipe a
-        // live index — exactly what the full-folder scan refuses to do when
-        // its root is inaccessible.
-        const reachable = await isAccessible(subPath);
-        const missing =
-          !reachable &&
-          (await isAccessible(folder.path)) &&
-          (await isConfirmedMissing(subPath));
-        if (!reachable && !missing) {
-          log.info(`skipping unreadable scan root: ${subPath}`);
-          skippedSubPaths.push(subPath);
-          continue;
-        }
-        const key = `${folder.id}:${normalizePathKey(subPath)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        targets.push({
-          folder,
-          root: subPath,
-          partial: !isSamePath(subPath, folder.path),
-          missing,
-        });
-      }
-    }
-
-    // A subPath under no resolved folder scans nothing at all, and without a
-    // trace of it the scan just reports success over an empty target list.
+    // One target per requested subtree, never one per (folder, subtree) pair.
+    // A folder can be registered inside another one, and then a subPath sits
+    // under two roots: pairing would walk and sync the same directory twice,
+    // leaving `Image.folderId` up to iteration order, and — when the directory
+    // is unreadable — report it twice, turning one bad directory into
+    // "2 folders" in the notice the user reads. The subtree belongs to the
+    // most specific root containing it, which is the folder the sidebar shows
+    // it under.
     for (const subPath of subPaths) {
-      if (!matchedSubPaths.has(subPath)) {
+      let owner: FolderEntity | undefined;
+      let ownerDepth = -1;
+      for (const folder of foldersToScan) {
+        if (!isPathUnder(subPath, folder.path)) continue;
+        const depth = normalizePathKey(folder.path).length;
+        if (depth > ownerDepth) {
+          owner = folder;
+          ownerDepth = depth;
+        }
+      }
+      // A subPath under no resolved folder scans nothing at all, and without a
+      // trace of it the scan just reports success over an empty target list.
+      if (!owner) {
         log.info(`ignoring subPath outside every resolved folder: ${subPath}`);
         skippedSubPaths.push(subPath);
+        continue;
       }
+
+      // A subtree that is gone still needs a target, otherwise its rows are
+      // never pruned and the phantom subfolder lingers in the sidebar. A
+      // directory that merely failed to read (permissions, transient IO)
+      // must not wipe the subtree, so prune only when it is confirmed gone.
+      //
+      // ENOENT on the subtree only means "deleted" while the folder root is
+      // still reachable. An unmounted share or a moved folder root answers
+      // ENOENT for everything beneath it, and pruning on that would wipe a
+      // live index — exactly what the full-folder scan refuses to do when
+      // its root is inaccessible.
+      const reachable = await isAccessible(subPath);
+      const missing =
+        !reachable &&
+        (await isAccessible(owner.path)) &&
+        (await isConfirmedMissing(subPath));
+      if (!reachable && !missing) {
+        log.info(`skipping unreadable scan root: ${subPath}`);
+        skippedSubPaths.push(subPath);
+        continue;
+      }
+      targets.push({
+        folder: owner,
+        root: subPath,
+        partial: !isSamePath(subPath, owner.path),
+        missing,
+      });
     }
 
-    // A requested subtree nested inside another requested subtree of the same
-    // folder would be walked (and pruned) twice; keep only the outermost ones.
+    // A requested subtree nested inside another requested subtree would be
+    // walked (and pruned) twice; keep only the outermost ones. Not scoped to a
+    // folder: with nested roots the outer and inner subtree can be owned by
+    // different folders and still be the same directory tree on disk.
     return {
       targets: targets.filter(
         (target) =>
           !targets.some(
             (other) =>
               other !== target &&
-              other.folder.id === target.folder.id &&
               !isSamePath(other.root, target.root) &&
               isPathUnder(target.root, other.root),
           ),

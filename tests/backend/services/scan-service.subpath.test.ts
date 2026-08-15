@@ -508,6 +508,68 @@ describe("scanService.scanAll with subPaths", () => {
     ).toEqual([{ subPaths: [outside] }]);
   });
 
+  /** `library` plus `library/alpha` registered as a folder in its own right. */
+  async function createNestedRoots() {
+    const { folder: outer, alpha } = await createLibrary();
+    const { getDB } = await import("@core/lib/db");
+    const inner = await getDB().folder.create({
+      data: { name: "alpha", path: alpha },
+    });
+    const deep = path.join(alpha, "deep");
+    writePng(path.join(deep, "d1.png"));
+    return { outer, inner, alpha, deep };
+  }
+
+  it("gives a subtree under nested folder roots one target, owned by the innermost", async () => {
+    const { scanService, events, getDB } = await buildService();
+    const { inner, deep } = await createNestedRoots();
+
+    // No folderIds, so both roots resolve — and both contain `deep`. Paired
+    // against every containing root it is walked and synced twice, and the row
+    // lands on whichever folder the loop reached last.
+    await scanService.scanAll({ subPaths: [deep] });
+
+    expect(
+      events.filter(
+        (e) =>
+          e.channel === "image:scanFolder" &&
+          (e.data as { active: boolean }).active,
+      ),
+    ).toHaveLength(1);
+    expect(
+      await getDB().image.findMany({ select: { path: true, folderId: true } }),
+    ).toEqual([{ path: path.join(deep, "d1.png"), folderId: inner.id }]);
+  });
+
+  it("reports an unreadable subtree under nested folder roots once", async () => {
+    const { scanService, events } = await buildService();
+    const { deep } = await createNestedRoots();
+
+    const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" });
+    const realOpendir = fs.promises.opendir;
+    const opendirSpy = vi
+      .spyOn(fs.promises, "opendir")
+      .mockImplementation((async (p: fs.PathLike, ...rest: unknown[]) => {
+        if (path.resolve(String(p)) === path.resolve(deep)) {
+          return Promise.reject(eacces);
+        }
+        return (realOpendir as (...a: unknown[]) => unknown)(p, ...rest);
+      }) as never);
+
+    let result: Awaited<ReturnType<typeof scanService.scanAll>>;
+    try {
+      result = await scanService.scanAll({ subPaths: [deep] });
+    } finally {
+      opendirSpy.mockRestore();
+    }
+
+    // One bad directory is one notice, however many roots contain it.
+    expect(result.skippedSubPaths).toEqual([deep]);
+    expect(
+      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+    ).toEqual([{ subPaths: [deep] }]);
+  });
+
   it("reports a subtree that becomes unreadable after targets are resolved", async () => {
     const { scanService, events } = await buildService();
     const { folder, alpha } = await createLibrary();
