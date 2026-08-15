@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { parsePromptTokens } from "../lib/token";
+import { normalizePathKey } from "../lib/path-key";
 import { withConcurrency } from "../lib/scanner";
 import type { CancelToken } from "../lib/scanner";
 import type {
@@ -76,18 +77,21 @@ function buildUpsertData(
   };
 }
 
-function normalizePathForCompare(p: string): string {
-  const resolved = path.resolve(p);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
-
+/**
+ * Same question `scan-service.isPathUnder` answers, so it must fold paths the
+ * same way — `registerExternalPath` picks the owning folder with this while the
+ * scan prunes that folder's rows with the other, and a disagreement would file
+ * an image under a root the next scan does not walk.
+ *
+ * `path.resolve` runs first because a generated file's path can arrive relative
+ * or with `..` segments; the folder root always comes from the DB.
+ * Unlike the scan's copy a file is never "under" a root it equals.
+ */
 function isPathUnder(filePath: string, folderPath: string): boolean {
-  const file = normalizePathForCompare(filePath);
-  const folder = normalizePathForCompare(folderPath);
+  const file = normalizePathKey(path.resolve(filePath));
+  const folder = normalizePathKey(path.resolve(folderPath));
   if (file === folder) return false;
-  const sep = process.platform === "win32" ? "\\" : "/";
-  const prefix = folder.endsWith(sep) ? folder : folder + sep;
-  return file.startsWith(prefix);
+  return file.startsWith(folder + "/");
 }
 
 function buildMetadataEntry(
