@@ -1,180 +1,42 @@
 import fs from "fs";
-import path from "path";
-import { scanImageFiles, withConcurrency } from "../lib/scanner";
+import { scanImageFiles } from "../lib/scanner";
+import { normalizePathKey } from "../lib/path-key";
+import {
+  buildDuplicateGroupsFromBuckets,
+  buildExistingSizeBuckets,
+  buildIncomingSizeBuckets,
+  buildSignatureBuckets,
+  collectCandidateSizes,
+} from "../lib/duplicate-detect";
 import type { CancelToken } from "../lib/scanner";
-import type { SearchStatMutation } from "../types/repository";
+import type {
+  FolderDuplicateGroup,
+  FolderDuplicateGroupResolution,
+  HashFile,
+} from "../lib/duplicate-detect";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
+import type {
+  IgnoredDuplicateAdapter,
+  SearchStatsAdapter,
+  SimilarityCacheAdapter,
+} from "../types/adapters";
 
-const SIZE_SCAN_CONCURRENCY = 32;
-const HASH_SCAN_CONCURRENCY = 12;
-
-// ── Types ──────────────────────────────────────────────────────
-
-export type FolderDuplicateExistingEntry = {
-  imageId: number;
-  path: string;
-  fileName: string;
-};
-
-export type FolderDuplicateIncomingEntry = {
-  path: string;
-  fileName: string;
-};
-
-export type FolderDuplicateGroup = {
-  id: string;
-  hash: string;
-  previewPath: string;
-  previewFileName: string;
-  existingEntries: FolderDuplicateExistingEntry[];
-  incomingEntries: FolderDuplicateIncomingEntry[];
-};
-
-export type FolderDuplicateGroupResolution = {
-  id: string;
-  hash: string;
-  keep: "existing" | "incoming" | "ignore";
-  existingEntries: Array<{ imageId: number; path: string }>;
-  incomingPaths: string[];
-};
-
-// ── Adapter interfaces ─────────────────────────────────────────
-
-export interface IgnoredDuplicateAdapter {
-  ensureLoaded(): Promise<void>;
-  isIgnored(filePath: string): Promise<boolean>;
-  register(paths: string[]): Promise<void>;
-  forget(filePath: string): Promise<void>;
-  list(): Promise<string[]>;
-  clear(): Promise<number>;
-}
-
-export interface SearchStatsAdapter {
-  applyMutations(
-    mutations: SearchStatMutation[],
-    onProgress?: (done: number, total: number) => void,
-  ): Promise<void>;
-}
-
-export interface SimilarityCacheAdapter {
-  deleteForImageIds(ids: number[]): Promise<void>;
-}
+export type {
+  FolderDuplicateExistingEntry,
+  FolderDuplicateIncomingEntry,
+  FolderDuplicateGroup,
+  FolderDuplicateGroupResolution,
+} from "../lib/duplicate-detect";
 
 // ── Deps ───────────────────────────────────────────────────────
 
 export type DuplicateServiceDeps = {
   imageRepo: ImageRepo;
-  hashFile: (filePath: string) => Promise<string | null>;
+  hashFile: HashFile;
   ignoredDuplicates: IgnoredDuplicateAdapter;
   searchStats?: SearchStatsAdapter;
   similarityCache?: SimilarityCacheAdapter;
 };
-
-// ── Pure helpers ───────────────────────────────────────────────
-
-async function fileSize(filePath: string): Promise<number | null> {
-  try {
-    const stat = await fs.promises.stat(filePath);
-    return stat.isFile() ? stat.size : null;
-  } catch {
-    return null;
-  }
-}
-
-async function buildIncomingSizeBuckets(
-  incomingPaths: string[],
-  signal?: CancelToken,
-): Promise<Map<number, FolderDuplicateIncomingEntry[]>> {
-  const buckets = new Map<number, FolderDuplicateIncomingEntry[]>();
-  await withConcurrency(
-    incomingPaths,
-    SIZE_SCAN_CONCURRENCY,
-    async (incomingPath) => {
-      const size = await fileSize(incomingPath);
-      if (size === null) return;
-      const bucket = buckets.get(size) ?? [];
-      bucket.push({
-        path: incomingPath,
-        fileName: path.basename(incomingPath),
-      });
-      buckets.set(size, bucket);
-    },
-    signal,
-  );
-  return buckets;
-}
-
-function collectCandidateSizes(
-  incomingSizeBuckets: Map<number, FolderDuplicateIncomingEntry[]>,
-  existingSizeBuckets: Map<number, FolderDuplicateExistingEntry[]>,
-): number[] {
-  const sizes: number[] = [];
-  for (const [size, incomingEntries] of incomingSizeBuckets.entries()) {
-    const existingEntries = existingSizeBuckets.get(size) ?? [];
-    if (incomingEntries.length > 1 || existingEntries.length > 0) {
-      sizes.push(size);
-    }
-  }
-  return sizes;
-}
-
-async function buildSignatureBuckets<T>(
-  sizeBuckets: Map<number, T[]>,
-  candidateSizes: number[],
-  getPath: (entry: T) => string,
-  hashFile: (filePath: string) => Promise<string | null>,
-  signal?: CancelToken,
-): Promise<Map<string, T[]>> {
-  const buckets = new Map<string, T[]>();
-  const targets = candidateSizes.flatMap((size) =>
-    (sizeBuckets.get(size) ?? []).map((entry) => ({ size, entry })),
-  );
-  await withConcurrency(
-    targets,
-    HASH_SCAN_CONCURRENCY,
-    async ({ size, entry }) => {
-      const hash = await hashFile(getPath(entry));
-      if (!hash) return;
-      const signature = `${size}:${hash}`;
-      const bucket = buckets.get(signature) ?? [];
-      bucket.push(entry);
-      buckets.set(signature, bucket);
-    },
-    signal,
-  );
-  return buckets;
-}
-
-function buildDuplicateGroupsFromBuckets(
-  incomingBuckets: Map<string, FolderDuplicateIncomingEntry[]>,
-  existingBuckets: Map<string, FolderDuplicateExistingEntry[]>,
-  incomingPathSet: Set<string>,
-): FolderDuplicateGroup[] {
-  const groups: FolderDuplicateGroup[] = [];
-  for (const [signature, incomingEntries] of incomingBuckets.entries()) {
-    const existingEntries = (existingBuckets.get(signature) ?? []).filter(
-      (entry) => !incomingPathSet.has(entry.path),
-    );
-    const hasCrossDuplicate =
-      existingEntries.length > 0 && incomingEntries.length > 0;
-    const hasIncomingOnlyDuplicate = incomingEntries.length > 1;
-    if (!hasCrossDuplicate && !hasIncomingOnlyDuplicate) continue;
-
-    const hash = signature.split(":")[1] ?? signature;
-    const previewEntry = existingEntries[0] ?? incomingEntries[0];
-    if (!previewEntry) continue;
-
-    groups.push({
-      id: signature,
-      hash,
-      previewPath: previewEntry.path,
-      previewFileName: previewEntry.fileName,
-      existingEntries,
-      incomingEntries,
-    });
-  }
-  return groups;
-}
 
 // ── Factory ────────────────────────────────────────────────────
 
@@ -216,7 +78,6 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
       }
       if (incomingPaths.length === 0) return [];
 
-      const incomingPathSet = new Set(incomingPaths);
       const incomingSizeBuckets = await buildIncomingSizeBuckets(
         incomingPaths,
         options?.signal,
@@ -225,16 +86,33 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
       // Query existing images matching candidate file sizes
       const incomingFileSizes = [...incomingSizeBuckets.keys()];
       const existingRows = await imageRepo.findByFileSize(incomingFileSizes);
-      const existingSizeBuckets = new Map<number, FolderDuplicateExistingEntry[]>();
-      for (const row of existingRows) {
-        const bucket = existingSizeBuckets.get(row.fileSize) ?? [];
-        bucket.push({
-          imageId: row.id,
-          path: row.path,
-          fileName: path.basename(row.path),
-        });
-        existingSizeBuckets.set(row.fileSize, bucket);
+      const existingSizeBuckets = buildExistingSizeBuckets(existingRows);
+
+      // "Incoming" means a file the library does not hold yet. On a rescan the
+      // walk re-reports every indexed file in the tree, and leaving those in
+      // makes each one a candidate against its own row — the whole subtree gets
+      // hashed twice on every rescan to conclude nothing changed. An indexed
+      // file always has a row of its own size, so `existingRows` is enough to
+      // recognise them. `scanService`'s pre-scan drops them the same way.
+      const indexedKeys = new Set(
+        existingRows.map((row) => normalizePathKey(row.path)),
+      );
+      for (const [size, entries] of [...incomingSizeBuckets.entries()]) {
+        const kept = entries.filter(
+          (entry) => !indexedKeys.has(normalizePathKey(entry.path)),
+        );
+        if (kept.length === 0) incomingSizeBuckets.delete(size);
+        else if (kept.length !== entries.length) {
+          incomingSizeBuckets.set(size, kept);
+        }
       }
+      if (incomingSizeBuckets.size === 0) return [];
+
+      const incomingPathSet = new Set(
+        [...incomingSizeBuckets.values()].flatMap((entries) =>
+          entries.map((entry) => normalizePathKey(entry.path)),
+        ),
+      );
 
       const candidateSizes = collectCandidateSizes(
         incomingSizeBuckets,
@@ -245,14 +123,12 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
       const existingSignatureBuckets = await buildSignatureBuckets(
         existingSizeBuckets,
         candidateSizes,
-        (e) => e.path,
         hashFile,
         options?.signal,
       );
       const incomingSignatureBuckets = await buildSignatureBuckets(
         incomingSizeBuckets,
         candidateSizes,
-        (e) => e.path,
         hashFile,
         options?.signal,
       );
@@ -262,49 +138,6 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
         existingSignatureBuckets,
         incomingPathSet,
       );
-    },
-
-    async findDuplicateForIncomingPath(
-      incomingPath: string,
-    ): Promise<FolderDuplicateGroup | null> {
-      await ignoredDuplicates.ensureLoaded();
-      if (await ignoredDuplicates.isIgnored(incomingPath)) return null;
-
-      const incomingSize = await fileSize(incomingPath);
-      if (incomingSize === null) return null;
-
-      const candidates = await imageRepo.findByFileSizeExcludingPath(
-        incomingSize,
-        incomingPath,
-      );
-      if (candidates.length === 0) return null;
-
-      const incomingHash = await hashFile(incomingPath);
-      if (!incomingHash) return null;
-
-      const existingEntries: FolderDuplicateExistingEntry[] = [];
-      await withConcurrency(candidates, HASH_SCAN_CONCURRENCY, async (row) => {
-        const hash = await hashFile(row.path);
-        if (hash !== incomingHash) return;
-        existingEntries.push({
-          imageId: row.id,
-          path: row.path,
-          fileName: path.basename(row.path),
-        });
-      });
-
-      if (existingEntries.length === 0) return null;
-
-      return {
-        id: `${incomingSize}:${incomingHash}`,
-        hash: incomingHash,
-        previewPath: existingEntries[0].path,
-        previewFileName: existingEntries[0].fileName,
-        existingEntries,
-        incomingEntries: [
-          { path: incomingPath, fileName: path.basename(incomingPath) },
-        ],
-      };
     },
 
     // ── Resolution ─────────────────────────────────────────

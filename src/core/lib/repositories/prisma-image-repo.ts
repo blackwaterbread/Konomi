@@ -825,16 +825,6 @@ export function createPrismaImageRepo(
       return (results as unknown as ImageEntity[]).map(normalizeImageEntity);
     },
 
-    async findByFileSizeExcludingPath(
-      fileSize: number,
-      excludePath: string,
-    ): Promise<Array<{ id: number; path: string }>> {
-      return read().image.findMany({
-        where: { fileSize, NOT: { path: excludePath } },
-        select: { id: true, path: true },
-      });
-    },
-
     async deleteById(id: number): Promise<boolean> {
       try {
         await write().image.delete({ where: { id } });
