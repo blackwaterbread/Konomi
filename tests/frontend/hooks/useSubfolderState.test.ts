@@ -4,6 +4,7 @@ import { useSubfolderState } from "@/hooks/useSubfolderState";
 import { preloadMocks } from "../helpers/preload-mocks";
 
 const VISIBILITY_KEY = "konomi-subfolder-visibility";
+const CASE_REPAIR_KEY = "konomi-subfolder-visibility-case-repaired";
 
 describe("useSubfolderState visibility overrides", () => {
   it("re-spells overrides stored under a folded path onto the reported one", async () => {
@@ -114,6 +115,49 @@ describe("useSubfolderState visibility overrides", () => {
     });
     expect(JSON.parse(localStorage.getItem(VISIBILITY_KEY) ?? "{}")).toEqual({
       "1": ["C:\\Library\\Alpha"],
+    });
+  });
+
+  it("stops repairing case once the folder has had its one pass", async () => {
+    // The damaging case: on a Linux backend `/library/sketch` is a real
+    // directory whose override is legitimately all-lower-case, and `Sketch` is
+    // a distinct sibling. If the case repair stayed armed, the first refresh
+    // that reports a partial list without `sketch` would move the override onto
+    // `Sketch` and hide a folder the user never chose.
+    localStorage.setItem(
+      VISIBILITY_KEY,
+      JSON.stringify({ "1": ["/library/sketch"] }),
+    );
+    preloadMocks.folder.listSubdirectories.mockResolvedValue([
+      { path: "/library/sketch", depth: 1 },
+      { path: "/library/Sketch", depth: 1 },
+    ]);
+
+    const { result } = renderHook(() => useSubfolderState());
+
+    // First pass: the exact spelling is present, so nothing is rewritten — but
+    // the folder is stamped as having seen the backend's spelling.
+    await act(async () => {
+      await result.current.refreshSubfolders([1]);
+    });
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(CASE_REPAIR_KEY) ?? "[]")).toEqual(
+        [1],
+      );
+    });
+
+    // `sketch` drops out mid-scan. Without the stamp the folded match would now
+    // be unambiguous and re-point the override.
+    preloadMocks.folder.listSubdirectories.mockResolvedValue([
+      { path: "/library/Sketch", depth: 1 },
+    ]);
+    await act(async () => {
+      await result.current.refreshSubfolders([1]);
+    });
+
+    expect(result.current.isSubfolderVisible("/library/Sketch", 1)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(VISIBILITY_KEY) ?? "{}")).toEqual({
+      "1": ["/library/sketch"],
     });
   });
 

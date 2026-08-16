@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export type Subfolder = {
   path: string;
@@ -15,6 +15,12 @@ export type SubfolderFilter = {
 };
 
 const VISIBILITY_KEY = "konomi-subfolder-visibility";
+/**
+ * Folder ids whose visibility overrides have already been through the one-shot
+ * case repair below. See `remapDeselectedPaths` for why a persisted stamp is
+ * the only signal that can gate it.
+ */
+const CASE_REPAIR_KEY = "konomi-subfolder-visibility-case-repaired";
 const ROOT_SENTINEL = "__root__";
 
 /**
@@ -61,14 +67,25 @@ export function subfolderKey(path: string): string {
  * - Separators and a trailing one are repaired unconditionally. `subfolderKey`
  *   already treats those spellings as the same path, so re-pointing an entry at
  *   the reported one can never land on a different subfolder.
- * - Case is repaired only for an entry that is *entirely* lower-case, which is
- *   the old format's signature. Case is not a general comparison rule here —
+ * - Case is repaired behind two gates, because on a case-sensitive backend
+ *   re-pointing is destructive: `getSubfolderPaths` reports what the DB has, so
+ *   the list is partial while a scan runs, and a genuine `sketch` that is
+ *   briefly absent would be moved onto its distinct sibling `Sketch` — hiding a
+ *   subfolder the user never chose. Case is not a general comparison rule here;
  *   `subfolderKey` still refuses to fold it, for the reason documented there.
- *   Without the gate this never stops running: on a case-sensitive backend a
- *   genuine `sketch` that is briefly absent from the reported list (it is
- *   partial while a scan runs) would be re-pointed at its distinct sibling
- *   `Sketch`, hiding the wrong subfolder. The gate is self-limiting too — a
- *   repaired entry carries the on-disk casing afterwards and stops qualifying.
+ *
+ *   The first gate is the entry's own spelling: the old format was lower-cased,
+ *   so an entry carrying any upper case is definitely not it and is left alone.
+ *   That direction is sound. The converse is not — an all-lower-case entry is
+ *   also exactly what a Linux backend reports for a directory really named
+ *   `sketch`, so on the platform where the repair does damage a spelling test
+ *   alone re-arms itself on every refresh, forever.
+ *
+ *   The second gate closes that: `allowCaseRepair` comes from a stamp the
+ *   caller persists per folder, so the repair gets one pass and then never runs
+ *   again. What is left is one pass over a possibly-partial list. If it misses,
+ *   a stale entry stops matching and that subfolder reappears for the user to
+ *   re-hide — strictly better than silently hiding the wrong one.
  *
  * An entry is rewritten solely when exactly one reported path matches; an
  * ambiguous or unrecognised entry is left untouched, because dropping it would
@@ -80,6 +97,7 @@ export function subfolderKey(path: string): string {
 function remapDeselectedPaths(
   stored: Set<string>,
   knownPaths: string[],
+  allowCaseRepair: boolean,
 ): Set<string> | null {
   const exact = new Set(knownPaths);
   const bySeparator = new Map<string, string[]>();
@@ -92,7 +110,7 @@ function remapDeselectedPaths(
   for (const p of knownPaths) {
     const key = subfolderKey(p);
     bucket(bySeparator, key, p);
-    bucket(byFoldedCase, key.toLowerCase(), p);
+    if (allowCaseRepair) bucket(byFoldedCase, key.toLowerCase(), p);
   }
 
   let changed = false;
@@ -143,6 +161,26 @@ function writeDeselected(map: Map<number, Set<string>>): void {
   }
 }
 
+function readCaseRepaired(): Set<number> {
+  try {
+    const raw = localStorage.getItem(CASE_REPAIR_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is number => typeof v === "number"));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCaseRepaired(ids: Set<number>): void {
+  try {
+    localStorage.setItem(CASE_REPAIR_KEY, JSON.stringify([...ids]));
+  } catch {
+    // ignore
+  }
+}
+
 export function useSubfolderState() {
   const [subfolderReady, setSubfolderReady] = useState(false);
   const [subfoldersByFolder, setSubfoldersByFolder] = useState<
@@ -155,19 +193,33 @@ export function useSubfolderState() {
     Set<string>
   >(new Set());
 
+  const caseRepairedRef = useRef<Set<number> | null>(null);
+
   const reconcileVisibilitySpelling = useCallback(
     (folderId: number, knownPaths: string[]) => {
       if (knownPaths.length === 0) return;
+      const caseRepaired = (caseRepairedRef.current ??= readCaseRepaired());
+      const allowCaseRepair = !caseRepaired.has(folderId);
       setDeselected((prev) => {
         const stored = prev.get(folderId);
         if (!stored || stored.size === 0) return prev;
-        const remapped = remapDeselectedPaths(stored, knownPaths);
+        const remapped = remapDeselectedPaths(
+          stored,
+          knownPaths,
+          allowCaseRepair,
+        );
         if (!remapped) return prev;
         const next = new Map(prev);
         next.set(folderId, remapped);
         writeDeselected(next);
         return next;
       });
+      // Stamped whether or not anything was rewritten: the folder has now been
+      // shown the backend's spelling once, which is all the gate claims.
+      if (allowCaseRepair) {
+        caseRepaired.add(folderId);
+        writeCaseRepaired(caseRepaired);
+      }
     },
     [],
   );
