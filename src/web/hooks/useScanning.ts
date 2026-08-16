@@ -6,6 +6,24 @@ import { subfolderKey } from "@/hooks/useSubfolderState";
 
 const log = createLogger("renderer/useScanning");
 
+/**
+ * Message per `ScanSkippedReason`. The three read very differently to a user —
+ * a filesystem problem, a retry-in-a-moment, and a subtree that left the
+ * library — so an unknown reason falls back to the filesystem wording rather
+ * than going unreported.
+ */
+const SCAN_SKIPPED_KEYS: Record<string, { one: string; many: string }> = {
+  unreadable: {
+    one: "error.scanSubPathSkipped",
+    many: "error.scanSubPathsSkipped",
+  },
+  busy: { one: "error.scanSubPathBusy", many: "error.scanSubPathsBusy" },
+  outside: {
+    one: "error.scanSubPathOutside",
+    many: "error.scanSubPathsOutside",
+  },
+};
+
 export function useScanning({
   schedulePageRefresh,
   loadSearchPresetStats,
@@ -45,6 +63,9 @@ export function useScanning({
   }> | null>(null);
   const scanningRef = useRef(false);
   const scanStartCountRef = useRef(0);
+  // `subfolderKey`s of the subtrees this session currently has a scan request
+  // out for. Filters the broadcast `image:scanSkipped` down to our own.
+  const requestedSubPathKeysRef = useRef<Set<string>>(new Set());
   const rollbackRequestSeqRef = useRef(0);
 
   const refreshSubfoldersRef = useRef(refreshSubfolders);
@@ -77,21 +98,26 @@ export function useScanning({
       },
     );
 
-    // A subtree the scan could not read is not an error — the scan still
+    // A subtree the scan did not cover is not an error — the scan still
     // succeeds — so without this the user sees a spinner run and stop over a
     // folder nothing happened to.
-    const offScanSkipped = window.image.onScanSkipped(({ subPaths }) => {
-      if (!subPaths || subPaths.length === 0) return;
-      log.info("Scan skipped subPaths", { subPaths });
-      toast.warning(
-        i18n.t(
-          subPaths.length === 1
-            ? "error.scanSubPathSkipped"
-            : "error.scanSubPathsSkipped",
-          { count: subPaths.length, path: subPaths[0] },
-        ),
-      );
-    });
+    //
+    // The web sender broadcasts to every connected session, so an event can
+    // describe a rescan this client never asked for. Only ever emitted for a
+    // subtree-scoped request, and only a client makes those, so the subPaths
+    // still in flight here are the whole of what this session is owed.
+    const offScanSkipped = window.image.onScanSkipped(
+      ({ subPaths, reason }) => {
+        if (!subPaths || subPaths.length === 0) return;
+        const requested = requestedSubPathKeysRef.current;
+        const mine = subPaths.filter((p) => requested.has(subfolderKey(p)));
+        if (mine.length === 0) return;
+        log.info("Scan skipped subPaths", { subPaths: mine, reason });
+        const keys = SCAN_SKIPPED_KEYS[reason] ?? SCAN_SKIPPED_KEYS.unreadable;
+        const key = mine.length === 1 ? keys.one : keys.many;
+        toast.warning(i18n.t(key, { count: mine.length, path: mine[0] }));
+      },
+    );
 
     return () => {
       offScanFolder();
@@ -122,6 +148,11 @@ export function useScanning({
       } = options ?? {};
       const startedAt = Date.now();
       log.info("Scan started", { options });
+      // Set before the request: the server can broadcast a skip notice before
+      // the POST resolves.
+      requestedSubPathKeysRef.current = new Set(
+        (subPaths ?? []).map(subfolderKey),
+      );
       scanStartCountRef.current += 1;
       scanningRef.current = true;
       setScanning(true);
@@ -192,6 +223,7 @@ export function useScanning({
           setScanning(false);
           setActiveScanFolderIds(new Set());
           setActiveScanSubPaths(new Set());
+          requestedSubPathKeysRef.current = new Set();
           scanPromiseRef.current = null;
         });
       scanPromiseRef.current = scanPromise;

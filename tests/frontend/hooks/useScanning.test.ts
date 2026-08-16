@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
+import { toast } from "sonner";
 import { useScanning } from "@/hooks/useScanning";
 import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 
@@ -102,5 +103,55 @@ describe("useScanning", () => {
     expect(result.current.folderRollbackRequest).toMatchObject({
       folderIds: [7, 8],
     });
+  });
+
+  it("warns only about skipped subPaths this session requested", async () => {
+    // The web sender broadcasts image:scanSkipped to every connected client, so
+    // an unrelated session's subfolder rescan must not toast here.
+    const deferred = createDeferred<{ cancelled: boolean }>();
+    preloadMocks.image.scan.mockReturnValue(deferred.promise);
+
+    const { result } = renderHook(() =>
+      useScanning({
+        schedulePageRefresh: vi.fn(),
+        loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    let scanPromise!: Promise<{ ok: boolean; cancelled: boolean }>;
+    act(() => {
+      scanPromise = result.current.runScan({ subPaths: ["C:/lib/mine/"] });
+    });
+
+    act(() => {
+      preloadEvents.image.scanSkipped.emit({
+        subPaths: ["C:/lib/theirs"],
+        reason: "unreadable",
+      });
+    });
+    expect(toast.warning).not.toHaveBeenCalled();
+
+    // Ours, reported under the separator spelling the backend resolved it to.
+    act(() => {
+      preloadEvents.image.scanSkipped.emit({
+        subPaths: ["C:\\lib\\mine"],
+        reason: "busy",
+      });
+    });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+
+    deferred.resolve({ cancelled: false });
+    await act(async () => {
+      await scanPromise;
+    });
+
+    // The request settled, so a late broadcast is no longer ours either.
+    act(() => {
+      preloadEvents.image.scanSkipped.emit({
+        subPaths: ["C:/lib/mine"],
+        reason: "unreadable",
+      });
+    });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 });

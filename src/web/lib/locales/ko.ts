@@ -471,6 +471,14 @@ const ko = {
     scanSubPathSkipped: "{{path}} 폴더를 읽을 수 없어 재스캔하지 못했습니다.",
     scanSubPathsSkipped:
       "{{path}} 등 {{count}}개 폴더를 읽을 수 없어 재스캔하지 못했습니다.",
+    scanSubPathBusy:
+      "다른 스캔이 진행 중이라 {{path}} 폴더를 재스캔하지 못했습니다. 완료 후 다시 시도해 주세요.",
+    scanSubPathsBusy:
+      "다른 스캔이 진행 중이라 {{path}} 등 {{count}}개 폴더를 재스캔하지 못했습니다. 완료 후 다시 시도해 주세요.",
+    scanSubPathOutside:
+      "{{path}} 폴더가 등록된 폴더에 속하지 않아 재스캔하지 못했습니다.",
+    scanSubPathsOutside:
+      "{{path}} 등 {{count}}개 폴더가 등록된 폴더에 속하지 않아 재스캔하지 못했습니다.",
     analysisFailed: "이미지 분석 실패: {{message}}",
     imageListLoadFailed: "이미지 목록 로드 실패: {{message}}",
     folderListLoadFailed: "폴더 목록 로드 실패: {{message}}",

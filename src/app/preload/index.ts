@@ -288,10 +288,15 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.on("image:scanFolder", handler);
     return () => ipcRenderer.removeListener("image:scanFolder", handler);
   },
-  onScanSkipped: (cb: (data: { subPaths: string[] }) => void) => {
+  onScanSkipped: (
+    cb: (data: {
+      subPaths: string[];
+      reason: "unreadable" | "busy" | "outside";
+    }) => void,
+  ) => {
     const handler = (
       _: Electron.IpcRendererEvent,
-      data: { subPaths: string[] },
+      data: { subPaths: string[]; reason: "unreadable" | "busy" | "outside" },
     ) => cb(data);
     ipcRenderer.on("image:scanSkipped", handler);
     return () => ipcRenderer.removeListener("image:scanSkipped", handler);

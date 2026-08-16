@@ -55,7 +55,10 @@ const imageScanFolder = createEventChannel<{
   subPath?: string;
   active: boolean;
 }>();
-const imageScanSkipped = createEventChannel<{ subPaths: string[] }>();
+const imageScanSkipped = createEventChannel<{
+  subPaths: string[];
+  reason: "unreadable" | "busy";
+}>();
 const imageDupCheckProgress = createEventChannel<{
   done: number;
   total: number;
@@ -274,6 +277,7 @@ export function resetPreloadMocks(): void {
   preloadEvents.image.scanProgress.reset();
   preloadEvents.image.searchStatsProgress.reset();
   preloadEvents.image.scanFolder.reset();
+  preloadEvents.image.scanSkipped.reset();
   preloadEvents.image.dupCheckProgress.reset();
   preloadEvents.nai.generatePreview.reset();
   preloadEvents.appInfo.updateAvailable.reset();

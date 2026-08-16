@@ -27,12 +27,26 @@ export type ScanFolderEvent = {
 };
 
 /**
- * Requested `subPaths` the scan could not reach. Pushed rather than returned
+ * Why a requested `subPath` was not scanned. The three are not interchangeable
+ * to a user: `"unreadable"` points at their filesystem, `"busy"` says to try
+ * again in a moment, and `"outside"` says the subtree is no longer part of a
+ * scanned folder. Reporting any of them as `"unreadable"` sends people looking
+ * for a permissions problem that does not exist.
+ */
+export type ScanSkippedReason = "unreadable" | "busy" | "outside";
+
+/**
+ * Requested `subPaths` the scan did not cover. Pushed rather than returned
  * because the web client resolves its scan on a WebSocket event and never sees
  * the return value.
+ *
+ * The web sender broadcasts, so this reaches sessions that requested nothing;
+ * `subPaths` is only ever non-empty for a subtree-scoped request, so a client
+ * drops any entry it did not ask for.
  */
 export type ScanSkippedEvent = {
   subPaths: string[];
+  reason: ScanSkippedReason;
 };
 
 export type ImageBatchEvent = {

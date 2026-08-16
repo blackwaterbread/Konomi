@@ -127,7 +127,7 @@ function scanAndWait(
     rpc<{
       started?: boolean;
       alreadyRunning?: boolean;
-      skippedSubPaths?: string[];
+      busySubPaths?: string[];
     }>("/api/images/scan", options ?? {})
       .then((res) => {
         posted = true;
@@ -135,8 +135,11 @@ function scanAndWait(
         // Delivered in the response rather than broadcast, because the
         // rejection belongs to this request alone; replay it locally so the
         // same `onScanSkipped` listeners handle it.
-        if (res?.skippedSubPaths && res.skippedSubPaths.length > 0) {
-          dispatchEvent("image:scanSkipped", { subPaths: res.skippedSubPaths });
+        if (res?.busySubPaths && res.busySubPaths.length > 0) {
+          dispatchEvent("image:scanSkipped", {
+            subPaths: res.busySubPaths,
+            reason: "busy",
+          });
         }
         if (res?.started) {
           // Our own fresh scan just started: any inactive seen before now

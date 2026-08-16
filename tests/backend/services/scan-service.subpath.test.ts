@@ -458,7 +458,7 @@ describe("scanService.scanAll with subPaths", () => {
     },
   );
 
-  it("reports a subPath it could not read instead of passing silently", async () => {
+  it("reports a subPath outside every folder instead of passing silently", async () => {
     const { scanService, events } = await buildService();
     const { folder, root } = await createLibrary();
 
@@ -473,11 +473,13 @@ describe("scanService.scanAll with subPaths", () => {
     });
 
     // Outside every folder: nothing to scan, and the caller has to hear it.
+    // Reported as `outside`, not `unreadable` — the directory reads fine, so
+    // the permissions wording would send the user chasing nothing.
     expect(result.cancelled).toBe(false);
     expect(result.skippedSubPaths).toEqual([outside]);
     expect(
       events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
-    ).toEqual([{ subPaths: [outside] }]);
+    ).toEqual([{ subPaths: [outside], reason: "outside" }]);
     expect(await storedPaths()).toEqual(before);
 
     // A subtree confirmed gone is pruned, not skipped — it gets a target.
@@ -505,7 +507,7 @@ describe("scanService.scanAll with subPaths", () => {
     expect(result.skippedSubPaths).toEqual([outside]);
     expect(
       events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
-    ).toEqual([{ subPaths: [outside] }]);
+    ).toEqual([{ subPaths: [outside], reason: "outside" }]);
   });
 
   /** `library` plus `library/alpha` registered as a folder in its own right. */
@@ -567,7 +569,47 @@ describe("scanService.scanAll with subPaths", () => {
     expect(result.skippedSubPaths).toEqual([deep]);
     expect(
       events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
-    ).toEqual([{ subPaths: [deep] }]);
+    ).toEqual([{ subPaths: [deep], reason: "unreadable" }]);
+  });
+
+  it("labels an unreadable subtree and an outside one separately", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, alpha } = await createLibrary();
+    const outside = path.join(ctx.userDataDir, "elsewhere");
+
+    const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" });
+    const realOpendir = fs.promises.opendir;
+    const opendirSpy = vi
+      .spyOn(fs.promises, "opendir")
+      .mockImplementation((async (p: fs.PathLike, ...rest: unknown[]) => {
+        if (path.resolve(String(p)) === path.resolve(alpha)) {
+          return Promise.reject(eacces);
+        }
+        return (realOpendir as (...a: unknown[]) => unknown)(p, ...rest);
+      }) as never);
+
+    let result: Awaited<ReturnType<typeof scanService.scanAll>>;
+    try {
+      result = await scanService.scanAll({
+        folderIds: [folder.id],
+        subPaths: [alpha, outside],
+      });
+    } finally {
+      opendirSpy.mockRestore();
+    }
+
+    // Two causes, two notices. Merged into one event the batch could only
+    // carry one reason, and whichever lost would be described wrongly.
+    expect(
+      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+    ).toEqual([
+      { subPaths: [alpha], reason: "unreadable" },
+      { subPaths: [outside], reason: "outside" },
+    ]);
+    // The return value flattens both — callers only need what went uncovered.
+    expect(result.skippedSubPaths.slice().sort()).toEqual(
+      [alpha, outside].sort(),
+    );
   });
 
   it("reports a subtree that becomes unreadable after targets are resolved", async () => {
@@ -608,7 +650,7 @@ describe("scanService.scanAll with subPaths", () => {
     expect(result.skippedSubPaths).toEqual([alpha]);
     expect(
       events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
-    ).toEqual([{ subPaths: [alpha] }]);
+    ).toEqual([{ subPaths: [alpha], reason: "unreadable" }]);
     // A subtree that was never walked must not lose its rows.
     expect(await storedPaths()).toEqual(before);
   });

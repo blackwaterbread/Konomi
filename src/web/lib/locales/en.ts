@@ -474,6 +474,14 @@ const en = {
     scanSubPathSkipped: "Could not read {{path}} — it was not rescanned.",
     scanSubPathsSkipped:
       "Could not read {{count}} folders including {{path}} — they were not rescanned.",
+    scanSubPathBusy:
+      "Another scan is running, so {{path}} was not rescanned. Try again once it finishes.",
+    scanSubPathsBusy:
+      "Another scan is running, so {{count}} folders including {{path}} were not rescanned. Try again once it finishes.",
+    scanSubPathOutside:
+      "{{path}} is no longer part of a registered folder, so it was not rescanned.",
+    scanSubPathsOutside:
+      "{{count}} folders including {{path}} are no longer part of a registered folder, so they were not rescanned.",
     analysisFailed: "Image analysis failed: {{message}}",
     imageListLoadFailed: "Failed to load image list: {{message}}",
     folderListLoadFailed: "Failed to load folder list: {{message}}",

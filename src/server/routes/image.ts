@@ -86,11 +86,15 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     // every connected client, and this rejection is scoped to one request:
     // other sessions would be warned about a rescan they never asked for. The
     // caller replays it onto its own listeners.
+    //
+    // `busySubPaths`, not `skippedSubPaths`: the subtree is perfectly readable,
+    // it just lost a race for the scan lock, and the two render as different
+    // messages.
     if (scanState.active) {
       return {
         started: false,
         alreadyRunning: true,
-        skippedSubPaths: subPaths && subPaths.length > 0 ? subPaths : undefined,
+        busySubPaths: subPaths && subPaths.length > 0 ? subPaths : undefined,
       };
     }
 

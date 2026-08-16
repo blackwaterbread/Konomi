@@ -157,8 +157,16 @@ export interface ImageApi {
       active: boolean;
     }) => void,
   ): () => void;
-  /** Requested subPaths the scan could not reach (unreadable directory). */
-  onScanSkipped(cb: (data: { subPaths: string[] }) => void): () => void;
+  /**
+   * Requested subPaths the scan did not cover — unreadable on disk, refused
+   * because another scan held the lock, or no longer under a registered folder.
+   */
+  onScanSkipped(
+    cb: (data: {
+      subPaths: string[];
+      reason: "unreadable" | "busy" | "outside";
+    }) => void,
+  ): () => void;
 }
 
 // ── Category API ───────────────────────────────────────────────

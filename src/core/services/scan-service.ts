@@ -105,10 +105,15 @@ export type ScanServiceDeps = {
 export type ScanResult = {
   cancelled: boolean;
   /**
-   * Requested `subPaths` that could not be scanned because the directory was
-   * unreadable — a permission error or transient IO, not a deletion. The scan
-   * otherwise succeeds, so without this the caller reports a clean run over a
-   * subtree it never touched.
+   * Requested `subPaths` the scan did not cover: the directory was unreadable
+   * — a permission error or transient IO, not a deletion — or it sits under no
+   * resolved folder. The scan otherwise succeeds, so without this the caller
+   * reports a clean run over a subtree it never touched.
+   *
+   * Flattened across both causes on purpose: the distinction only shapes the
+   * message a user reads, and that is carried by `image:scanSkipped`'s
+   * `reason`. Callers of the return value just need to know what went
+   * uncovered.
    */
   skippedSubPaths: string[];
 };
@@ -328,7 +333,11 @@ export function createScanService(deps: ScanServiceDeps) {
   async function resolveScanTargets(
     foldersToScan: FolderEntity[],
     options?: ScanOptions,
-  ): Promise<{ targets: ScanTarget[]; skippedSubPaths: string[] }> {
+  ): Promise<{
+    targets: ScanTarget[];
+    skippedSubPaths: string[];
+    outsideSubPaths: string[];
+  }> {
     // `isPathUnder` is a string fold and does not collapse `..`, so a caller
     // could otherwise walk out of the folder while still matching its prefix —
     // `<root>/sub/../../elsewhere` starts with `<root>/sub`. The web server
@@ -359,11 +368,13 @@ export function createScanService(deps: ScanServiceDeps) {
           partial: false,
         })),
         skippedSubPaths: [],
+        outsideSubPaths: [],
       };
     }
 
     const targets: ScanTarget[] = [];
     const skippedSubPaths: string[] = [];
+    const outsideSubPaths: string[] = [];
     // One target per requested subtree, never one per (folder, subtree) pair.
     // A folder can be registered inside another one, and then a subPath sits
     // under two roots: pairing would walk and sync the same directory twice,
@@ -385,9 +396,15 @@ export function createScanService(deps: ScanServiceDeps) {
       }
       // A subPath under no resolved folder scans nothing at all, and without a
       // trace of it the scan just reports success over an empty target list.
+      //
+      // Reported apart from the unreadable ones: the directory is fine, it is
+      // folder resolution that excluded it — the parent folder was removed
+      // while the request was in flight, or `folderIds`/`skipFolderIds` left it
+      // out. Folding this into `"unreadable"` would send the user hunting a
+      // permissions problem on a directory they can read.
       if (!owner) {
         log.info(`ignoring subPath outside every resolved folder: ${subPath}`);
-        skippedSubPaths.push(subPath);
+        outsideSubPaths.push(subPath);
         continue;
       }
 
@@ -434,6 +451,7 @@ export function createScanService(deps: ScanServiceDeps) {
           ),
       ),
       skippedSubPaths,
+      outsideSubPaths,
     };
   }
 
@@ -771,14 +789,30 @@ export function createScanService(deps: ScanServiceDeps) {
         const foldersToScan = resolveFolders(allFolders, options);
         const resolved = await resolveScanTargets(foldersToScan, options);
         const targets = resolved.targets;
-        skippedSubPaths = resolved.skippedSubPaths;
+        skippedSubPaths = [
+          ...resolved.skippedSubPaths,
+          ...resolved.outsideSubPaths,
+        ];
         folderCount = targets.length;
 
         // Emitted before the work starts so the notice survives a cancel: the
         // renderer resolves its scan promise on cancellation without reading
         // the result, and web clients never see the return value at all.
-        if (skippedSubPaths.length > 0) {
-          sender.send("image:scanSkipped", { subPaths: skippedSubPaths });
+        //
+        // One event per reason rather than one merged event: the reason is what
+        // the message is built from, so a mixed batch could only be labelled by
+        // whichever reason won.
+        if (resolved.skippedSubPaths.length > 0) {
+          sender.send("image:scanSkipped", {
+            subPaths: resolved.skippedSubPaths,
+            reason: "unreadable",
+          });
+        }
+        if (resolved.outsideSubPaths.length > 0) {
+          sender.send("image:scanSkipped", {
+            subPaths: resolved.outsideSubPaths,
+            reason: "outside",
+          });
         }
 
         // ── Duplicate pre-scan ──────────────────────────────
@@ -873,7 +907,10 @@ export function createScanService(deps: ScanServiceDeps) {
 
         if (lateSkippedSubPaths.length > 0) {
           skippedSubPaths = [...skippedSubPaths, ...lateSkippedSubPaths];
-          sender.send("image:scanSkipped", { subPaths: lateSkippedSubPaths });
+          sender.send("image:scanSkipped", {
+            subPaths: lateSkippedSubPaths,
+            reason: "unreadable",
+          });
         }
 
         if (signal?.cancelled) return { cancelled: true, skippedSubPaths };
