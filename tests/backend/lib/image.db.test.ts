@@ -149,6 +149,62 @@ describe("image db integration", () => {
     expect(result.rows.map((row) => row.id)).toEqual([imageA.id]);
   });
 
+  it("narrows sync rows to one subtree without catching a name-prefixed sibling", async () => {
+    const { getDB } = await import("@core/lib/db");
+    const { createPrismaImageRepo } = await import(
+      "@core/lib/repositories/prisma-image-repo"
+    );
+    const db = getDB();
+    const imageRepo = createPrismaImageRepo(getDB);
+
+    const root = path.join(ctx.userDataDir, "library");
+    const folder = await db.folder.create({
+      data: { name: "Library", path: root },
+    });
+    const at = async (...segments: string[]) => {
+      const full = path.join(root, ...segments);
+      await db.image.create({
+        data: {
+          path: full,
+          folderId: folder.id,
+          fileModifiedAt: new Date("2026-03-20T00:00:00.000Z"),
+        },
+      });
+      return full;
+    };
+
+    const top = await at("top.png");
+    const inSub = await at("sub", "a.png");
+    const deepInSub = await at("sub", "deep", "b.png");
+    const inOther = await at("other", "c.png");
+    // `sub` is a string prefix of `subtle`, so a prefix condition that forgets
+    // the trailing separator drags the sibling subtree in — and a partial scan
+    // that never walks it would then prune every row it holds.
+    const inSibling = await at("subtle", "d.png");
+
+    const all = await imageRepo.findSyncRowsByFolderId(folder.id);
+    expect(new Set(all.map((row) => row.path))).toEqual(
+      new Set([top, inSub, deepInSub, inOther, inSibling]),
+    );
+
+    const scoped = await imageRepo.findSyncRowsByFolderId(
+      folder.id,
+      path.join(root, "sub"),
+    );
+    expect(new Set(scoped.map((row) => row.path))).toEqual(
+      new Set([inSub, deepInSub]),
+    );
+
+    // A prefix already carrying the separator must not double it.
+    const scopedWithSep = await imageRepo.findSyncRowsByFolderId(
+      folder.id,
+      path.join(root, "sub") + path.sep,
+    );
+    expect(new Set(scopedWithSep.map((row) => row.path))).toEqual(
+      new Set([inSub, deepInSub]),
+    );
+  });
+
   it("supports favorites queries and preserves requested id ordering", async () => {
     const { getDB } = await import("@core/lib/db");
     const { createPrismaImageRepo } = await import(

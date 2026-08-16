@@ -529,9 +529,38 @@ export function createPrismaImageRepo(
       return row ? normalizeImageEntity(row) : null;
     },
 
-    async findSyncRowsByFolderId(folderId: number): Promise<ImageSyncRow[]> {
+    /**
+     * `pathPrefix` narrows the rows to one subtree, for a subfolder-scoped
+     * scan that would otherwise load every row of a folder holding hundreds of
+     * thousands of them to keep a handful.
+     *
+     * A pre-filter, not the containment answer: the caller still folds each
+     * row through its own `isPathUnder`. That split is safe because this
+     * condition can only ever return a *superset* of what the caller keeps —
+     * `startsWith` is case-insensitive under both engines' default collations
+     * (see `buildImageWhereInput`), while the caller's fold is case-sensitive
+     * off win32. Separators need no fold here: every row is written through
+     * `path.join`/`path.resolve`, so `Image.path` is always spelled with the
+     * platform separator, and so is the prefix a resolved scan root produces.
+     */
+    async findSyncRowsByFolderId(
+      folderId: number,
+      pathPrefix?: string,
+    ): Promise<ImageSyncRow[]> {
+      const sep = process.platform === "win32" ? "\\" : "/";
       return read().image.findMany({
-        where: { folderId },
+        where: {
+          folderId,
+          ...(pathPrefix
+            ? {
+                path: {
+                  startsWith: pathPrefix.endsWith(sep)
+                    ? pathPrefix
+                    : pathPrefix + sep,
+                },
+              }
+            : {}),
+        },
         select: { id: true, path: true, fileModifiedAt: true, source: true },
       });
     },

@@ -583,9 +583,17 @@ export function createScanService(deps: ScanServiceDeps) {
   ): Promise<number[]> {
     const { folder, root, partial, missing } = target;
     const deletedIds: number[] = [];
-    const folderRows = await imageRepo.findSyncRowsByFolderId(folder.id);
     // A partial scan only walks one subtree, so rows outside it must stay out
-    // of both the "unchanged" map and the stale-row pruning below.
+    // of both the "unchanged" map and the stale-row pruning below. Narrowed in
+    // SQL as well, not just here: rescanning a twenty-image subfolder of a
+    // folder holding hundreds of thousands would otherwise materialise every
+    // one of those rows to discard them a line later, which is most of what
+    // scoping the scan to a subtree was meant to avoid. The repo's prefix is a
+    // superset of this fold, so the filter still decides containment.
+    const folderRows = await imageRepo.findSyncRowsByFolderId(
+      folder.id,
+      partial ? root : undefined,
+    );
     const existing = partial
       ? folderRows.filter((row) => isPathUnder(row.path, root))
       : folderRows;
@@ -820,14 +828,28 @@ export function createScanService(deps: ScanServiceDeps) {
         const preScannedTotals = detectDuplicates;
 
         if (detectDuplicates && !signal?.cancelled) {
-          // Load all existing paths for O(1) existence check
+          // Existing paths for the O(1) existence check, loaded per target
+          // rather than per folder: a partial target only walks its own
+          // subtree, so pulling its folder's whole row set would cost the same
+          // full-folder read the sync loop no longer does. Keyed by the query
+          // the target implies — with `subPaths` every target is partial, so
+          // the same folder can legitimately appear under several roots.
           const allPaths = new Set<string>();
-          const seenFolderIds = new Set<number>();
-          for (const { folder } of targets) {
-            if (seenFolderIds.has(folder.id)) continue;
-            seenFolderIds.add(folder.id);
-            const rows = await imageRepo.findSyncRowsByFolderId(folder.id);
-            for (const row of rows) allPaths.add(normalizePathKey(row.path));
+          const seenScopes = new Set<string>();
+          for (const { folder, root, partial } of targets) {
+            const scope = partial
+              ? `${folder.id}:${normalizePathKey(root)}`
+              : `${folder.id}:`;
+            if (seenScopes.has(scope)) continue;
+            seenScopes.add(scope);
+            const rows = await imageRepo.findSyncRowsByFolderId(
+              folder.id,
+              partial ? root : undefined,
+            );
+            for (const row of rows) {
+              if (partial && !isPathUnder(row.path, root)) continue;
+              allPaths.add(normalizePathKey(row.path));
+            }
           }
 
           const result = await runDuplicatePreScan(
