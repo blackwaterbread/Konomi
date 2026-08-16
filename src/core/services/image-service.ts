@@ -94,6 +94,33 @@ function isPathUnder(filePath: string, folderPath: string): boolean {
   return file.startsWith(folder + "/");
 }
 
+/**
+ * The folder a file belongs to: the *innermost* registered root containing it,
+ * matching how `scan-service.resolveScanTargets` assigns a subtree.
+ *
+ * A folder can be registered inside another one, and then a generated file sits
+ * under both. Taking the first match instead would file it under whichever root
+ * the repo happened to return first, and the next scan of the inner folder —
+ * which is what the sidebar shows the file under — would prune the row as a
+ * path it did not walk.
+ */
+function findOwningFolder<T extends { path: string }>(
+  filePath: string,
+  folders: T[],
+): T | null {
+  let owner: T | null = null;
+  let ownerDepth = -1;
+  for (const folder of folders) {
+    if (!isPathUnder(filePath, folder.path)) continue;
+    const depth = normalizePathKey(path.resolve(folder.path)).length;
+    if (depth > ownerDepth) {
+      owner = folder;
+      ownerDepth = depth;
+    }
+  }
+  return owner;
+}
+
 function buildMetadataEntry(
   filePath: string,
   meta: ImageMeta,
@@ -149,7 +176,7 @@ export function createImageService(deps: ImageServiceDeps) {
       if (!stat.isFile()) return null;
 
       const folders = await folderRepo.findAll();
-      const matched = folders.find((f) => isPathUnder(filePath, f.path));
+      const matched = findOwningFolder(filePath, folders);
       if (!matched) return null;
 
       const existing = await imageRepo.findByPath(filePath);

@@ -141,6 +141,29 @@ describe("imageService.registerExternalPath", () => {
     expect(batch[0].after?.model).toBe("nai-diffusion");
   });
 
+  it("files the image under the innermost registered root containing it", async () => {
+    // Nested registered folders: the file is under both. The scan assigns a
+    // subtree to its most specific root, so picking the first match here would
+    // file the row under the outer folder while the sidebar shows it under the
+    // inner one — and a rescan of the inner folder would prune it.
+    const { imageService } = await buildService();
+    const { dir: outerDir } = await createFolderOnDisk("outer");
+    const innerDir = path.join(outerDir, "inner");
+    fs.mkdirSync(innerDir, { recursive: true });
+    const { getDB } = await import("@core/lib/db");
+    const inner = await getDB().folder.create({
+      data: { name: "inner", path: innerDir },
+    });
+
+    const generatedPath = path.join(innerDir, "nai-2026.png");
+    writePng(generatedPath);
+
+    const result = await imageService.registerExternalPath(generatedPath);
+
+    expect(result).not.toBeNull();
+    expect(result!.folderId).toBe(inner.id);
+  });
+
   it("is idempotent when called twice on a file whose mtime did not change", async () => {
     const { imageService, searchStats, readMeta } = await buildService();
     const { dir } = await createFolderOnDisk("registered");
