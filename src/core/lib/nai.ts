@@ -136,6 +136,8 @@ function isNovelAI(raw: Record<string, unknown>): boolean {
 }
 
 const SOURCE_TO_MODEL: Record<string, string> = {
+  "NovelAI Diffusion V5 0ADF9AB7": "nai-diffusion-5-full",
+  "NovelAI Diffusion V5 DB276663": "nai-diffusion-5-curated",
   "NovelAI Diffusion V4.5 4BDE2A90": "nai-diffusion-4-5-full",
   "NovelAI Diffusion V4.5 1229B44F": "nai-diffusion-4-5-full",
   "NovelAI Diffusion V4.5 C02D4F98": "nai-diffusion-4-5-curated",

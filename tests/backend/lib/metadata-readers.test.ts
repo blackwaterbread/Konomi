@@ -123,4 +123,34 @@ describe("metadata readers", () => {
       height: 1152,
     });
   });
+
+  it.each([
+    ["0ADF9AB7", "nai-diffusion-5-full"],
+    ["DB276663", "nai-diffusion-5-curated"],
+  ])("maps the NovelAI V5 source hash %s to %s", (hash, model) => {
+    const buf = createNaiPngBuffer({
+      Software: "NovelAI",
+      Source: `NovelAI Diffusion V5 ${hash}`,
+      Comment: JSON.stringify({
+        prompt: "",
+        uc: "",
+        seed: 465792285,
+        sampler: "k_euler_ancestral",
+        steps: 28,
+        scale: 5,
+        width: 1024,
+        height: 1024,
+        model_name: "NovelAI Diffusion V5",
+        model_hash: hash,
+      }),
+    });
+
+    expect(readImageMetaFromBuffer(buf)).toMatchObject({
+      source: "nai",
+      model,
+      seed: "465792285",
+      width: 1024,
+      height: 1024,
+    });
+  });
 });
