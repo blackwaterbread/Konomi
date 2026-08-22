@@ -153,4 +153,43 @@ describe("metadata readers", () => {
       height: 1024,
     });
   });
+
+  it("falls back to the reported model name for an unmapped source hash", () => {
+    const buf = createNaiPngBuffer({
+      Software: "NovelAI",
+      Source: "NovelAI Diffusion V6 1234ABCD",
+      Comment: JSON.stringify({
+        prompt: "",
+        uc: "",
+        seed: 1,
+        width: 1024,
+        height: 1024,
+        model_name: "NovelAI Diffusion V6",
+      }),
+    });
+
+    expect(readImageMetaFromBuffer(buf)).toMatchObject({
+      source: "nai",
+      model: "NovelAI Diffusion V6",
+    });
+  });
+
+  it("strips the build hash when an unmapped source reports no model name", () => {
+    const buf = createNaiPngBuffer({
+      Software: "NovelAI",
+      Source: "NovelAI Diffusion V4.5 99999999",
+      Comment: JSON.stringify({
+        prompt: "",
+        uc: "",
+        seed: 1,
+        width: 1024,
+        height: 1024,
+      }),
+    });
+
+    expect(readImageMetaFromBuffer(buf)).toMatchObject({
+      source: "nai",
+      model: "NovelAI Diffusion V4.5",
+    });
+  });
 });

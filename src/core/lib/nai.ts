@@ -147,6 +147,28 @@ const SOURCE_TO_MODEL: Record<string, string> = {
   "Stable Diffusion XL 37C2B166": "nai-diffusion-furry-3",
 };
 
+/**
+ * `Source` is "<model name> <8-hex build hash>", and NAI reissues the hash
+ * whenever it rebuilds a model — V4.5 Full alone ships under two. An unmapped
+ * hash must not erase the model: a blank one drops the image out of the model
+ * filter entirely, so fall back to whatever name the file itself carries.
+ * V5+ reports `model_name` in the Comment; older versions do not, so strip the
+ * hash off `Source` instead, which also keeps every build of one model
+ * grouped under a single filter entry.
+ */
+function resolveModel(
+  source: string,
+  comment: Record<string, unknown>,
+): string {
+  const mapped = SOURCE_TO_MODEL[source];
+  if (mapped) return mapped;
+
+  const reported = comment["model_name"];
+  if (typeof reported === "string" && reported.trim()) return reported.trim();
+
+  return source.replace(/\s+[0-9a-f]{8}$/i, "");
+}
+
 function parseNaiComment(raw: Record<string, unknown>): ImageMeta | null {
   if (typeof raw["Comment"] !== "string") return null;
 
@@ -221,7 +243,7 @@ function parseNaiComment(raw: Record<string, unknown>): ImageMeta | null {
     ) ?? [];
 
   const source = typeof raw["Source"] === "string" ? raw["Source"] : "";
-  const model = SOURCE_TO_MODEL[source] ?? "";
+  const model = resolveModel(source, comment);
 
   return {
     source: "nai",
