@@ -42,6 +42,19 @@ export const ANNOUNCEMENTS: Announcement[] = [
       },
     ],
   },
+  {
+    id: "v0.15.4-nai-v5-model",
+    titleKey: "announcement.v0154NaiV5Model.title",
+    bodyKey: "announcement.v0154NaiV5Model.body",
+    fixedInVersion: "0.15.4",
+    actions: [
+      {
+        id: "rescanMetadata",
+        labelKey: "announcement.v0154NaiV5Model.rescanAction",
+        descriptionKey: "announcement.v0154NaiV5Model.rescanDescription",
+      },
+    ],
+  },
 ];
 
 export function getAnnouncementStorageKey(id: string): string {

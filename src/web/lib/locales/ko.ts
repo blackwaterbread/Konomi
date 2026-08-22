@@ -990,6 +990,12 @@ const ko = {
       hashResetAction: "유사도 값 재계산",
       hashResetDescription: "WebP 이미지의 유사도 분석 지원",
     },
+    v0154NaiV5Model: {
+      title: "업데이트 안내",
+      body: "NovelAI Diffusion V5 이미지의 모델 정보가 인식되지 않던 문제를 수정했습니다. 이 업데이트 전에 등록된 V5 이미지는 모델 정보가 비어 있어 모델 필터에 잡히지 않으며, **메타데이터 재스캔을 해야 채워집니다.** 지금 실행하지 않아도 설정에서 언제든 다시 할 수 있습니다.",
+      rescanAction: "메타데이터 재스캔",
+      rescanDescription: "NAI Diffusion V5 Full / Curated 모델 정보 인식",
+    },
   },
   update: {
     available: "새 버전 {{version}}을 다운로드하는 중입니다...",

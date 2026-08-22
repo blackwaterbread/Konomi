@@ -998,6 +998,12 @@ const en = {
       hashResetAction: "Recalculate Similarity",
       hashResetDescription: "WebP image similarity analysis support",
     },
+    v0154NaiV5Model: {
+      title: "Update Notice",
+      body: "Fixed an issue where the model of NovelAI Diffusion V5 images was not recognized. V5 images added before this update have an empty model and won't appear in the model filter — **a metadata rescan is required to fill them in.** You can skip this now and run it anytime from Settings.",
+      rescanAction: "Rescan Metadata",
+      rescanDescription: "Recognize NAI Diffusion V5 Full / Curated models",
+    },
   },
   update: {
     available: "Downloading new version {{version}}...",
