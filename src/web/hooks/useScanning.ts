@@ -1,3 +1,4 @@
+import { cancelBackgroundTaskContinuations } from "@/lib/background-task-cancellation";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import i18n from "@/lib/i18n";
@@ -232,9 +233,8 @@ export function useScanning({
     [loadSearchPresetStats, schedulePageRefresh],
   );
 
-  const waitForScanToStop = useCallback(async (timeoutMs = 15000) => {
-    const start = Date.now();
-    while (scanningRef.current && Date.now() - start < timeoutMs) {
+  const waitForScanToStop = useCallback(async () => {
+    while (scanningRef.current) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }, []);
@@ -244,10 +244,13 @@ export function useScanning({
   }, []);
 
   const confirmCancelScan = useCallback(async () => {
-    log.warn("Scan cancel requested");
+    cancelBackgroundTaskContinuations();
+    log.warn("Background task cancellation requested");
     setScanCancelConfirmOpen(false);
-    const rollbackTargetFolderIds = Array.from(rollbackFolderIds);
-    await window.image.cancelScan().catch(() => {});
+    const rollbackTargetFolderIds = scanningRef.current
+      ? Array.from(rollbackFolderIds)
+      : [];
+    await window.image.cancelScan();
     await waitForScanToStop();
     schedulePageRefresh(0);
 

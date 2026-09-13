@@ -1,3 +1,4 @@
+import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import type { Settings } from "@/hooks/useSettings";
@@ -67,9 +68,11 @@ export function useImageAnalysis({
   // (after scan, after watcher batch events) only surface to the UI through
   // these events.
   useEffect(() => {
-    const off = window.image.onAnalysisActive(({ active }) => {
+    let wasCancelled = backgroundTaskWasCancelled();
+    const off = window.image.onAnalysisActive(({ active, cancelled }) => {
+      if (active) wasCancelled = backgroundTaskWasCancelled();
       setIsAnalyzing(active);
-      if (!active) {
+      if (!active && !cancelled && !wasCancelled()) {
         setHasAnalyzedOnce(true);
         // Core auto-analysis (computeAllHashes) refreshes the DB similarity
         // cache but never builds the in-memory group map that
@@ -97,14 +100,17 @@ export function useImageAnalysis({
     const run = (async (): Promise<boolean> => {
       if (scanningRef.current) return false;
 
+      const wasCancelled = backgroundTaskWasCancelled();
       const startedAt = Date.now();
       log.info("Analysis triggered manually");
       try {
         await window.image.computeHashes();
+        if (wasCancelled()) return false;
         const groups = await window.image.similarGroups(
           getVisualThreshold(),
           getPromptThreshold(),
         );
+        if (wasCancelled()) return false;
         setSimilarGroupCount(groups.length);
         pendingSimilarityRecalcRef.current = false;
         log.info("Manual analysis completed", {

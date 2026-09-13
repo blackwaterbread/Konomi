@@ -1,3 +1,4 @@
+import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
 import {
   startTransition,
   useCallback,
@@ -20,8 +21,10 @@ export function useSearchPresetStats() {
   > | null>(null);
 
   const loadSearchPresetStats = useCallback(async () => {
+    const wasCancelled = backgroundTaskWasCancelled();
     try {
       const stats = await window.image.getSearchPresetStats();
+      if (wasCancelled()) return;
       startTransition(() => {
         setAvailableResolutions(stats.availableResolutions);
         setAvailableModels(stats.availableModels);
@@ -38,9 +41,10 @@ export function useSearchPresetStats() {
       if (searchStatsRefreshTimerRef.current) {
         clearTimeout(searchStatsRefreshTimerRef.current);
       }
+      const wasCancelled = backgroundTaskWasCancelled();
       searchStatsRefreshTimerRef.current = setTimeout(() => {
         searchStatsRefreshTimerRef.current = null;
-        void loadSearchPresetStats();
+        if (!wasCancelled()) void loadSearchPresetStats();
       }, delay);
     },
     [loadSearchPresetStats],

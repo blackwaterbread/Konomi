@@ -79,8 +79,10 @@ export interface DialogApi {
 export interface FolderApi {
   list(): Promise<Folder[]>;
   create(name: string, path: string): Promise<Folder>;
-  findDuplicates(path: string): Promise<FolderDuplicateGroup[]>;
-  resolveDuplicates(resolutions: FolderDuplicateGroupResolution[]): Promise<void>;
+  findDuplicates(path: string): Promise<FolderDuplicateGroup[] | null>;
+  resolveDuplicates(
+    resolutions: FolderDuplicateGroupResolution[],
+  ): Promise<void>;
   delete(id: number): Promise<void>;
   rename(id: number, name: string): Promise<Folder>;
   revealInExplorer(idOrPath: number | string): Promise<void>;
@@ -108,7 +110,10 @@ export interface ImageApi {
     ids: number[],
   ): Promise<{ deleted: number; failed: number; deletedFromDb: number }>;
   listByIds(ids: number[]): Promise<ImageRow[]>;
-  quickVerify(): Promise<{ changedFolderIds: number[]; unchangedFolderIds: number[] }>;
+  quickVerify(): Promise<{
+    changedFolderIds: number[];
+    unchangedFolderIds: number[];
+  }>;
   scan(options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
@@ -133,6 +138,7 @@ export interface ImageApi {
     threshold: number,
     jaccardThreshold?: number,
   ): Promise<SimilarityReasonItem[]>;
+  /** Stops all header background work; the method name is kept for IPC compatibility. */
   cancelScan(): Promise<void>;
 
   // Push event subscriptions
@@ -141,7 +147,9 @@ export interface ImageApi {
   onWatchDuplicate(cb: (item: FolderDuplicateGroup) => void): () => void;
   onQuickVerifyProgress(cb: ProgressCallback): () => void;
   onHashProgress(cb: ProgressCallback): () => void;
-  onAnalysisActive(cb: (data: { active: boolean }) => void): () => void;
+  onAnalysisActive(
+    cb: (data: { active: boolean; cancelled?: boolean }) => void,
+  ): () => void;
   onSimilarityProgress(cb: ProgressCallback): () => void;
   onScanProgress(cb: ProgressCallback): () => void;
   onScanPhase(cb: (data: { phase: string }) => void): () => void;

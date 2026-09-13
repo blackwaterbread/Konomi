@@ -1,3 +1,4 @@
+import type { CancelToken } from "../lib/scanner";
 // ---------------------------------------------------------------------------
 // Similarity service — union-find clustering, group cache, reason assembly
 // Pure business logic; all DB/native operations delegated to adapter deps.
@@ -32,7 +33,10 @@ type ProgressCallback = (done: number, total: number) => void;
 
 export interface SimilarityServiceDeps {
   /** Ensure the similarity cache is fully primed (tables exist, all pairs computed) */
-  ensureCachePrimed(onProgress?: ProgressCallback): Promise<void>;
+  ensureCachePrimed(
+    onProgress?: ProgressCallback,
+    signal?: CancelToken,
+  ): Promise<void>;
 
   /** Return all image IDs */
   getAllImageIds(): number[] | Promise<number[]>;
@@ -60,6 +64,7 @@ export interface SimilarityService {
     threshold?: number,
     jaccardThreshold?: number,
     onProgress?: ProgressCallback,
+    signal?: CancelToken,
   ): Promise<SimilarGroup[]>;
 
   getGroupForImage(imageId: number): SimilarGroup | null;
@@ -216,18 +221,29 @@ export function createSimilarityService(
       threshold = SIMILARITY_THRESHOLD,
       jaccardThreshold?: number,
       onProgress?: ProgressCallback,
+      signal?: CancelToken,
     ): Promise<SimilarGroup[]> {
-      await deps.ensureCachePrimed(onProgress);
+      await deps.ensureCachePrimed(onProgress, signal);
+      if (signal?.cancelled) return [];
 
       const imageIds = await deps.getAllImageIds();
-      if (imageIds.length < 2) return [];
+      if (signal?.cancelled || imageIds.length < 2) return [];
 
       const config = resolveThresholdConfig(threshold, jaccardThreshold);
       const maxPhashDist = computeMaxPhashDistForHybrid(config);
       const minTextScore = config.textLinkThreshold;
 
-      const pairs = await deps.iterateFilteredCachePairs(maxPhashDist, minTextScore);
-      const groups = buildGroupsFromUnionFind(imageIds, pairs, threshold, config);
+      const pairs = await deps.iterateFilteredCachePairs(
+        maxPhashDist,
+        minTextScore,
+      );
+      if (signal?.cancelled) return [];
+      const groups = buildGroupsFromUnionFind(
+        imageIds,
+        pairs,
+        threshold,
+        config,
+      );
 
       // Populate group cache
       cachedImageToGroup.clear();

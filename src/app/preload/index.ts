@@ -202,10 +202,12 @@ contextBridge.exposeInMainWorld("image", {
     ipcRenderer.on("image:hashProgress", handler);
     return () => ipcRenderer.removeListener("image:hashProgress", handler);
   },
-  onAnalysisActive: (cb: (data: { active: boolean }) => void) => {
+  onAnalysisActive: (
+    cb: (data: { active: boolean; cancelled?: boolean }) => void,
+  ) => {
     const handler = (
       _: Electron.IpcRendererEvent,
-      data: { active: boolean },
+      data: { active: boolean; cancelled?: boolean },
     ) => cb(data);
     ipcRenderer.on("image:analysisActive", handler);
     return () => ipcRenderer.removeListener("image:analysisActive", handler);

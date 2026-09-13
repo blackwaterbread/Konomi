@@ -1,3 +1,4 @@
+import { createBackgroundTasks } from "@core/services/background-tasks";
 import {
   ensureIgnoredDuplicatePathsLoaded,
   isIgnoredDuplicatePath,
@@ -115,10 +116,13 @@ const utilitySender = {
 
 let scanInFlight = false;
 
+const backgroundTasks = createBackgroundTasks();
 const maintenanceService = createMaintenanceService({
   computeAllHashes,
   sender: utilitySender,
   isScanActive: () => scanInFlight,
+  isCancellationPending: () =>
+    !!scanCancelToken?.cancelled || backgroundTasks.isCancelling(),
 });
 
 // Maintenance auto-trigger: any time scan-service / watcher / other emitters
@@ -185,7 +189,9 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
     case "folder:findDuplicates": {
       const { path } = payload as { path: string };
-      return duplicateService.findDuplicates(path);
+      return backgroundTasks.run((signal) =>
+        duplicateService.findDuplicates(path, { signal }),
+      );
     }
     case "folder:resolveDuplicates": {
       const { resolutions } = payload as {
@@ -238,7 +244,16 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
 
     case "image:getSearchPresetStats":
-      return getImageSearchPresetStats(emitSearchStatsProgress);
+      return backgroundTasks.track(async (signal) => {
+        try {
+          return await getImageSearchPresetStats(
+            emitSearchStatsProgress,
+            signal,
+          );
+        } finally {
+          emitSearchStatsProgress(0, 0);
+        }
+      });
     case "image:suggestTags":
       return suggestImageSearchTags(
         (payload as {
@@ -260,11 +275,10 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       return imageService.listByIds(ids);
     }
     case "image:quickVerify":
-      return scanService.quickVerify(
-        undefined,
-        (done: number, total: number) => {
+      return backgroundTasks.track((signal) =>
+        scanService.quickVerify(signal, (done: number, total: number) => {
           utilitySender.send("image:quickVerifyProgress", { done, total });
-        },
+        }),
       );
     case "image:scan": {
       const {
@@ -282,6 +296,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
             subPaths?: string[];
           }
         | undefined) ?? {};
+      maintenanceService.resumeAnalysis();
       scanCancelToken = { cancelled: false };
       scanInFlight = true;
       try {
@@ -310,6 +325,9 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       }
     }
     case "image:cancelScan":
+      // The header X stops every library task, including queued analysis.
+      maintenanceService.cancelAnalysis();
+      backgroundTasks.cancel();
       if (scanCancelToken) scanCancelToken.cancelled = true;
       return null;
     case "image:setFavorite": {
@@ -428,9 +446,19 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
         threshold: number;
         jaccardThreshold?: number;
       };
-      return getSimilarGroups(threshold, jaccardThreshold, (done, total) =>
-        utilitySender.send("image:similarityProgress", { done, total }),
-      );
+      return backgroundTasks.track(async (signal) => {
+        try {
+          return await getSimilarGroups(
+            threshold,
+            jaccardThreshold,
+            (done, total) =>
+              utilitySender.send("image:similarityProgress", { done, total }),
+            signal,
+          );
+        } finally {
+          utilitySender.send("image:similarityProgress", { done: 0, total: 0 });
+        }
+      });
     }
     case "image:similarGroupForImage": {
       const { imageId } = payload as { imageId: number };
@@ -459,19 +487,32 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
     }
 
     case "image:rescanMetadata": {
-      const result = await imageService.rescanAll(
-        (done: number, total: number) =>
-          utilitySender.send("image:rescanMetadataProgress", { done, total }),
-        (images: ImageEntity[]) =>
-          utilitySender.send(
-            "image:batch",
-            images.map((img) => ({ ...img, isNew: false })),
+      maintenanceService.resumeAnalysis();
+      try {
+        const result = await backgroundTasks.run((signal) =>
+          imageService.rescanAll(
+            (done, total) =>
+              utilitySender.send("image:rescanMetadataProgress", {
+                done,
+                total,
+              }),
+            (images) =>
+              utilitySender.send(
+                "image:batch",
+                images.map((img) => ({ ...img, isNew: false })),
+              ),
+            emitSearchStatsProgress,
+            signal,
           ),
-        emitSearchStatsProgress,
-      );
-      // Token text changed → similarity cache may be stale → schedule run.
-      maintenanceService.scheduleAnalysis(0);
-      return result;
+        );
+        if (result !== null) maintenanceService.scheduleAnalysis(0);
+        return result ?? 0;
+      } finally {
+        utilitySender.send("image:rescanMetadataProgress", {
+          done: 0,
+          total: 0,
+        });
+      }
     }
 
     case "image:rescanImageMetadata": {

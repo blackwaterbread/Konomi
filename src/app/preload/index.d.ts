@@ -157,7 +157,7 @@ declare global {
         cb: (data: { done: number; total: number }) => void,
       ) => () => void;
       onAnalysisActive: (
-        cb: (data: { active: boolean }) => void,
+        cb: (data: { active: boolean; cancelled?: boolean }) => void,
       ) => () => void;
       onSimilarityProgress: (
         cb: (data: { done: number; total: number }) => void,
@@ -213,7 +213,7 @@ declare global {
     folder: {
       list: () => Promise<Folder[]>;
       create: (name: string, path: string) => Promise<Folder>;
-      findDuplicates: (path: string) => Promise<FolderDuplicateGroup[]>;
+      findDuplicates: (path: string) => Promise<FolderDuplicateGroup[] | null>;
       resolveDuplicates: (
         resolutions: FolderDuplicateGroupResolution[],
       ) => Promise<void>;

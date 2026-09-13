@@ -32,6 +32,8 @@ export type MaintenanceServiceDeps = {
    * scan-idle.
    */
   isScanActive?(): boolean;
+  /** Cancelled foreground work may still emit its final batches. */
+  isCancellationPending?(): boolean;
 };
 
 export type MaintenanceRunResult = {
@@ -58,6 +60,9 @@ export type MaintenanceService = {
    * direct callers don't have to special-case scan-active themselves.
    */
   runAnalysisNow(): Promise<MaintenanceRunResult>;
+  /** Stop current and queued work, suppressing follow-ups while it drains. */
+  cancelAnalysis(): void;
+  resumeAnalysis(): void;
   /**
    * Cancel any in-flight analysis run, drop any pending scheduled run, and
    * refuse subsequent triggers. Used during process shutdown.
@@ -83,9 +88,10 @@ export function createMaintenanceService(
   let analysisPromise: Promise<MaintenanceRunResult> | null = null;
   let activeCancelToken: CancelToken | null = null;
   let shuttingDown = false;
+  let paused = false;
 
-  function emitActive(active: boolean): void {
-    sender?.send("image:analysisActive", { active });
+  function emitActive(active: boolean, cancelled = false): void {
+    sender?.send("image:analysisActive", { active, cancelled });
   }
 
   function emitHashProgress(done: number, total: number): void {
@@ -110,6 +116,8 @@ export function createMaintenanceService(
   function runAnalysisNow(): Promise<MaintenanceRunResult> {
     if (shuttingDown) return Promise.resolve({ ok: false, hashed: 0 });
     if (analysisPromise) return analysisPromise;
+    paused = false;
+    clearScheduleTimer();
     // Scan-active check happens BEFORE emitActive so the UI doesn't see a
     // brief active=true → false flicker when the user clicks "지금 분석"
     // mid-scan.
@@ -146,7 +154,7 @@ export function createMaintenanceService(
       } finally {
         activeCancelToken = null;
         analysisPromise = null;
-        emitActive(false);
+        emitActive(false, token.cancelled);
       }
     })();
 
@@ -156,6 +164,10 @@ export function createMaintenanceService(
 
   function scheduleAnalysis(delay = DEFAULT_DELAY_MS): void {
     if (shuttingDown) return;
+    if (paused) {
+      if (activeCancelToken || deps.isCancellationPending?.()) return;
+      paused = false;
+    }
     clearScheduleTimer();
     scheduleTimer = setTimeout(() => {
       scheduleTimer = null;
@@ -179,6 +191,16 @@ export function createMaintenanceService(
     }
   }
 
+  function cancelAnalysis(): void {
+    paused = true;
+    clearScheduleTimer();
+    if (activeCancelToken) activeCancelToken.cancelled = true;
+  }
+
+  function resumeAnalysis(): void {
+    paused = false;
+  }
+
   async function flush(): Promise<void> {
     if (analysisPromise) {
       try {
@@ -196,6 +218,8 @@ export function createMaintenanceService(
   return {
     scheduleAnalysis,
     runAnalysisNow,
+    cancelAnalysis,
+    resumeAnalysis,
     requestShutdown,
     flush,
     isRunning,

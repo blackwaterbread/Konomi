@@ -95,7 +95,9 @@ export function registerFolderRoutes(app: FastifyInstance, services: Services) {
       if (!req.body?.path || !isUnderDataRoot(req.body.path)) {
         return reply.code(403).send({ error: "Path is not under data root" });
       }
-      return duplicateService.findDuplicates(req.body.path);
+      return services.backgroundTasks.run((signal) =>
+        duplicateService.findDuplicates(req.body.path, { signal }),
+      );
     },
   );
 

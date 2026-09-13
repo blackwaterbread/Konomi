@@ -31,7 +31,7 @@ interface HeaderProps {
   scanning?: boolean;
   checkingDuplicates?: boolean;
   isAnalyzing?: boolean;
-  onCancelScan?: () => void;
+  onCancelScan?: () => void | Promise<void>;
   onStartTour?: () => void;
   devMode?: boolean;
   announcementDeferred?: boolean;
@@ -439,6 +439,8 @@ export const Header = memo(function Header({
     rescanProgress,
     etaSeconds: etaMap,
   } = useHeaderProgress({ scanning, isAnalyzing });
+  const [cancelling, setCancelling] = useState(false);
+  const cancelInFlightRef = useRef(false);
   const hasSearchStatsProgress =
     !!searchStatsProgress &&
     searchStatsProgress.total > 0 &&
@@ -466,8 +468,27 @@ export const Header = memo(function Header({
     hasSimilarityProgress ||
     hasSearchStatsProgress;
 
+  useEffect(() => {
+    if (!statusActive) setCancelling(false);
+  }, [statusActive]);
+
+  const cancelWork = async () => {
+    if (!onCancelScan || cancelInFlightRef.current || cancelling) return;
+    cancelInFlightRef.current = true;
+    setCancelling(true);
+    try {
+      await onCancelScan();
+    } catch {
+      setCancelling(false);
+      toast.error(t("header.progress.cancelFailed"));
+    } finally {
+      cancelInFlightRef.current = false;
+    }
+  };
+
   const statusText = useMemo(() => {
     if (!statusActive) return "";
+    if (cancelling) return t("header.progress.cancelling");
     const eta = (key: string) => {
       const sec = etaMap.get(key);
       return sec != null ? ` ${formatEta(sec, t)}` : "";
@@ -520,6 +541,7 @@ export const Header = memo(function Header({
     return t("header.progress.working");
   }, [
     statusActive,
+    cancelling,
     checkingDuplicates,
     scanProgress,
     scanningFolderNames,
@@ -588,10 +610,11 @@ export const Header = memo(function Header({
                   </span>
                 )}
               </button>
-              {scanning && onCancelScan && (
+              {onCancelScan && (
                 <button
                   type="button"
-                  onClick={onCancelScan}
+                  onClick={() => void cancelWork()}
+                  disabled={cancelling}
                   className="flex items-center hover:text-foreground"
                   aria-label={t("common.cancel")}
                 >
@@ -604,10 +627,13 @@ export const Header = memo(function Header({
             <div className="absolute left-full ml-3 hidden items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap lg:flex">
               <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
               <span className="tabular-nums select-none">{statusText}</span>
-              {scanning && onCancelScan && (
+              {onCancelScan && (
                 <button
-                  onClick={onCancelScan}
-                  className="flex items-center text-muted-foreground hover:text-foreground"
+                  type="button"
+                  aria-label={t("common.cancel")}
+                  onClick={() => void cancelWork()}
+                  disabled={cancelling}
+                  className="flex items-center text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

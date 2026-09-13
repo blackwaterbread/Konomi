@@ -1,3 +1,4 @@
+import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import i18n from "@/lib/i18n";
@@ -299,11 +300,16 @@ export function useDuplicateResolutionDialog({
 
   const handleFolderAddWithDuplicateCheck = useCallback(
     async (name: string, path: string): Promise<number | null> => {
+      const wasCancelled = backgroundTaskWasCancelled();
       setCheckingDuplicates(true);
       // Show folder in sidebar immediately while checking duplicates
       const subdirs = await window.folder
         .listSubdirectoriesByPath(path)
         .catch(() => []);
+      if (wasCancelled()) {
+        setCheckingDuplicates(false);
+        return null;
+      }
       setPendingFolder({ name, path, subdirectories: subdirs });
       try {
         const normalizedPath = normalizeFolderPath(path);
@@ -317,7 +323,9 @@ export function useDuplicateResolutionDialog({
           return null;
         }
 
+        if (wasCancelled()) return null;
         const duplicates = await window.folder.findDuplicates(path);
+        if (wasCancelled() || duplicates === null) return null;
         if (duplicates.length > 0) {
           return new Promise<number | null>((resolve) => {
             pendingFolderAddResolveRef.current = resolve;
@@ -372,9 +380,11 @@ export function useDuplicateResolutionDialog({
   // request would overwrite the pending info the first one is about to use.
   const handleFolderRescanWithDuplicateCheck = useCallback(
     async (folder: Folder) => {
+      const wasCancelled = backgroundTaskWasCancelled();
       setCheckingDuplicates(true);
       try {
         const duplicates = await window.folder.findDuplicates(folder.path);
+        if (wasCancelled() || duplicates === null) return;
         if (duplicates.length > 0) {
           openFolderRescanDialog(
             { id: folder.id, name: folder.name, path: folder.path },
@@ -393,9 +403,11 @@ export function useDuplicateResolutionDialog({
 
   const handleSubfolderRescanWithDuplicateCheck = useCallback(
     async (folderId: number, subPath: string) => {
+      const wasCancelled = backgroundTaskWasCancelled();
       setCheckingDuplicates(true);
       try {
         const duplicates = await window.folder.findDuplicates(subPath);
+        if (wasCancelled() || duplicates === null) return;
         if (duplicates.length > 0) {
           const name = subPath.replace(/\\/g, "/").split("/").pop() ?? subPath;
           openFolderRescanDialog(

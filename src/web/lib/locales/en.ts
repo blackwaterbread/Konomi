@@ -81,6 +81,8 @@ const en = {
       announcement: "View update notice",
     },
     progress: {
+      cancelling: "Cancelling...",
+      cancelFailed: "Could not cancel the task. Please try again.",
       checkingDuplicates: "Checking for duplicates...",
       scanFolders: "Scanning {{names}} {{done}}/{{total}}",
       scanImages: "Scanning images {{done}}/{{total}}",

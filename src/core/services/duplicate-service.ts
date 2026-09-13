@@ -74,6 +74,7 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
         (await scanImageFiles(folderPath, options?.signal));
       const incomingPaths: string[] = [];
       for (const p of rawPaths) {
+        if (options?.signal?.cancelled) return [];
         if (!(await ignoredDuplicates.isIgnored(p))) incomingPaths.push(p);
       }
       if (incomingPaths.length === 0) return [];
@@ -84,8 +85,10 @@ export function createDuplicateService(deps: DuplicateServiceDeps) {
       );
 
       // Query existing images matching candidate file sizes
+      if (options?.signal?.cancelled) return [];
       const incomingFileSizes = [...incomingSizeBuckets.keys()];
       const existingRows = await imageRepo.findByFileSize(incomingFileSizes);
+      if (options?.signal?.cancelled) return [];
       const existingSizeBuckets = buildExistingSizeBuckets(existingRows);
 
       // "Incoming" means a file the library does not hold yet. On a rescan the

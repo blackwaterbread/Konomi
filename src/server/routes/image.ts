@@ -21,6 +21,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     imageService,
     scanService,
     maintenanceService,
+    backgroundTasks,
     scanState,
     setScanActive,
     sender,
@@ -45,7 +46,13 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
 
   // ── Search ───────────────────────────────
   app.get("/api/images/search-preset-stats", async () => {
-    return getImageSearchPresetStats(emitSearchStatsProgress);
+    return backgroundTasks.track(async (signal) => {
+      try {
+        return await getImageSearchPresetStats(emitSearchStatsProgress, signal);
+      } finally {
+        emitSearchStatsProgress(0, 0);
+      }
+    });
   });
 
   app.post<{ Body: { prefix: string; limit?: number; exclude?: string[] } }>(
@@ -98,6 +105,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
       };
     }
 
+    maintenanceService.resumeAnalysis();
     const cancelToken = { cancelled: false };
     scanState.cancelToken = cancelToken;
     setScanActive(true);
@@ -143,14 +151,18 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   });
 
   app.post("/api/images/scan/cancel", async () => {
+    maintenanceService.cancelAnalysis();
+    backgroundTasks.cancel();
     if (scanState.cancelToken) scanState.cancelToken.cancelled = true;
     return null;
   });
 
   app.post("/api/images/quick-verify", async () => {
-    return scanService.quickVerify(undefined, (done, total) => {
-      sender.send("image:quickVerifyProgress", { done, total });
-    });
+    return backgroundTasks.track((signal) =>
+      scanService.quickVerify(signal, (done, total) => {
+        sender.send("image:quickVerifyProgress", { done, total });
+      }),
+    );
   });
 
   // ── Favorites ────────────────────────────
@@ -228,9 +240,19 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   app.post<{ Body: { threshold: number; jaccardThreshold?: number } }>(
     "/api/images/similar-groups",
     async (req) => {
-      return getSimilarGroups(req.body.threshold, req.body.jaccardThreshold, (done, total) =>
-        sender.send("image:similarityProgress", { done, total }),
-      );
+      return backgroundTasks.track(async (signal) => {
+        try {
+          return await getSimilarGroups(
+            req.body.threshold,
+            req.body.jaccardThreshold,
+            (done, total) =>
+              sender.send("image:similarityProgress", { done, total }),
+            signal,
+          );
+        } finally {
+          sender.send("image:similarityProgress", { done: 0, total: 0 });
+        }
+      });
     },
   );
 
@@ -239,7 +261,12 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
   });
 
   app.post<{
-    Body: { imageId: number; candidateImageIds: number[]; threshold: number; jaccardThreshold?: number };
+    Body: {
+      imageId: number;
+      candidateImageIds: number[];
+      threshold: number;
+      jaccardThreshold?: number;
+    };
   }>("/api/images/similar-reasons", async (req) => {
     return getSimilarityReasons(
       req.body.imageId,
@@ -272,20 +299,27 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
 
   app.post("/api/images/rescan-metadata", async () => {
     if (rescanInFlight) return { started: false, alreadyRunning: true };
+    maintenanceService.resumeAnalysis();
     rescanInFlight = (async () => {
       let count = 0;
       try {
-        count = await imageService.rescanAll(
-          (done, total) => sender.send("image:rescanMetadataProgress", { done, total }),
-          (images) =>
-            sender.send(
-              "image:batch",
-              images.map((img) => ({ ...img, isNew: false })),
-            ),
-          emitSearchStatsProgress,
+        const result = await backgroundTasks.run((signal) =>
+          imageService.rescanAll(
+            (done, total) =>
+              sender.send("image:rescanMetadataProgress", { done, total }),
+            (images) =>
+              sender.send(
+                "image:batch",
+                images.map((img) => ({ ...img, isNew: false })),
+              ),
+            emitSearchStatsProgress,
+            signal,
+          ),
         );
-        maintenanceService.scheduleAnalysis(0);
+        count = result ?? 0;
+        if (result !== null) maintenanceService.scheduleAnalysis(0);
       } finally {
+        sender.send("image:rescanMetadataProgress", { done: 0, total: 0 });
         rescanInFlight = null;
         sender.send("image:rescanMetadataComplete", { count });
       }

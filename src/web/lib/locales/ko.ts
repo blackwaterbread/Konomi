@@ -80,6 +80,8 @@ const ko = {
       announcement: "업데이트 안내 보기",
     },
     progress: {
+      cancelling: "?? ?...",
+      cancelFailed: "?? ??? ??????. ?? ??? ???.",
       checkingDuplicates: "중복 파일 확인 중...",
       scanFolders: "{{names}} 스캔 {{done}}/{{total}}",
       scanImages: "이미지 스캔 {{done}}/{{total}}",

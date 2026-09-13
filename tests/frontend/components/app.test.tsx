@@ -1080,9 +1080,9 @@ describe("App", () => {
     expect(runAnalysisNow).not.toHaveBeenCalled();
   });
 
-  it("forwards header cancel-scan requests into the scanning hook", async () => {
+  it("cancels header work directly without opening a confirmation dialog", async () => {
     const user = userEvent.setup();
-    const handleCancelScan = vi.fn();
+    const confirmCancelScan = vi.fn();
 
     useScanningMock.mockReturnValue({
       scanning: true,
@@ -1097,8 +1097,8 @@ describe("App", () => {
       folderRollbackRequest: null,
       scanningRef: { current: true },
       runScan: vi.fn().mockResolvedValue(true),
-      handleCancelScan,
-      confirmCancelScan: vi.fn(),
+      handleCancelScan: vi.fn(),
+      confirmCancelScan,
     });
 
     render(<App />);
@@ -1107,7 +1107,7 @@ describe("App", () => {
       screen.getByRole("button", { name: "Cancel Scan From Header" }),
     );
 
-    expect(handleCancelScan).toHaveBeenCalledTimes(1);
+    expect(confirmCancelScan).toHaveBeenCalledTimes(1);
   });
 
   it("gates the feature tour behind the initial language screen on first run", async () => {

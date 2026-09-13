@@ -1,3 +1,4 @@
+import { createBackgroundTasks } from "@core/services/background-tasks";
 import path from "path";
 import type { EventSender } from "@core/types/event-sender";
 import { getDB } from "./db";
@@ -129,10 +130,13 @@ export function createServices(sender: EventSender) {
     sender.send("image:scanActive", { active });
   };
 
+  const backgroundTasks = createBackgroundTasks();
   const maintenanceService = createMaintenanceService({
     computeAllHashes,
     sender,
     isScanActive: () => scanState.active,
+    isCancellationPending: () =>
+      !!scanState.cancelToken?.cancelled || backgroundTasks.isCancelling(),
   });
 
   // Wrapped sender: any time scan-service / watcher / other emitters send
@@ -190,6 +194,7 @@ export function createServices(sender: EventSender) {
     promptTagService,
     naiGenService,
     maintenanceService,
+    backgroundTasks,
     sender,
     scanState,
     setScanActive,

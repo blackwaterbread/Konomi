@@ -1,10 +1,5 @@
-import {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-} from "react";
+import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { Header } from "@/components/header";
 import { Sidebar } from "@/components/sidebar";
@@ -221,7 +216,6 @@ export default function App({
     folderRollbackRequest,
     scanningRef,
     runScan,
-    handleCancelScan,
     confirmCancelScan,
   } = useScanning({
     schedulePageRefresh,
@@ -613,7 +607,7 @@ export default function App({
         scanning={scanning}
         checkingDuplicates={checkingDuplicates}
         isAnalyzing={isAnalyzing}
-        onCancelScan={handleCancelScan}
+        onCancelScan={confirmCancelScan}
         onStartTour={handleStartTour}
         devMode={devMode}
         announcementDeferred={announcementDeferred}
@@ -708,7 +702,9 @@ export default function App({
               onClose={() => void handlePanelChange("gallery")}
               onResetHashes={handleResetHashes}
               onRescanMetadata={async () => {
+                const wasCancelled = backgroundTaskWasCancelled();
                 const count = await window.image.rescanMetadata();
+                if (wasCancelled()) return count;
                 schedulePageRefresh(0);
                 void loadSearchPresetStats();
                 return count;
@@ -925,7 +921,9 @@ export default function App({
         disabled={initialLanguageScreenOpen || showFeatureTour}
         onAction={async (actionId) => {
           if (actionId === "rescanMetadata") {
+            const wasCancelled = backgroundTaskWasCancelled();
             await window.image.rescanMetadata();
+            if (wasCancelled()) return;
             schedulePageRefresh(0);
             void loadSearchPresetStats();
           } else if (actionId === "resetHashes") {

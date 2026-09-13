@@ -1,3 +1,4 @@
+import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
@@ -43,6 +44,7 @@ export function runAppInitialization({
   scanningRef: MutableRefObject<boolean>;
 }): { cancel: () => void } {
   let cancelled = false;
+  const wasCancelled = backgroundTaskWasCancelled();
 
   void (async () => {
     void loadSearchPresetStats();
@@ -60,6 +62,13 @@ export function runAppInitialization({
       }
     } catch {
       // quickVerify failed — fall through to full scan
+    }
+
+    if (cancelled || wasCancelled()) {
+      scanningRef.current = false;
+      setScanning(false);
+      if (!cancelled) onInitialRefreshDone?.();
+      return;
     }
 
     // Skip duplicate detection on boot — it requires hashing candidate files
