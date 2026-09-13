@@ -14,6 +14,47 @@ describe("useImageWatchBootstrap", () => {
     vi.useRealTimers();
   });
 
+  it.each([
+    { changedFolderIds: [], unchangedFolderIds: [1, 2] },
+    { changedFolderIds: [2], unchangedFolderIds: [1] },
+    { changedFolderIds: [1, 2], unchangedFolderIds: [] },
+  ])("skips every verified unchanged folder on boot: %j", async (result) => {
+    vi.spyOn(window.image, "quickVerify").mockResolvedValue(result);
+    const runScan = vi.fn().mockResolvedValue({ ok: true, cancelled: false });
+    const onInitialRefreshDone = vi.fn();
+    runAppInitialization({
+      loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      runScan,
+      onInitialRefreshDone,
+      setScanning: vi.fn(),
+      scanningRef: { current: false },
+    });
+    await waitFor(() => expect(onInitialRefreshDone).toHaveBeenCalledOnce());
+    expect(runScan).toHaveBeenCalledExactlyOnceWith({
+      detectDuplicates: false,
+      skipFolderIds: result.unchangedFolderIds.length
+        ? result.unchangedFolderIds
+        : undefined,
+      refreshPage: true,
+      refreshSearchPresetStats: true,
+    });
+  });
+
+  it("falls back to a full scan when verification fails", async () => {
+    vi.spyOn(window.image, "quickVerify").mockRejectedValue(
+      new Error("offline"),
+    );
+    const runScan = vi.fn().mockResolvedValue({ ok: true, cancelled: false });
+    runAppInitialization({
+      loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
+      runScan,
+      setScanning: vi.fn(),
+      scanningRef: { current: false },
+    });
+    await waitFor(() => expect(runScan).toHaveBeenCalledOnce());
+    expect(runScan.mock.calls[0][0].skipFolderIds).toBeUndefined();
+  });
+
   it("boots watchers and reacts to batch and removed events", async () => {
     const loadSearchPresetStats = vi.fn().mockResolvedValue(undefined);
     const scheduleSearchStatsRefresh = vi.fn();
@@ -141,9 +182,15 @@ describe("useImageWatchBootstrap", () => {
       );
 
       act(() => {
-        preloadEvents.image.batch.emit([createImageRow({ id: 1, folderId: 1 })]);
-        preloadEvents.image.batch.emit([createImageRow({ id: 2, folderId: 1 })]);
-        preloadEvents.image.batch.emit([createImageRow({ id: 3, folderId: 2 })]);
+        preloadEvents.image.batch.emit([
+          createImageRow({ id: 1, folderId: 1 }),
+        ]);
+        preloadEvents.image.batch.emit([
+          createImageRow({ id: 2, folderId: 1 }),
+        ]);
+        preloadEvents.image.batch.emit([
+          createImageRow({ id: 3, folderId: 2 }),
+        ]);
         preloadEvents.image.removed.emit([11]);
         preloadEvents.image.removed.emit([12]);
       });

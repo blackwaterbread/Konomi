@@ -6,6 +6,7 @@ import type { ImageData } from "@/components/image-card";
 import { toast } from "sonner";
 import { preloadMocks } from "../helpers/preload-mocks";
 import { createImageRow } from "../helpers/image-row";
+import { ANNOUNCEMENTS, getAnnouncementStorageKey } from "@/lib/announcements";
 
 const useSettingsMock = vi.fn();
 const useNaiGenSettingsMock = vi.fn();
@@ -131,7 +132,9 @@ vi.mock("@/components/image-gallery", () => ({
     searchQuery?: string;
     onSearchChange?: (q: string) => void;
     advancedFilters?: Array<{ type: string; [key: string]: unknown }>;
-    onAdvancedFiltersChange?: (filters: Array<{ type: string; [key: string]: unknown }>) => void;
+    onAdvancedFiltersChange?: (
+      filters: Array<{ type: string; [key: string]: unknown }>,
+    ) => void;
   }) => {
     const image: ImageData = {
       id: "11",
@@ -225,7 +228,12 @@ vi.mock("@/components/image-gallery", () => ({
         </button>
         <button
           type="button"
-          onClick={() => actions.onBulkChangeCategory?.([Number(image.id), Number(secondImage.id)])}
+          onClick={() =>
+            actions.onBulkChangeCategory?.([
+              Number(image.id),
+              Number(secondImage.id),
+            ])
+          }
         >
           Gallery Bulk Change Category
         </button>
@@ -422,8 +430,12 @@ describe("App", () => {
   beforeEach(() => {
     localStorage.setItem("konomi-tour-completed", "true");
     localStorage.setItem("konomi-initial-language-selection-completed", "true");
-    localStorage.setItem("konomi-announcement-v0.6.0-similarity-fix", "true");
-    localStorage.setItem("konomi-announcement-v0.9.0-metadata-webp", "true");
+    // Every announcement, not a hard-coded pair: the modal is a focus trap that
+    // hides the rest of the app from accessible queries, so a newly added one
+    // would fail every test in this file for a reason none of them are about.
+    for (const announcement of ANNOUNCEMENTS) {
+      localStorage.setItem(getAnnouncementStorageKey(announcement.id), "true");
+    }
 
     useSettingsMock.mockReset();
     useSettingsMock.mockReturnValue({
@@ -928,7 +940,9 @@ describe("App", () => {
     expect(screen.getByTestId("gallery-search-query")).toHaveTextContent("");
     expect(screen.getByTestId("gallery-filter-count")).toHaveTextContent("0");
 
-    await user.click(screen.getByRole("button", { name: "Gallery Search Sunset" }));
+    await user.click(
+      screen.getByRole("button", { name: "Gallery Search Sunset" }),
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId("gallery-search-query")).toHaveTextContent(

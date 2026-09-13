@@ -1,10 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {
-  walkImageFiles,
-  countImageFiles,
-  withConcurrency,
-} from "../lib/scanner";
+import { walkImageFiles, withConcurrency } from "../lib/scanner";
 import { readImageMeta } from "../lib/image-meta";
 import { parsePromptTokens } from "../lib/token";
 import { createLogger } from "../lib/logger";
@@ -66,6 +62,14 @@ export type ClassifyResult = {
 };
 
 type ProgressCallback = (done: number, total: number) => void;
+
+type ScanProgressState = {
+  done: number;
+  total: number;
+  lastProgressAt: number;
+  /** Duplicate pre-scans already counted the files; otherwise count as we walk. */
+  totalKnown: boolean;
+};
 
 export type QuickVerifyResult = {
   changedFolderIds: number[];
@@ -243,6 +247,7 @@ export async function classifyFolderFiles(
   existingMap: Map<string, { fileModifiedAt: Date; source: string }>,
   signal?: CancelToken,
   onUnchanged?: () => void,
+  onDiscovered?: () => void,
 ): Promise<ClassifyResult> {
   const newFiles: string[] = [];
   const changedFiles: string[] = [];
@@ -253,11 +258,10 @@ export async function classifyFolderFiles(
     STAT_CONCURRENCY,
     async (filePath) => {
       discoveredPaths.add(normalizePathKey(filePath));
+      onDiscovered?.();
       const existingRow = existingMap.get(normalizePathKey(filePath));
       if (!existingRow) {
         newFiles.push(filePath);
-      } else if (existingRow.source === "unknown") {
-        changedFiles.push(filePath);
       } else {
         const mtime = await fs.promises
           .stat(filePath)
@@ -577,7 +581,7 @@ export function createScanService(deps: ScanServiceDeps) {
     target: ScanTarget,
     signal: CancelToken | undefined,
     duplicateIncomingPaths: Set<string>,
-    progressState: { done: number; total: number; lastProgressAt: number },
+    progressState: ScanProgressState,
     onProgress?: ProgressCallback,
     onSearchStatsProgress?: ProgressCallback,
   ): Promise<number[]> {
@@ -607,6 +611,27 @@ export function createScanService(deps: ScanServiceDeps) {
     const pending: ImageUpsertData[] = [];
     const deferredStatMutations: SearchStatMutation[] = [];
 
+    // Keep stat parallelism for unchanged libraries without allowing the same
+    // number of expensive metadata reads and writes to run simultaneously.
+    let activeMetadataTasks = 0;
+    const metadataWaiters: Array<() => void> = [];
+    const withMetadataSlot = async (
+      task: () => Promise<void>,
+    ): Promise<void> => {
+      if (activeMetadataTasks >= SYNC_SCAN_CONCURRENCY) {
+        await new Promise<void>((resolve) => metadataWaiters.push(resolve));
+      } else {
+        activeMetadataTasks++;
+      }
+      try {
+        if (!signal?.cancelled) await task();
+      } finally {
+        const next = metadataWaiters.shift();
+        if (next) next();
+        else activeMetadataTasks--;
+      }
+    };
+
     const flushBatch = async (): Promise<void> => {
       if (pending.length === 0) return;
       const batch = pending.splice(0);
@@ -634,6 +659,8 @@ export function createScanService(deps: ScanServiceDeps) {
     };
 
     const processFile = async (filePath: string): Promise<void> => {
+      discoveredPathSet.add(normalizePathKey(filePath));
+      if (!progressState.totalKnown) progressState.total++;
       try {
         if (duplicateIncomingPaths.has(normalizePathKey(filePath))) return;
         if (deps.ignoredDuplicates) {
@@ -644,29 +671,31 @@ export function createScanService(deps: ScanServiceDeps) {
         const existingRow = existingMap.get(normalizePathKey(filePath));
         if (
           existingRow &&
-          existingRow.fileModifiedAt.getTime() === stat.mtime.getTime() &&
-          existingRow.source !== "unknown"
+          existingRow.fileModifiedAt.getTime() === stat.mtime.getTime()
         ) {
           return;
         }
 
-        const meta = await metaReader(filePath);
-        // Written under the spelling the row already carries, not the one the
-        // walk reported. `upsertBatch` matches on `where: { path }` and
-        // SQLite's unique index on `path` is binary, so a file reached under
-        // different casing than its row would be INSERTed beside it — and the
-        // prune cannot clean that up, because both spellings fold to the same
-        // discovered key. `findSearchStatSourcesByPaths` looks the row up by
-        // exact path too, so the stale spelling also keeps the stat delta
-        // honest.
-        pending.push(
-          buildUpsertData(existingRow?.path ?? filePath, folder.id, stat, meta),
-        );
-        if (pending.length >= BATCH_SIZE) await flushBatch();
+        await withMetadataSlot(async () => {
+          const meta = await metaReader(filePath);
+          // Preserve the existing spelling: the unique path index and search
+          // stat lookup are exact, even on case-insensitive filesystems.
+          pending.push(
+            buildUpsertData(
+              existingRow?.path ?? filePath,
+              folder.id,
+              stat,
+              meta,
+            ),
+          );
+          if (pending.length >= BATCH_SIZE) await flushBatch();
+        });
       } catch {
         // skip unreadable files
       } finally {
         progressState.done++;
+        // Files can arrive after duplicate detection counted the directory.
+        progressState.total = Math.max(progressState.total, progressState.done);
         const progressNow = Date.now();
         if (progressNow - progressState.lastProgressAt >= 100) {
           progressState.lastProgressAt = progressNow;
@@ -675,30 +704,17 @@ export function createScanService(deps: ScanServiceDeps) {
       }
     };
 
-    // Phases 1–2 are skipped for a missing subtree: there is nothing to walk,
+    // Scanning is skipped for a missing subtree: there is nothing to walk,
     // so `discoveredPathSet` stays empty and every row under it is pruned.
     if (!missing) {
-      // Phase 1: stat-only classification
-      const { newFiles, changedFiles, discoveredPaths } =
-        await classifyFolderFiles(root, existingMap, signal, () => {
-          progressState.done++;
-          const progressNow = Date.now();
-          if (progressNow - progressState.lastProgressAt >= 100) {
-            progressState.lastProgressAt = progressNow;
-            onProgress?.(progressState.done, progressState.total);
-          }
-        });
-      for (const p of discoveredPaths) discoveredPathSet.add(p);
-
-      // Phase 2: metadata extraction for new + changed files
-      if (!signal?.cancelled && newFiles.length + changedFiles.length > 0) {
-        await withConcurrency(
-          [...newFiles, ...changedFiles],
-          SYNC_SCAN_CONCURRENCY,
-          processFile,
-          signal,
-        );
-      }
+      // Check and process each file in one pass. Unchanged files stop after
+      // stat; changed files reuse that stat immediately for the upsert.
+      await withConcurrency(
+        walkImageFiles(root, signal),
+        STAT_CONCURRENCY,
+        processFile,
+        signal,
+      );
 
       await flushBatch();
     }
@@ -787,7 +803,12 @@ export function createScanService(deps: ScanServiceDeps) {
       let success = false;
       let skippedSubPaths: string[] = [];
       const lateSkippedSubPaths: string[] = [];
-      const progressState = { done: 0, total: 0, lastProgressAt: 0 };
+      const progressState: ScanProgressState = {
+        done: 0,
+        total: 0,
+        lastProgressAt: 0,
+        totalKnown: detectDuplicates,
+      };
 
       log.info(`scanAll start detectDuplicates=${detectDuplicates}`);
 
@@ -825,7 +846,6 @@ export function createScanService(deps: ScanServiceDeps) {
 
         // ── Duplicate pre-scan ──────────────────────────────
         let duplicateIncomingPaths = new Set<string>();
-        const preScannedTotals = detectDuplicates;
 
         if (detectDuplicates && !signal?.cancelled) {
           // Existing paths for the O(1) existence check, loaded per target
@@ -868,19 +888,13 @@ export function createScanService(deps: ScanServiceDeps) {
           progressState.total = result.totalFiles;
         }
 
-        // ── Count files if no pre-scan ──────────────────────
+        // The sync walk counts files as it discovers them. Do not walk every
+        // target once just to initialize the progress denominator.
         options?.onPhase?.("syncing");
-        if (!preScannedTotals && !signal?.cancelled) {
-          for (const target of targets) {
-            if (signal?.cancelled) break;
-            if (target.missing) continue;
-            progressState.total += await countImageFiles(target.root, signal);
-          }
-          sender.send("image:scanProgress", {
-            done: progressState.done,
-            total: progressState.total,
-          });
-        }
+        sender.send("image:scanProgress", {
+          done: progressState.done,
+          total: progressState.total,
+        });
 
         // ── Per-target sync ─────────────────────────────────
         for (const target of targets) {
@@ -944,6 +958,8 @@ export function createScanService(deps: ScanServiceDeps) {
           ]);
         }
 
+        // Reconcile files removed or roots disconnected since the pre-scan.
+        progressState.total = progressState.done;
         sender.send("image:scanProgress", {
           done: progressState.done,
           total: progressState.total,
@@ -969,8 +985,12 @@ export function createScanService(deps: ScanServiceDeps) {
       });
 
       try {
-        const progressState = { done: 0, total: 0, lastProgressAt: 0 };
-        progressState.total = await countImageFiles(folder.path, signal);
+        const progressState: ScanProgressState = {
+          done: 0,
+          total: 0,
+          lastProgressAt: 0,
+          totalKnown: false,
+        };
         sender.send("image:scanProgress", {
           done: 0,
           total: progressState.total,
@@ -983,6 +1003,10 @@ export function createScanService(deps: ScanServiceDeps) {
           progressState,
           (done, total) => sender.send("image:scanProgress", { done, total }),
         );
+        sender.send("image:scanProgress", {
+          done: progressState.done,
+          total: progressState.total,
+        });
       } finally {
         sender.send("image:scanFolder", { folderId, active: false });
       }
@@ -994,13 +1018,8 @@ export function createScanService(deps: ScanServiceDeps) {
     ): Promise<QuickVerifyResult> {
       const folders = await folderRepo.findAll();
 
-      // Count total files across all folders for progress
+      // Count during classification instead of walking the whole library twice.
       let total = 0;
-      for (const folder of folders) {
-        if (signal?.cancelled) break;
-        if (!(await isAccessible(folder.path))) continue;
-        total += await countImageFiles(folder.path, signal);
-      }
 
       let done = 0;
       let lastProgressAt = 0;
@@ -1036,6 +1055,9 @@ export function createScanService(deps: ScanServiceDeps) {
               lastProgressAt = now;
               onProgress?.(done, total);
             }
+          },
+          () => {
+            total++;
           },
         );
 

@@ -55,10 +55,7 @@ export function runAppInitialization({
     let skipFolderIds: number[] | undefined;
     try {
       const result = await window.image.quickVerify();
-      if (
-        result.unchangedFolderIds.length > 0 &&
-        result.changedFolderIds.length > 0
-      ) {
+      if (result.unchangedFolderIds.length > 0) {
         skipFolderIds = result.unchangedFolderIds;
       }
     } catch {
@@ -136,7 +133,9 @@ export function useImageEventSubscriptions({
   // listSubdirectories IPC calls when many file events fire in rapid succession.
   const pendingRefreshIdsRef = useRef<Set<number>>(new Set());
   const pendingRefreshAllowEmptyRef = useRef(false);
-  const refreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const scheduleSubfolderRefresh = useCallback(
     (ids: number[], options?: { allowEmpty?: boolean }) => {
@@ -222,4 +221,3 @@ export function useImageEventSubscriptions({
     scheduleSubfolderRefresh,
   ]);
 }
-

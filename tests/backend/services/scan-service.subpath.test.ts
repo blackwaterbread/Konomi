@@ -51,17 +51,18 @@ const META: ImageMeta = {
 };
 
 describe("scanService.scanAll with subPaths", () => {
-  async function buildService(onEvent?: (channel: string, data: unknown) => void) {
+  async function buildService(
+    onEvent?: (channel: string, data: unknown) => void,
+  ) {
     const { getDB } = await import("@core/lib/db");
-    const { createPrismaImageRepo } = await import(
-      "@core/lib/repositories/prisma-image-repo"
-    );
-    const { createPrismaFolderRepo } = await import(
-      "@core/lib/repositories/prisma-folder-repo"
-    );
+    const { createPrismaImageRepo } =
+      await import("@core/lib/repositories/prisma-image-repo");
+    const { createPrismaFolderRepo } =
+      await import("@core/lib/repositories/prisma-folder-repo");
     const { createScanService } = await import("@core/services/scan-service");
 
     const events: { channel: string; data: unknown }[] = [];
+    const readMeta = vi.fn(async (): Promise<ImageMeta | null> => META);
     const scanService = createScanService({
       imageRepo: createPrismaImageRepo(getDB),
       folderRepo: createPrismaFolderRepo(getDB),
@@ -71,10 +72,10 @@ describe("scanService.scanAll with subPaths", () => {
           onEvent?.(channel, data);
         },
       },
-      readMeta: async () => META,
+      readMeta,
     });
 
-    return { scanService, events, getDB };
+    return { scanService, events, getDB, readMeta };
   }
 
   function writePng(filePath: string) {
@@ -104,6 +105,126 @@ describe("scanService.scanAll with subPaths", () => {
     const rows = await getDB().image.findMany({ select: { path: true } });
     return rows.map((r) => r.path).sort();
   }
+
+  it("walks once and stats each file once when syncing changed metadata", async () => {
+    const { scanService, readMeta, events } = await buildService();
+    const { folder, root, alpha, beta } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    const changedPath = path.join(alpha, "a1.png");
+    const future = new Date(Date.now() + 10_000);
+    fs.utimesSync(changedPath, future, future);
+    readMeta.mockClear();
+    events.length = 0;
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+    const statSpy = vi.spyOn(fs.promises, "stat");
+
+    await scanService.scanAll({
+      folderIds: [folder.id],
+      detectDuplicates: false,
+    });
+
+    expect(readMeta).toHaveBeenCalledExactlyOnceWith(changedPath);
+    // Root accessibility probe + one walk; descendants only need the walk.
+    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(2);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(1);
+    expect(statSpy.mock.calls.filter(([p]) => p === changedPath)).toHaveLength(
+      1,
+    );
+    const progress = events.filter((e) => e.channel === "image:scanProgress");
+    expect(progress.at(-1)?.data).toEqual({ done: 4, total: 4 });
+    for (const event of progress) {
+      const { done, total } = event.data as { done: number; total: number };
+      expect(done).toBeLessThanOrEqual(total);
+    }
+  });
+
+  it("does not repeatedly parse unknown images but detects subsequent edits", async () => {
+    const { scanService, readMeta, getDB } = await buildService();
+    const { folder, alpha, beta } = await createLibrary();
+    readMeta.mockResolvedValue(null);
+    await scanService.scanAll({ detectDuplicates: false });
+    readMeta.mockClear();
+
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+    await expect(scanService.quickVerify()).resolves.toEqual({
+      changedFolderIds: [],
+      unchangedFolderIds: [folder.id],
+    });
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(1);
+    await scanService.scanAll({ detectDuplicates: false });
+    expect(readMeta).not.toHaveBeenCalled();
+
+    const changedPath = path.join(alpha, "a1.png");
+    const future = new Date(Date.now() + 10_000);
+    fs.utimesSync(changedPath, future, future);
+    readMeta.mockResolvedValue(META);
+    await expect(scanService.quickVerify()).resolves.toEqual({
+      changedFolderIds: [folder.id],
+      unchangedFolderIds: [],
+    });
+    await scanService.scanAll({ detectDuplicates: false });
+    expect(readMeta).toHaveBeenCalledExactlyOnceWith(changedPath);
+    expect(
+      await getDB().image.findUnique({ where: { path: changedPath } }),
+    ).toMatchObject({
+      source: META.source,
+      fileModifiedAt: fs.statSync(changedPath).mtime,
+    });
+  });
+
+  it("scanOne reports final progress without a counting walk", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, alpha } = await createLibrary();
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+    await scanService.scanOne(folder.id);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    expect(
+      events.filter((e) => e.channel === "image:scanProgress").at(-1)?.data,
+    ).toEqual({ done: 4, total: 4 });
+  });
+
+  it.each([false, true])(
+    "bounds metadata work while stat runs ahead (cancel=%s)",
+    async (cancel) => {
+      const { scanService, readMeta } = await buildService();
+      const { root } = await createLibrary();
+      for (let i = 0; i < 60; i++) writePng(path.join(root, `extra-${i}.png`));
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let active = 0;
+      let peak = 0;
+      readMeta.mockImplementation(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        try {
+          await gate;
+          return META;
+        } finally {
+          active--;
+        }
+      });
+      const statSpy = vi.spyOn(fs.promises, "stat");
+      const signal = { cancelled: false };
+      const scan = scanService.scanAll({ signal, detectDuplicates: false });
+      try {
+        await vi.waitFor(() => {
+          expect(active).toBe(24);
+          expect(statSpy.mock.calls.length).toBe(64);
+        });
+        signal.cancelled = cancel;
+      } finally {
+        release();
+        await scan;
+      }
+      expect(peak).toBe(24);
+      expect(readMeta).toHaveBeenCalledTimes(cancel ? 24 : 64);
+      expect(await storedPaths()).toHaveLength(cancel ? 24 : 64);
+    },
+  );
 
   it("walks only the requested subtree", async () => {
     const { scanService } = await buildService();
@@ -306,7 +427,10 @@ describe("scanService.scanAll with subPaths", () => {
       .mockImplementation((async (p: fs.PathLike, ...rest: unknown[]) =>
         path.resolve(String(p)) === path.resolve(root)
           ? Promise.reject(eacces)
-          : (realReaddir as (...a: unknown[]) => unknown)(p, ...rest)) as never);
+          : (realReaddir as (...a: unknown[]) => unknown)(
+              p,
+              ...rest,
+            )) as never);
     const statSpy = vi
       .spyOn(fs.promises, "stat")
       .mockImplementation((async (p: fs.PathLike, ...rest: unknown[]) =>
@@ -478,7 +602,9 @@ describe("scanService.scanAll with subPaths", () => {
     expect(result.cancelled).toBe(false);
     expect(result.skippedSubPaths).toEqual([outside]);
     expect(
-      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+      events
+        .filter((e) => e.channel === "image:scanSkipped")
+        .map((e) => e.data),
     ).toEqual([{ subPaths: [outside], reason: "outside" }]);
     expect(await storedPaths()).toEqual(before);
 
@@ -506,7 +632,9 @@ describe("scanService.scanAll with subPaths", () => {
     // three times and the user reads "3 folders could not be read".
     expect(result.skippedSubPaths).toEqual([outside]);
     expect(
-      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+      events
+        .filter((e) => e.channel === "image:scanSkipped")
+        .map((e) => e.data),
     ).toEqual([{ subPaths: [outside], reason: "outside" }]);
   });
 
@@ -568,7 +696,9 @@ describe("scanService.scanAll with subPaths", () => {
     // One bad directory is one notice, however many roots contain it.
     expect(result.skippedSubPaths).toEqual([deep]);
     expect(
-      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+      events
+        .filter((e) => e.channel === "image:scanSkipped")
+        .map((e) => e.data),
     ).toEqual([{ subPaths: [deep], reason: "unreadable" }]);
   });
 
@@ -601,7 +731,9 @@ describe("scanService.scanAll with subPaths", () => {
     // Two causes, two notices. Merged into one event the batch could only
     // carry one reason, and whichever lost would be described wrongly.
     expect(
-      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+      events
+        .filter((e) => e.channel === "image:scanSkipped")
+        .map((e) => e.data),
     ).toEqual([
       { subPaths: [alpha], reason: "unreadable" },
       { subPaths: [outside], reason: "outside" },
@@ -649,7 +781,9 @@ describe("scanService.scanAll with subPaths", () => {
     expect(result.cancelled).toBe(false);
     expect(result.skippedSubPaths).toEqual([alpha]);
     expect(
-      events.filter((e) => e.channel === "image:scanSkipped").map((e) => e.data),
+      events
+        .filter((e) => e.channel === "image:scanSkipped")
+        .map((e) => e.data),
     ).toEqual([{ subPaths: [alpha], reason: "unreadable" }]);
     // A subtree that was never walked must not lose its rows.
     expect(await storedPaths()).toEqual(before);
