@@ -63,8 +63,12 @@ describe("scanService.scanAll with subPaths", () => {
 
     const events: { channel: string; data: unknown }[] = [];
     const readMeta = vi.fn(async (): Promise<ImageMeta | null> => META);
+    const imageRepo = createPrismaImageRepo(getDB);
+    const hashFile = vi.fn(async (filePath: string) =>
+      fs.readFileSync(filePath, "utf8"),
+    );
     const scanService = createScanService({
-      imageRepo: createPrismaImageRepo(getDB),
+      imageRepo,
       folderRepo: createPrismaFolderRepo(getDB),
       sender: {
         send: (channel, data) => {
@@ -73,9 +77,10 @@ describe("scanService.scanAll with subPaths", () => {
         },
       },
       readMeta,
+      hashFile,
     });
 
-    return { scanService, events, getDB, readMeta };
+    return { scanService, events, getDB, readMeta, imageRepo, hashFile };
   }
 
   function writePng(filePath: string) {
@@ -235,6 +240,76 @@ describe("scanService.scanAll with subPaths", () => {
     expect(await storedPaths()).toEqual(
       [path.join(alpha, "a1.png"), path.join(alpha, "a2.png")].sort(),
     );
+  });
+
+  it("reuses duplicate pre-scan paths and scoped DB rows", async () => {
+    const { scanService, imageRepo, readMeta, hashFile } = await buildService();
+    const { folder, alpha, beta } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    const incoming = path.join(alpha, "duplicate.png");
+    writePng(incoming);
+    readMeta.mockClear();
+    const rowsSpy = vi.spyOn(imageRepo, "findSyncRowsByFolderId");
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+    const onDuplicateGroup = vi.fn();
+    await scanService.scanAll({
+      folderIds: [folder.id],
+      subPaths: [alpha],
+      detectDuplicates: true,
+      onDuplicateGroup,
+    });
+    expect(rowsSpy).toHaveBeenCalledExactlyOnceWith(folder.id, alpha);
+    // Resolution probe, pre-scan walk, then accessibility probe; no sync walk.
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(3);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(0);
+    expect(onDuplicateGroup).toHaveBeenCalledOnce();
+    expect(hashFile).toHaveBeenCalled();
+    expect(readMeta).not.toHaveBeenCalled();
+    expect(await storedPaths()).not.toContain(incoming);
+  });
+
+  it("rechecks deletions and edits made after the duplicate snapshot", async () => {
+    const { scanService, readMeta, getDB } = await buildService();
+    const { root, alpha } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    const deleted = path.join(root, "root.png");
+    const changed = path.join(alpha, "a1.png");
+    readMeta.mockClear();
+    await scanService.scanAll({
+      detectDuplicates: true,
+      onDuplicateGroup: vi.fn(),
+      onPhase: (phase) => {
+        if (phase !== "syncing") return;
+        fs.unlinkSync(deleted);
+        const future = new Date(Date.now() + 10_000);
+        fs.utimesSync(changed, future, future);
+      },
+    });
+    expect(await storedPaths()).not.toContain(deleted);
+    expect(readMeta).toHaveBeenCalledExactlyOnceWith(changed);
+    expect(
+      await getDB().image.findUnique({ where: { path: changed } }),
+    ).toMatchObject({ fileModifiedAt: fs.statSync(changed).mtime });
+  });
+
+  it("does not use stale ownership rows for nested registered roots", async () => {
+    const { scanService, getDB } = await buildService();
+    const { alpha } = await createLibrary();
+    const inner = await getDB().folder.create({
+      data: { name: "inner", path: alpha },
+    });
+    await scanService.scanAll({ detectDuplicates: false });
+    await scanService.scanAll({
+      detectDuplicates: true,
+      onDuplicateGroup: vi.fn(),
+    });
+    const rows = await getDB().image.findMany({
+      where: { folderId: inner.id },
+    });
+    expect(rows.map((row) => row.path).sort()).toEqual([
+      path.join(alpha, "a1.png"),
+      path.join(alpha, "a2.png"),
+    ]);
   });
 
   it("prunes stale rows inside the subtree but leaves the rest of the folder alone", async () => {

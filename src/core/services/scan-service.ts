@@ -18,6 +18,7 @@ import type { FolderDuplicateGroup, HashFile } from "../lib/duplicate-detect";
 import type {
   FolderEntity,
   ImageUpsertData,
+  ImageSyncRow,
   SearchStatMutation,
 } from "../types/repository";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
@@ -86,6 +87,9 @@ type ScanTarget = {
    * exists so its stale DB rows get pruned.
    */
   missing?: boolean;
+  /** Request-local duplicate pre-scan snapshot, released after this target syncs. */
+  walkedPaths?: string[];
+  existingRows?: ImageSyncRow[];
 };
 
 // ── Deps & options ─────────────────────────────────────────────
@@ -485,11 +489,18 @@ export function createScanService(deps: ScanServiceDeps) {
     for (const target of targets) {
       if (signal?.cancelled) break;
       if (target.missing) continue;
+      target.walkedPaths = [];
       await withConcurrency(
         walkImageFiles(target.root, signal),
         SIZE_SCAN_CONCURRENCY,
         async (incomingPath) => {
+          target.walkedPaths!.push(incomingPath);
           totalFiles++;
+          const now = Date.now();
+          if (now - lastProgressAt >= 100) {
+            lastProgressAt = now;
+            onProgress?.(0, totalFiles);
+          }
           if (existingPathSet.has(normalizePathKey(incomingPath))) return;
           if (deps.ignoredDuplicates) {
             if (await deps.ignoredDuplicates.isIgnored(incomingPath)) return;
@@ -594,10 +605,12 @@ export function createScanService(deps: ScanServiceDeps) {
     // one of those rows to discard them a line later, which is most of what
     // scoping the scan to a subtree was meant to avoid. The repo's prefix is a
     // superset of this fold, so the filter still decides containment.
-    const folderRows = await imageRepo.findSyncRowsByFolderId(
-      folder.id,
-      partial ? root : undefined,
-    );
+    const folderRows =
+      target.existingRows ??
+      (await imageRepo.findSyncRowsByFolderId(
+        folder.id,
+        partial ? root : undefined,
+      ));
     const existing = partial
       ? folderRows.filter((row) => isPathUnder(row.path, root))
       : folderRows;
@@ -662,12 +675,22 @@ export function createScanService(deps: ScanServiceDeps) {
       discoveredPathSet.add(normalizePathKey(filePath));
       if (!progressState.totalKnown) progressState.total++;
       try {
+        // Recheck the snapshot path before skipping or parsing it: a file may
+        // have disappeared or changed while candidate hashes were calculated.
+        let stat: fs.Stats;
+        try {
+          stat = await fs.promises.stat(filePath);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            discoveredPathSet.delete(normalizePathKey(filePath));
+          }
+          return;
+        }
         if (duplicateIncomingPaths.has(normalizePathKey(filePath))) return;
         if (deps.ignoredDuplicates) {
           if (await deps.ignoredDuplicates.isIgnored(filePath)) return;
         }
 
-        const stat = await fs.promises.stat(filePath);
         const existingRow = existingMap.get(normalizePathKey(filePath));
         if (
           existingRow &&
@@ -710,7 +733,7 @@ export function createScanService(deps: ScanServiceDeps) {
       // Check and process each file in one pass. Unchanged files stop after
       // stat; changed files reuse that stat immediately for the upsert.
       await withConcurrency(
-        walkImageFiles(root, signal),
+        target.walkedPaths ?? walkImageFiles(root, signal),
         STAT_CONCURRENCY,
         processFile,
         signal,
@@ -856,7 +879,8 @@ export function createScanService(deps: ScanServiceDeps) {
           // the same folder can legitimately appear under several roots.
           const allPaths = new Set<string>();
           const seenScopes = new Set<string>();
-          for (const { folder, root, partial } of targets) {
+          for (const target of targets) {
+            const { folder, root, partial } = target;
             const scope = partial
               ? `${folder.id}:${normalizePathKey(root)}`
               : `${folder.id}:`;
@@ -866,6 +890,15 @@ export function createScanService(deps: ScanServiceDeps) {
               folder.id,
               partial ? root : undefined,
             );
+            // Nested registered roots can transfer row ownership when the
+            // outer target syncs. Reload those scopes to observe that change.
+            const overlaps = targets.some(
+              (other) =>
+                other !== target &&
+                (isPathUnder(root, other.root) ||
+                  isPathUnder(other.root, root)),
+            );
+            if (!overlaps) target.existingRows = rows;
             for (const row of rows) {
               if (partial && !isPathUnder(row.path, root)) continue;
               allPaths.add(normalizePathKey(row.path));
@@ -933,6 +966,8 @@ export function createScanService(deps: ScanServiceDeps) {
             );
             for (const id of deleted) deletedSimilarityIds.add(id);
           } finally {
+            target.walkedPaths = undefined;
+            target.existingRows = undefined;
             sender.send("image:scanFolder", {
               folderId: target.folder.id,
               subPath,

@@ -53,6 +53,36 @@ const IMAGE_LIST_PAGE_COLUMNS = Object.keys(IMAGE_LIST_PAGE_SELECT)
   .map((c) => `\`${c}\``)
   .join(", ");
 
+// Only scan-owned fields are updated on conflict. In particular, never replace
+// the row: that would drop its ID, favorites, hashes and category relations.
+const IMAGE_UPSERT_FIELDS = {
+  path: true,
+  folderId: true,
+  prompt: true,
+  negativePrompt: true,
+  characterPrompts: true,
+  promptTokens: true,
+  negativePromptTokens: true,
+  characterPromptTokens: true,
+  source: true,
+  model: true,
+  seed: true,
+  width: true,
+  height: true,
+  sampler: true,
+  steps: true,
+  cfgScale: true,
+  cfgRescale: true,
+  noiseSchedule: true,
+  varietyPlus: true,
+  fileSize: true,
+  fileModifiedAt: true,
+} satisfies Record<keyof ImageUpsertData, true>;
+const IMAGE_UPSERT_COLUMNS = Object.keys(IMAGE_UPSERT_FIELDS) as Array<
+  keyof ImageUpsertData
+>;
+const UPSERT_CHUNK_SIZE = 32; // 672 parameters, below SQLite's legacy 999 limit.
+
 type NormalizedQuery = {
   page: number;
   pageSize: number;
@@ -240,9 +270,7 @@ function normalizeQuery(query: ImageListQuery): NormalizedQuery {
  * and MariaDB's default collations. Known and accepted — revisit if either the
  * collation or the engine changes. See the registry of folds in `lib/path-key`.
  */
-function buildImageWhereInput(
-  query: NormalizedQuery,
-): Prisma.ImageWhereInput {
+function buildImageWhereInput(query: NormalizedQuery): Prisma.ImageWhereInput {
   const andConditions: Prisma.ImageWhereInput[] = [];
 
   if (query.subfolderFilters.length === 0) {
@@ -362,7 +390,9 @@ function buildImageWhereSql(query: NormalizedQuery): {
   const params: unknown[] = [];
 
   if (query.subfolderFilters.length === 0) {
-    conditions.push(`\`folderId\` IN (${placeholders(query.folderIds.length)})`);
+    conditions.push(
+      `\`folderId\` IN (${placeholders(query.folderIds.length)})`,
+    );
     params.push(...query.folderIds);
   } else {
     const sep = process.platform === "win32" ? "\\" : "/";
@@ -430,7 +460,9 @@ function buildImageWhereSql(query: NormalizedQuery): {
     conditions.push(`(${orParts.join(" OR ")})`);
   }
   if (query.modelFilters.length > 0) {
-    conditions.push(`\`model\` IN (${placeholders(query.modelFilters.length)})`);
+    conditions.push(
+      `\`model\` IN (${placeholders(query.modelFilters.length)})`,
+    );
     params.push(...query.modelFilters);
   }
   if (query.seedFilters.length > 0) {
@@ -520,12 +552,16 @@ export function createPrismaImageRepo(
   const { read, write } = resolveAccessors(arg);
   const repo = {
     async findById(id: number): Promise<ImageEntity | null> {
-      const row = await read().image.findUnique({ where: { id } }) as ImageEntity | null;
+      const row = (await read().image.findUnique({
+        where: { id },
+      })) as ImageEntity | null;
       return row ? normalizeImageEntity(row) : null;
     },
 
     async findByPath(path: string): Promise<ImageEntity | null> {
-      const row = await read().image.findUnique({ where: { path } }) as ImageEntity | null;
+      const row = (await read().image.findUnique({
+        where: { path },
+      })) as ImageEntity | null;
       return row ? normalizeImageEntity(row) : null;
     },
 
@@ -566,21 +602,70 @@ export function createPrismaImageRepo(
     },
 
     async upsertBatch(rows: ImageUpsertData[]): Promise<ImageEntity[]> {
+      if (rows.length === 0) return [];
       const db = write();
-      // Default Prisma interactive-transaction timeout is 5s, which is tight
-      // for slow NAS-hosted MariaDB when the batch hits cold indexes. Use the
-      // interactive form so we can extend the timeout to 60s.
+      const mysql = getDialect() === "mysql";
+      const columns = IMAGE_UPSERT_COLUMNS.map((key) => `\`${key}\``).join(
+        ", ",
+      );
+      const updates = IMAGE_UPSERT_COLUMNS.filter((key) => key !== "path")
+        .map(
+          (key) =>
+            `\`${key}\` = ${mysql ? `VALUES(\`${key}\`)` : `excluded.\`${key}\``}`,
+        )
+        .join(", ");
+      const conflict = mysql
+        ? "ON DUPLICATE KEY UPDATE"
+        : "ON CONFLICT (`path`) DO UPDATE SET";
+      const placeholders = `(${IMAGE_UPSERT_COLUMNS.map(() => "?").join(", ")})`;
+      // Keep all chunks atomic, and read through the transaction writer so a
+      // separate WAL reader cannot return the pre-upsert snapshot.
       const results = (await db.$transaction(
         async (tx) => {
-          const out: unknown[] = [];
-          for (const data of rows) {
-            out.push(
-              await tx.image.upsert({
-                where: { path: data.path },
-                update: data,
-                create: data,
-              }),
+          const out: ImageEntity[] = [];
+          for (
+            let offset = 0;
+            offset < rows.length;
+            offset += UPSERT_CHUNK_SIZE
+          ) {
+            const chunk = rows.slice(offset, offset + UPSERT_CHUNK_SIZE);
+            await tx.$executeRawUnsafe(
+              `INSERT INTO \`Image\` (${columns}) VALUES ${chunk.map(() => placeholders).join(", ")} ${conflict} ${updates}`,
+              ...chunk.flatMap((row) =>
+                IMAGE_UPSERT_COLUMNS.map((key) => row[key]),
+              ),
             );
+            const saved = (await tx.image.findMany({
+              where: { path: { in: chunk.map((row) => row.path) } },
+            })) as ImageEntity[];
+            const byPath = new Map(saved.map((row) => [row.path, row]));
+            if (mysql) {
+              // Match with the DB's collation, not JS lowercasing: MariaDB may
+              // resolve a differently-cased/accented input to an existing row.
+              const matches = await tx.$queryRawUnsafe<
+                Array<{ ordinal: number; id: number }>
+              >(
+                `SELECT input.ordinal, image.id FROM (${chunk.map(() => "SELECT ? AS ordinal, ? AS path").join(" UNION ALL ")}) AS input JOIN \`Image\` AS image ON image.path = input.path ORDER BY input.ordinal`,
+                ...chunk.flatMap((row, ordinal) => [ordinal, row.path]),
+              );
+              const byId = new Map(saved.map((row) => [row.id, row]));
+              if (matches.length !== chunk.length) {
+                throw new Error("Bulk upsert did not resolve every input path");
+              }
+              for (const match of matches) {
+                const savedRow = byId.get(Number(match.id));
+                if (!savedRow)
+                  throw new Error("Bulk upsert row was not returned");
+                out.push(savedRow);
+              }
+            } else {
+              for (const row of chunk) {
+                const savedRow = byPath.get(row.path);
+                if (!savedRow)
+                  throw new Error("Bulk upsert row was not returned");
+                out.push(savedRow);
+              }
+            }
           }
           return out;
         },
@@ -590,11 +675,11 @@ export function createPrismaImageRepo(
     },
 
     async upsertByPath(data: ImageUpsertData): Promise<ImageEntity> {
-      const row = await write().image.upsert({
+      const row = (await write().image.upsert({
         where: { path: data.path },
         update: data,
         create: data,
-      }) as unknown as ImageEntity;
+      })) as unknown as ImageEntity;
       return normalizeImageEntity(row);
     },
 
@@ -783,13 +868,15 @@ export function createPrismaImageRepo(
 
       const where = buildImageWhereInput(normalized);
       const totalCount = await db.image.count({ where });
-      const rows = ((await db.image.findMany({
-        where,
-        select: IMAGE_LIST_PAGE_SELECT,
-        orderBy: buildImageOrderBy(normalized.sortBy),
-        skip: offset,
-        take: normalized.pageSize,
-      })) as unknown as ImageEntity[]).map(normalizeImageEntity);
+      const rows = (
+        (await db.image.findMany({
+          where,
+          select: IMAGE_LIST_PAGE_SELECT,
+          orderBy: buildImageOrderBy(normalized.sortBy),
+          skip: offset,
+          take: normalized.pageSize,
+        })) as unknown as ImageEntity[]
+      ).map(normalizeImageEntity);
       return {
         rows,
         totalCount,
@@ -818,9 +905,11 @@ export function createPrismaImageRepo(
     async listByIds(ids: number[]): Promise<ImageEntity[]> {
       const cleanIds = normalizeIntegerArray(ids);
       if (cleanIds.length === 0) return [];
-      const rows = ((await read().image.findMany({
-        where: { id: { in: cleanIds } },
-      })) as unknown as ImageEntity[]).map(normalizeImageEntity);
+      const rows = (
+        (await read().image.findMany({
+          where: { id: { in: cleanIds } },
+        })) as unknown as ImageEntity[]
+      ).map(normalizeImageEntity);
       const rowMap = new Map(rows.map((row) => [row.id, row]));
       return cleanIds
         .map((id) => rowMap.get(id))
