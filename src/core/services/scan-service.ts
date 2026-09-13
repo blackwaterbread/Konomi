@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { walkImageFiles, withConcurrency } from "../lib/scanner";
+import {
+  walkImageFiles,
+  countImageFiles,
+  withConcurrency,
+} from "../lib/scanner";
 import { readImageMetaForScan } from "../lib/image-meta";
 import { parsePromptTokens } from "../lib/token";
 import { createLogger } from "../lib/logger";
@@ -68,8 +72,6 @@ type ScanProgressState = {
   done: number;
   total: number;
   lastProgressAt: number;
-  /** Duplicate pre-scans already counted the files; otherwise count as we walk. */
-  totalKnown: boolean;
 };
 
 export type QuickVerifyResult = {
@@ -251,7 +253,6 @@ export async function classifyFolderFiles(
   existingMap: Map<string, { fileModifiedAt: Date; source: string }>,
   signal?: CancelToken,
   onUnchanged?: () => void,
-  onDiscovered?: () => void,
 ): Promise<ClassifyResult> {
   const newFiles: string[] = [];
   const changedFiles: string[] = [];
@@ -262,7 +263,6 @@ export async function classifyFolderFiles(
     STAT_CONCURRENCY,
     async (filePath) => {
       discoveredPaths.add(normalizePathKey(filePath));
-      onDiscovered?.();
       const existingRow = existingMap.get(normalizePathKey(filePath));
       if (!existingRow) {
         newFiles.push(filePath);
@@ -674,7 +674,6 @@ export function createScanService(deps: ScanServiceDeps) {
 
     const processFile = async (filePath: string): Promise<void> => {
       discoveredPathSet.add(normalizePathKey(filePath));
-      if (!progressState.totalKnown) progressState.total++;
       try {
         // Recheck the snapshot path before skipping or parsing it: a file may
         // have disappeared or changed while candidate hashes were calculated.
@@ -834,7 +833,6 @@ export function createScanService(deps: ScanServiceDeps) {
         done: 0,
         total: 0,
         lastProgressAt: 0,
-        totalKnown: detectDuplicates,
       };
 
       log.info(`scanAll start detectDuplicates=${detectDuplicates}`);
@@ -925,8 +923,15 @@ export function createScanService(deps: ScanServiceDeps) {
           progressState.total = result.totalFiles;
         }
 
-        // The sync walk counts files as it discovers them. Do not walk every
-        // target once just to initialize the progress denominator.
+        // Publish a complete denominator before processing starts. Duplicate
+        // detection already counted its snapshot, so reuse that total.
+        if (!detectDuplicates) {
+          for (const target of targets) {
+            if (signal?.cancelled) break;
+            if (target.missing) continue;
+            progressState.total += await countImageFiles(target.root, signal);
+          }
+        }
         options?.onPhase?.("syncing");
         sender.send("image:scanProgress", {
           done: progressState.done,
@@ -1026,9 +1031,8 @@ export function createScanService(deps: ScanServiceDeps) {
       try {
         const progressState: ScanProgressState = {
           done: 0,
-          total: 0,
+          total: await countImageFiles(folder.path, signal),
           lastProgressAt: 0,
-          totalKnown: false,
         };
         sender.send("image:scanProgress", {
           done: 0,
@@ -1057,8 +1061,13 @@ export function createScanService(deps: ScanServiceDeps) {
     ): Promise<QuickVerifyResult> {
       const folders = await folderRepo.findAll();
 
-      // Count during classification instead of walking the whole library twice.
+      // Verification uses the same fixed denominator as the subsequent scan.
       let total = 0;
+      for (const folder of folders) {
+        if (signal?.cancelled) break;
+        if (!(await isAccessible(folder.path))) continue;
+        total += await countImageFiles(folder.path, signal);
+      }
 
       let done = 0;
       let lastProgressAt = 0;
@@ -1094,9 +1103,6 @@ export function createScanService(deps: ScanServiceDeps) {
               lastProgressAt = now;
               onProgress?.(done, total);
             }
-          },
-          () => {
-            total++;
           },
         );
 

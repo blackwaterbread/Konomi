@@ -113,7 +113,7 @@ describe("scanService.scanAll with subPaths", () => {
     return rows.map((r) => r.path).sort();
   }
 
-  it("walks once and stats each file once when syncing changed metadata", async () => {
+  it("counts before syncing and stats changed metadata only once", async () => {
     const { scanService, readMeta, events } = await buildService();
     const { folder, root, alpha, beta } = await createLibrary();
     await scanService.scanAll({ detectDuplicates: false });
@@ -131,18 +131,20 @@ describe("scanService.scanAll with subPaths", () => {
     });
 
     expect(readMeta).toHaveBeenCalledExactlyOnceWith(changedPath);
-    // Root accessibility probe + one walk; descendants only need the walk.
-    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(2);
-    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
-    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(1);
+    // Root accessibility probe plus counting and syncing walks.
+    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(3);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(2);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(2);
     expect(statSpy.mock.calls.filter(([p]) => p === changedPath)).toHaveLength(
       1,
     );
     const progress = events.filter((e) => e.channel === "image:scanProgress");
+    expect(progress[0]?.data).toEqual({ done: 0, total: 4 });
     expect(progress.at(-1)?.data).toEqual({ done: 4, total: 4 });
     for (const event of progress) {
       const { done, total } = event.data as { done: number; total: number };
       expect(done).toBeLessThanOrEqual(total);
+      expect(total).toBe(4);
     }
   });
 
@@ -158,8 +160,8 @@ describe("scanService.scanAll with subPaths", () => {
       changedFolderIds: [],
       unchangedFolderIds: [folder.id],
     });
-    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
-    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(1);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(2);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(2);
     await scanService.scanAll({ detectDuplicates: false });
     expect(readMeta).not.toHaveBeenCalled();
 
@@ -219,15 +221,36 @@ describe("scanService.scanAll with subPaths", () => {
     },
   );
 
-  it("scanOne reports final progress without a counting walk", async () => {
+  it("scanOne reports a fixed total from the first progress event", async () => {
     const { scanService, events } = await buildService();
     const { folder, alpha } = await createLibrary();
     const openSpy = vi.spyOn(fs.promises, "opendir");
     await scanService.scanOne(folder.id);
-    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(2);
+    const progress = events.filter((e) => e.channel === "image:scanProgress");
+    expect(progress[0]?.data).toEqual({ done: 0, total: 4 });
+    expect(
+      progress.every((e) => (e.data as { total: number }).total === 4),
+    ).toBe(true);
     expect(
       events.filter((e) => e.channel === "image:scanProgress").at(-1)?.data,
     ).toEqual({ done: 4, total: 4 });
+  });
+
+  it("quickVerify reports the complete total throughout verification", async () => {
+    const { scanService } = await buildService();
+    await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    const progress = vi.fn();
+    await scanService.quickVerify(undefined, progress);
+    expect(progress).toHaveBeenCalledWith(4, 4);
+    expect(progress.mock.calls.some(([done]) => done > 0 && done < 4)).toBe(
+      true,
+    );
+    for (const [done, total] of progress.mock.calls) {
+      expect(total).toBe(4);
+      expect(done).toBeLessThanOrEqual(total);
+    }
   });
 
   it.each([false, true])(
