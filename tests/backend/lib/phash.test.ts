@@ -131,6 +131,76 @@ afterEach(async () => {
 });
 
 describe("phash", () => {
+  it.each([
+    { phase: "hash", addedCount: 1 },
+    { phase: "similarity", addedCount: 65 },
+  ])(
+    "recovers persisted similarity work after cancelling during $phase",
+    async ({ phase, addedCount }) => {
+      const { db, images } = await seedConfiguredSimilarityImages([
+        { name: "a", hash: "0000000000000000", promptTokens: [] },
+        { name: "b", hash: "0000000000000000", promptTokens: [] },
+      ]);
+      const { computeAllHashes, getSimilarGroups } =
+        await import("@core/lib/phash");
+      const { createMaintenanceService } =
+        await import("@core/services/maintenance-service");
+      await computeAllHashes();
+      expect(await getSimilarGroups()).toHaveLength(1);
+      const original = await db.image.findUniqueOrThrow({
+        where: { id: images[0]!.id },
+      });
+      const addedIds: number[] = [];
+      for (let i = 0; i < addedCount; i++) {
+        const imagePath = path.join(ctx.userDataDir, `added-${i}.png`);
+        workerState.hashes.set(imagePath, "0000000000000000");
+        const added = await db.image.create({
+          data: {
+            path: imagePath,
+            folderId: original.folderId,
+            fileModifiedAt: new Date(),
+          },
+        });
+        addedIds.push(added.id);
+      }
+      const maintenance = createMaintenanceService({
+        computeAllHashes,
+        sender: {
+          send(channel) {
+            if (
+              channel ===
+              (phase === "hash"
+                ? "image:hashProgress"
+                : "image:similarityProgress")
+            ) {
+              maintenance.cancelAnalysis();
+            }
+          },
+        },
+      });
+      expect((await maintenance.runAnalysisNow()).ok).toBe(false);
+      expect(await db.image.count({ where: { pHash: "" } })).toBe(0);
+      expect(
+        await db.imageSimilarityCacheMeta.findUnique({ where: { id: 1 } }),
+      ).toMatchObject({ primedAt: null });
+
+      // Recovery must happen during analysis, without rereading already hashed
+      // files or relying on a subsequent getSimilarGroups call to fill the cache.
+      const resumed = createMaintenanceService({ computeAllHashes });
+      expect(await resumed.runAnalysisNow()).toEqual({ ok: true, hashed: 0 });
+      const totalImages = images.length + addedIds.length;
+      expect(await db.imageSimilarityCache.count()).toBe(
+        (totalImages * (totalImages - 1)) / 2,
+      );
+      const groups = await getSimilarGroups();
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.imageIds).toEqual([
+        ...images.map((img) => img.id),
+        ...addedIds,
+      ]);
+    },
+  );
+
   it("computes nibble-based Hamming distance", async () => {
     const { hammingDistance } = await import("@core/lib/phash");
 

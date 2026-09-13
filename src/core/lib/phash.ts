@@ -599,6 +599,7 @@ export async function computeAllHashes(
   let done = 0;
   let lastProgressAt = 0;
   let success = false;
+  let similarityUpdated = false;
   const pending: Array<{ id: number; hash: string }> = [];
   const allUpdatedIds: number[] = [];
   let flushing = false;
@@ -666,11 +667,23 @@ export async function computeAllHashes(
         onSimilarityProgress,
         { signal },
       );
+      similarityUpdated = !signal?.cancelled;
+    }
+    if (!signal?.cancelled) {
+      // A cancelled earlier run may have saved hashes without their pairs.
+      // Recover that work even when there are no unhashed images left.
+      await ensureSimilarityCachePrimed(onSimilarityProgress, signal);
     }
 
     success = true;
     return done;
   } finally {
+    if (allUpdatedIds.length > 0 && !similarityUpdated) {
+      // Keep computed hashes, but persist the unfinished cache state so a
+      // later analysis (including after restart) rebuilds the missing pairs.
+      await ensureSimilarityCacheTables();
+      await markSimilarityCacheUnprimed();
+    }
     const elapsedMs = Date.now() - startedAt;
     console.info(
       `[phash.computeAllHashes] end elapsedMs=${elapsedMs} processed=${done}/${total} success=${success} cancelled=${signal?.cancelled === true}`,
