@@ -62,7 +62,9 @@ describe("scanService.scanAll with subPaths", () => {
     const { createScanService } = await import("@core/services/scan-service");
 
     const events: { channel: string; data: unknown }[] = [];
-    const readMeta = vi.fn(async (): Promise<ImageMeta | null> => META);
+    const readMeta = vi.fn(
+      async (): Promise<ImageMeta | null | undefined> => META,
+    );
     const imageRepo = createPrismaImageRepo(getDB);
     const hashFile = vi.fn(async (filePath: string) =>
       fs.readFileSync(filePath, "utf8"),
@@ -178,6 +180,44 @@ describe("scanService.scanAll with subPaths", () => {
       fileModifiedAt: fs.statSync(changedPath).mtime,
     });
   });
+
+  it.each([false, true])(
+    "retries failed metadata reads without advancing stored mtime (existing=%s)",
+    async (existing) => {
+      const { scanService, readMeta, getDB } = await buildService();
+      const { folder, alpha } = await createLibrary();
+      const failedPath = path.join(alpha, "a1.png");
+      if (existing) await scanService.scanAll({ detectDuplicates: false });
+      const before = await getDB().image.findUnique({
+        where: { path: failedPath },
+      });
+      const modified = new Date(Date.now() + 10_000);
+      fs.utimesSync(failedPath, modified, modified);
+      readMeta.mockImplementation(async (filePath?: string) =>
+        filePath === failedPath ? undefined : META,
+      );
+
+      await scanService.scanAll({ detectDuplicates: false });
+      expect(
+        await getDB().image.findUnique({ where: { path: failedPath } }),
+      ).toEqual(before);
+      expect(await scanService.quickVerify()).toEqual({
+        changedFolderIds: [folder.id],
+        unchangedFolderIds: [],
+      });
+
+      readMeta.mockReset().mockResolvedValue(META);
+      await scanService.scanAll({ detectDuplicates: false });
+      expect(readMeta).toHaveBeenCalledExactlyOnceWith(failedPath);
+      expect(
+        await getDB().image.findUnique({ where: { path: failedPath } }),
+      ).toMatchObject({
+        source: META.source,
+        prompt: META.prompt,
+        fileModifiedAt: fs.statSync(failedPath).mtime,
+      });
+    },
+  );
 
   it("scanOne reports final progress without a counting walk", async () => {
     const { scanService, events } = await buildService();

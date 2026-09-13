@@ -3,7 +3,11 @@ import { extname } from "path";
 import type { ImageMeta } from "../types/image-meta";
 import { readComfyuiMetaFromBuffer } from "./comfyui";
 import { readMidjourneyMetaFromBuffer } from "./midjourney";
-import { readNaiMetaFromBuffer, readNaiMetaFromPngText, readNaiMetaFromWebp } from "./nai";
+import {
+  readNaiMetaFromBuffer,
+  readNaiMetaFromPngText,
+  readNaiMetaFromWebp,
+} from "./nai";
 import { readWebuiMetaFromBuffer } from "./webui";
 
 function isWebp(buf: Buffer): boolean {
@@ -68,6 +72,13 @@ function readPngTextMeta(buf: Buffer): ImageMeta | null {
 }
 
 export function readImageMeta(filePath: string): ImageMeta | null {
+  return readImageMetaForScan(filePath) ?? null;
+}
+
+/** null means no metadata; undefined means reading failed and should be retried. */
+export function readImageMetaForScan(
+  filePath: string,
+): ImageMeta | null | undefined {
   try {
     // PNG fast path: read only the header for text-based metadata
     if (extname(filePath).toLowerCase() === ".png") {
@@ -82,6 +93,6 @@ export function readImageMeta(filePath: string): ImageMeta | null {
     const buf = readFileSync(filePath);
     return readImageMetaFromBuffer(buf);
   } catch {
-    return null;
+    return undefined;
   }
 }

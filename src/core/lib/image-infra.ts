@@ -41,11 +41,12 @@ export type ImageRow = {
 const POOL_SIZE = 4;
 const WORKER_PATH = path.join(__dirname, "nai.worker.js");
 
-export const naiPool = new WorkerPool<ImageMeta | null>({
+export const naiPool = new WorkerPool<ImageMeta | null | undefined>({
   size: POOL_SIZE,
   workerPath: WORKER_PATH,
   idleTimeoutMs: 10_000,
-  extractResult: (msg) => (msg.result as ImageMeta | null) ?? null,
+  // Preserve null (no metadata) versus undefined (read or worker failure).
+  extractResult: (msg) => msg.result as ImageMeta | null | undefined,
 });
 
 // ── File hash ─────────────────────────────────────────────────

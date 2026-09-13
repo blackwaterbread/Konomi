@@ -36,7 +36,7 @@ export interface SearchStatsAdapter {
 export type ImageServiceDeps = {
   imageRepo: ImageRepo;
   folderRepo?: FolderRepo;
-  readMeta?: (filePath: string) => Promise<ImageMeta | null>;
+  readMeta?: (filePath: string) => Promise<ImageMeta | null | undefined>;
   searchStats?: SearchStatsAdapter;
 };
 
@@ -188,6 +188,7 @@ export function createImageService(deps: ImageServiceDeps) {
       }
 
       const meta = await readMeta(filePath);
+      if (meta === undefined) return null;
       const data = buildUpsertData(filePath, matched.id, stat, meta);
       const image = await imageRepo.upsertByPath(data);
 

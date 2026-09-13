@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { walkImageFiles, withConcurrency } from "../lib/scanner";
-import { readImageMeta } from "../lib/image-meta";
+import { readImageMetaForScan } from "../lib/image-meta";
 import { parsePromptTokens } from "../lib/token";
 import { createLogger } from "../lib/logger";
 import { normalizePathKey } from "../lib/path-key";
@@ -98,8 +98,8 @@ export type ScanServiceDeps = {
   imageRepo: ImageRepo;
   folderRepo: FolderRepo;
   sender: EventSender;
-  /** Async metadata reader (e.g. backed by a WorkerPool). Falls back to sync readImageMeta. */
-  readMeta?: (filePath: string) => Promise<ImageMeta | null>;
+  /** null means no metadata; undefined or rejection means a retryable read failure. */
+  readMeta?: (filePath: string) => Promise<ImageMeta | null | undefined>;
   /** SHA-1 file hasher for duplicate detection */
   hashFile?: HashFile;
   /** Search stats subsystem */
@@ -294,7 +294,8 @@ export async function classifyFolderFiles(
 
 export function createScanService(deps: ScanServiceDeps) {
   const { imageRepo, folderRepo, sender } = deps;
-  const defaultReadMeta = (fp: string) => Promise.resolve(readImageMeta(fp));
+  const defaultReadMeta = (fp: string) =>
+    Promise.resolve(readImageMetaForScan(fp));
   const metaReader = deps.readMeta ?? defaultReadMeta;
   const hashFile = deps.hashFile ?? (() => Promise.resolve(null));
 
@@ -701,6 +702,9 @@ export function createScanService(deps: ScanServiceDeps) {
 
         await withMetadataSlot(async () => {
           const meta = await metaReader(filePath);
+          // Leave the old mtime intact (or the new file absent) so the next
+          // verification and scan retry a transient read/worker failure.
+          if (meta === undefined) return;
           // Preserve the existing spelling: the unique path index and search
           // stat lookup are exact, even on case-insensitive filesystems.
           pending.push(
