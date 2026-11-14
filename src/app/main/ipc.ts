@@ -298,15 +298,25 @@ export function registerIpcHandlers(): void {
   );
   ipcMain.handle(
     "image:scan",
-    (
-      _,
+    async (
+      event,
       options?: {
         detectDuplicates?: boolean;
         folderIds?: number[];
         orderedFolderIds?: number[];
         subPaths?: string[];
       },
-    ) => bridge.request("image:scan", options ?? {}),
+      requestId?: string,
+    ) => {
+      const result = await bridge.request("image:scan", options ?? {});
+      // The renderer can receive this reply before the scan's own pushes, but
+      // pushes stay in order. Every push the scan emitted has been forwarded by
+      // now, so preload holds `scan()` until this one arrives behind them.
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("image:scanSettled", requestId);
+      }
+      return result;
+    },
   );
   ipcMain.handle("image:cancelScan", () => bridge.request("image:cancelScan"));
   ipcMain.handle("image:setFavorite", (_, id: number, isFavorite: boolean) =>

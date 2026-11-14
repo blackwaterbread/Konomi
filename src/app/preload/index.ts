@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 
+// A reload keeps the webContents, so a scan the previous document started can
+// still settle here; the random part keeps its id from matching one of ours.
+const scanRequestScope = Math.random().toString(36).slice(2);
+let scanRequestSeq = 0;
+
 contextBridge.exposeInMainWorld("appInfo", {
   isElectron: true,
   isDevMode: () => ipcRenderer.invoke("app:isDevMode"),
@@ -90,12 +95,33 @@ contextBridge.exposeInMainWorld("image", {
   }) => ipcRenderer.invoke("image:listMatchingIds", query),
   bulkDelete: (ids: number[]) => ipcRenderer.invoke("image:bulkDelete", ids),
   listByIds: (ids: number[]) => ipcRenderer.invoke("image:listByIds", ids),
+  // Resolves only once main's `image:scanSettled` push for this request has
+  // arrived, so every push the scan emitted has been dispatched by then.
   scan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
     orderedFolderIds?: number[];
     subPaths?: string[];
-  }) => ipcRenderer.invoke("image:scan", options),
+  }) => {
+    const requestId = `${scanRequestScope}:${++scanRequestSeq}`;
+    let markSettled!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      markSettled = resolve;
+    });
+    const onSettled = (_: Electron.IpcRendererEvent, id: unknown) => {
+      if (id === requestId) markSettled();
+    };
+    ipcRenderer.on("image:scanSettled", onSettled);
+    return ipcRenderer
+      .invoke("image:scan", options, requestId)
+      .then(async (result) => {
+        await settled;
+        return result;
+      })
+      .finally(() =>
+        ipcRenderer.removeListener("image:scanSettled", onSettled),
+      );
+  },
   setFavorite: (id: number, isFavorite: boolean) =>
     ipcRenderer.invoke("image:setFavorite", id, isFavorite),
   listIgnoredDuplicates: () =>
