@@ -14,45 +14,31 @@ describe("useImageWatchBootstrap", () => {
     vi.useRealTimers();
   });
 
-  it.each([
-    { changedFolderIds: [], unchangedFolderIds: [1, 2] },
-    { changedFolderIds: [2], unchangedFolderIds: [1] },
-    { changedFolderIds: [1, 2], unchangedFolderIds: [] },
-  ])("skips every verified unchanged folder on boot: %j", async (result) => {
-    vi.spyOn(window.image, "quickVerify").mockResolvedValue(result);
-    const runScan = vi.fn().mockResolvedValue({ ok: true, cancelled: false });
+  it("starts the full boot scan at once and reports the initial refresh after it settles", async () => {
+    let finishScan!: (value: { ok: boolean; cancelled: boolean }) => void;
+    const runScan = vi.fn(
+      () =>
+        new Promise<{ ok: boolean; cancelled: boolean }>((resolve) => {
+          finishScan = resolve;
+        }),
+    );
     const onInitialRefreshDone = vi.fn();
     runAppInitialization({
       loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
       runScan,
       onInitialRefreshDone,
-      setScanning: vi.fn(),
-      scanningRef: { current: false },
     });
-    await waitFor(() => expect(onInitialRefreshDone).toHaveBeenCalledOnce());
+    // No await precedes the scan, so nothing can cancel the boot in between;
+    // `runScan` owns the scanning state and cancellation from here.
     expect(runScan).toHaveBeenCalledExactlyOnceWith({
       detectDuplicates: false,
-      skipFolderIds: result.unchangedFolderIds.length
-        ? result.unchangedFolderIds
-        : undefined,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
-  });
-
-  it("falls back to a full scan when verification fails", async () => {
-    vi.spyOn(window.image, "quickVerify").mockRejectedValue(
-      new Error("offline"),
-    );
-    const runScan = vi.fn().mockResolvedValue({ ok: true, cancelled: false });
-    runAppInitialization({
-      loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
-      runScan,
-      setScanning: vi.fn(),
-      scanningRef: { current: false },
-    });
-    await waitFor(() => expect(runScan).toHaveBeenCalledOnce());
-    expect(runScan.mock.calls[0][0].skipFolderIds).toBeUndefined();
+    await Promise.resolve();
+    expect(onInitialRefreshDone).not.toHaveBeenCalled();
+    finishScan({ ok: true, cancelled: false });
+    await waitFor(() => expect(onInitialRefreshDone).toHaveBeenCalledOnce());
   });
 
   it("boots watchers and reacts to batch and removed events", async () => {
@@ -77,18 +63,12 @@ describe("useImageWatchBootstrap", () => {
           runAppInitialization({
             loadSearchPresetStats,
             runScan,
-            setScanning: () => {},
-            scanningRef,
           }).cancel,
         [],
       );
     });
 
     await waitFor(() => expect(runScan).toHaveBeenCalled());
-
-    // runAppInitialization sets scanningRef.current = true; reset it so
-    // batch/removed events are processed as post-scan watcher events.
-    scanningRef.current = false;
 
     act(() => {
       preloadEvents.image.batch.emit([]);
@@ -234,8 +214,6 @@ describe("useImageWatchBootstrap", () => {
           runAppInitialization({
             loadSearchPresetStats: vi.fn().mockResolvedValue(undefined),
             runScan: vi.fn().mockResolvedValue(true),
-            setScanning: () => {},
-            scanningRef,
           }).cancel,
         [],
       );

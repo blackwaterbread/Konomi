@@ -205,7 +205,6 @@ export default function App({
 
   const {
     scanning,
-    setScanning,
     activeScanFolderIds,
     setActiveScanFolderIds,
     activeScanSubPaths,
@@ -373,8 +372,6 @@ export default function App({
       handle = runAppInitialization({
         loadSearchPresetStats,
         runScan,
-        setScanning,
-        scanningRef,
         onInitialRefreshDone: () => setInitialRefreshDone(true),
       });
     })();

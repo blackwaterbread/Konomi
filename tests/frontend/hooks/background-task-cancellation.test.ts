@@ -1,7 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { cancelBackgroundTaskContinuations } from "@/lib/background-task-cancellation";
-import { runAppInitialization } from "@/hooks/useImageWatchBootstrap";
 import { useDuplicateResolutionDialog } from "@/hooks/useDuplicateResolutionDialog";
 import { useImageAnalysis } from "@/hooks/useImageAnalysis";
 import { DEFAULTS } from "@/hooks/useSettings";
@@ -14,34 +13,6 @@ describe("cancelled background task continuations", () => {
     cancelBackgroundTaskContinuations();
     await act(async () => { preloadEvents.image.analysisActive.emit({ active: false }); });
     expect(preloadMocks.image.similarGroups).not.toHaveBeenCalled();
-  });
-  it("does not start a boot scan after cancellation during quick verify", async () => {
-    let release!: (value: {
-      changedFolderIds: number[];
-      unchangedFolderIds: number[];
-    }) => void;
-    preloadMocks.image.quickVerify.mockReturnValue(
-      new Promise((resolve) => {
-        release = resolve;
-      }),
-    );
-    const runScan = vi.fn();
-    const setScanning = vi.fn();
-    const onInitialRefreshDone = vi.fn();
-    const scanningRef = { current: false };
-    runAppInitialization({
-      loadSearchPresetStats: vi.fn(),
-      runScan,
-      setScanning,
-      scanningRef,
-      onInitialRefreshDone,
-    });
-    cancelBackgroundTaskContinuations();
-    release({ changedFolderIds: [1], unchangedFolderIds: [] });
-    await act(async () => {});
-    expect(runScan).not.toHaveBeenCalled();
-    expect(scanningRef.current).toBe(false);
-    expect(onInitialRefreshDone).toHaveBeenCalledOnce();
   });
 
   it("does not start a rescan from a late duplicate response after X", async () => {

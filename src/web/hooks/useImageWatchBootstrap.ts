@@ -1,4 +1,3 @@
-import { backgroundTaskWasCancelled } from "@/lib/background-task-cancellation";
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { ImageRow } from "@preload/index.d";
@@ -11,12 +10,9 @@ interface UseImageEventSubscriptionsOptions {
 }
 
 /**
- * Runs the app initialization sequence:
- * quickVerify → scan (changed folders only).
- *
- * quickVerify classifies every folder as changed/unchanged via stat + mtime.
- * Unchanged folders are passed as skipFolderIds so syncAllFolders skips them
- * entirely, avoiding redundant DB queries and stale-row checks.
+ * Runs the app initialization sequence: one scan of every folder. The scan
+ * stops at stat + mtime for unchanged files, so no separate verification pass
+ * runs before it.
  *
  * Analysis (computeHashes / similarity refresh) is auto-scheduled by the
  * core maintenance service when scanService.scanAll() finishes, so the
@@ -25,7 +21,6 @@ interface UseImageEventSubscriptionsOptions {
 export type RunScan = (options?: {
   detectDuplicates?: boolean;
   folderIds?: number[];
-  skipFolderIds?: number[];
   refreshPage?: boolean;
   refreshSearchPresetStats?: boolean;
 }) => Promise<{ ok: boolean; cancelled: boolean }>;
@@ -34,49 +29,21 @@ export function runAppInitialization({
   loadSearchPresetStats,
   runScan,
   onInitialRefreshDone,
-  setScanning,
-  scanningRef,
 }: {
   loadSearchPresetStats: () => Promise<void>;
   runScan: RunScan;
   onInitialRefreshDone?: () => void;
-  setScanning: (v: boolean) => void;
-  scanningRef: MutableRefObject<boolean>;
 }): { cancel: () => void } {
   let cancelled = false;
-  const wasCancelled = backgroundTaskWasCancelled();
 
   void (async () => {
     void loadSearchPresetStats();
-
-    // Show scanning state immediately so the UI isn't unresponsive
-    scanningRef.current = true;
-    setScanning(true);
-
-    // Quick-verify folders first — skip unchanged ones during scan
-    let skipFolderIds: number[] | undefined;
-    try {
-      const result = await window.image.quickVerify();
-      if (result.unchangedFolderIds.length > 0) {
-        skipFolderIds = result.unchangedFolderIds;
-      }
-    } catch {
-      // quickVerify failed — fall through to full scan
-    }
-
-    if (cancelled || wasCancelled()) {
-      scanningRef.current = false;
-      setScanning(false);
-      if (!cancelled) onInitialRefreshDone?.();
-      return;
-    }
 
     // Skip duplicate detection on boot — it requires hashing candidate files
     // which adds significant IO. The watcher catches duplicates in real-time
     // for new files, and folder-add scans run with detectDuplicates=true.
     await runScan({
       detectDuplicates: false,
-      skipFolderIds,
       refreshPage: true,
       refreshSearchPresetStats: true,
     });
