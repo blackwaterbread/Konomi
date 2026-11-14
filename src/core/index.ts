@@ -77,15 +77,13 @@ export { WorkerPool } from "./lib/worker-pool";
 export type { WorkerPoolOptions } from "./lib/worker-pool";
 
 // Services
-export { createScanService, classifyFolderFiles } from "./services/scan-service";
+export { createScanService } from "./services/scan-service";
 export type {
   ScanService,
   ScanServiceDeps,
   ScanOptions,
   ScanResult,
   ScanPhase,
-  ClassifyResult,
-  QuickVerifyResult,
 } from "./services/scan-service";
 
 export type {

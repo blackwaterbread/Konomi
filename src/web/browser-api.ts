@@ -92,7 +92,6 @@ function scanAndWait(
     detectDuplicates?: boolean;
     folderIds?: number[];
     orderedFolderIds?: number[];
-    skipFolderIds?: number[];
     subPaths?: string[];
   },
 ): Promise<{ cancelled: boolean }> {
@@ -267,7 +266,6 @@ export function createBrowserApi(): KonomiApi {
       listMatchingIds: (query) => rpc("/api/images/matching-ids", query),
       bulkDelete: (ids) => rpc("/api/images/bulk-delete", { ids }),
       listByIds: (ids) => rpc("/api/images/by-ids", { ids }),
-      quickVerify: () => rpc("/api/images/quick-verify", {}),
       scan: (options) => scanAndWait(options),
       setFavorite: (id, isFavorite) => rpc("/api/images/favorite", { id, isFavorite }),
       listIgnoredDuplicates: () => rpc("/api/images/ignored-duplicates"),
@@ -293,7 +291,6 @@ export function createBrowserApi(): KonomiApi {
       onBatch: (cb) => onEvent("image:batch", cb),
       onRemoved: (cb) => onEvent("image:removed", cb),
       onWatchDuplicate: (cb) => onEvent("image:watchDuplicate", cb),
-      onQuickVerifyProgress: (cb) => onEvent("image:quickVerifyProgress", cb),
       onHashProgress: (cb) => onEvent("image:hashProgress", cb),
       onAnalysisActive: (cb) => onEvent("image:analysisActive", cb),
       onSimilarityProgress: (cb) => onEvent("image:similarityProgress", cb),

@@ -58,25 +58,12 @@ export type ScanPhase =
   | "checkingDuplicates"
   | "syncing";
 
-export type ClassifyResult = {
-  newFiles: string[];
-  changedFiles: string[];
-  /** `normalizePathKey` keys, not walkable paths. */
-  discoveredPaths: Set<string>;
-  unchangedCount: number;
-};
-
 type ProgressCallback = (done: number, total: number) => void;
 
 type ScanProgressState = {
   done: number;
   total: number;
   lastProgressAt: number;
-};
-
-export type QuickVerifyResult = {
-  changedFolderIds: number[];
-  unchangedFolderIds: number[];
 };
 
 /** One directory subtree to walk. `root` is the folder root unless `partial`. */
@@ -132,7 +119,6 @@ export type ScanOptions = {
   signal?: CancelToken;
   folderIds?: number[];
   orderedFolderIds?: number[];
-  skipFolderIds?: number[];
   /**
    * Restrict the scan to these directory subtrees instead of whole folder
    * roots. Each path must live under one of the resolved folders; paths that
@@ -238,58 +224,6 @@ function buildUpsertData(
   };
 }
 
-/**
- * Classifies one directory subtree against the rows already recorded for it.
- *
- * `existingMap` and the returned `discoveredPaths` are both keyed by
- * `normalizePathKey`. A walked path and the row that recorded it can spell the
- * same file differently — a case-only rename on win32 is enough — and an exact
- * compare would then call that file new: the walk inserts a second row under
- * the new spelling while the old row survives the prune, because `stat` on a
- * case-insensitive filesystem never answers ENOENT for it.
- */
-export async function classifyFolderFiles(
-  folderPath: string,
-  existingMap: Map<string, { fileModifiedAt: Date; source: string }>,
-  signal?: CancelToken,
-  onUnchanged?: () => void,
-): Promise<ClassifyResult> {
-  const newFiles: string[] = [];
-  const changedFiles: string[] = [];
-  const discoveredPaths = new Set<string>();
-
-  await withConcurrency(
-    walkImageFiles(folderPath, signal),
-    STAT_CONCURRENCY,
-    async (filePath) => {
-      discoveredPaths.add(normalizePathKey(filePath));
-      const existingRow = existingMap.get(normalizePathKey(filePath));
-      if (!existingRow) {
-        newFiles.push(filePath);
-      } else {
-        const mtime = await fs.promises
-          .stat(filePath)
-          .then((s) => s.mtime.getTime())
-          .catch(() => existingRow.fileModifiedAt.getTime());
-        if (existingRow.fileModifiedAt.getTime() !== mtime) {
-          changedFiles.push(filePath);
-        } else {
-          onUnchanged?.();
-        }
-      }
-    },
-    signal,
-  );
-
-  return {
-    newFiles,
-    changedFiles,
-    discoveredPaths,
-    unchangedCount:
-      discoveredPaths.size - newFiles.length - changedFiles.length,
-  };
-}
-
 // ── Service factory ────────────────────────────────────────────
 
 export function createScanService(deps: ScanServiceDeps) {
@@ -326,12 +260,7 @@ export function createScanService(deps: ScanServiceDeps) {
           })()
         : candidates;
 
-    // Skip unchanged folders
-    const skipSet =
-      options?.skipFolderIds && options.skipFolderIds.length > 0
-        ? new Set(options.skipFolderIds)
-        : null;
-    return skipSet ? ordered.filter((f) => !skipSet.has(f.id)) : ordered;
+    return ordered;
   }
 
   /**
@@ -408,7 +337,7 @@ export function createScanService(deps: ScanServiceDeps) {
       //
       // Reported apart from the unreadable ones: the directory is fine, it is
       // folder resolution that excluded it — the parent folder was removed
-      // while the request was in flight, or `folderIds`/`skipFolderIds` left it
+      // while the request was in flight, or `folderIds` left it
       // out. Folding this into `"unreadable"` would send the user hunting a
       // permissions problem on a directory they can read.
       if (!owner) {
@@ -615,8 +544,12 @@ export function createScanService(deps: ScanServiceDeps) {
     const existing = partial
       ? folderRows.filter((row) => isPathUnder(row.path, root))
       : folderRows;
-    // Both keyed by `normalizePathKey`, for the reason `classifyFolderFiles`
-    // documents: the walk and the row can spell one file differently.
+    // Both keyed by `normalizePathKey`: a walked path and the row that
+    // recorded it can spell the same file differently — a case-only rename on
+    // win32 is enough — and an exact compare would then call that file new:
+    // the walk inserts a second row under the new spelling while the old row
+    // survives the prune, because `stat` on a case-insensitive filesystem
+    // never answers ENOENT for it.
     const existingMap = new Map(
       existing.map((e) => [normalizePathKey(e.path), e] as const),
     );
@@ -702,7 +635,7 @@ export function createScanService(deps: ScanServiceDeps) {
         await withMetadataSlot(async () => {
           const meta = await metaReader(filePath);
           // Leave the old mtime intact (or the new file absent) so the next
-          // verification and scan retry a transient read/worker failure.
+          // scan retries a transient read/worker failure.
           if (meta === undefined) return;
           // Preserve the existing spelling: the unique path index and search
           // stat lookup are exact, even on case-insensitive filesystems.
@@ -1053,96 +986,6 @@ export function createScanService(deps: ScanServiceDeps) {
       } finally {
         sender.send("image:scanFolder", { folderId, active: false });
       }
-    },
-
-    async quickVerify(
-      signal?: CancelToken,
-      onProgress?: ProgressCallback,
-    ): Promise<QuickVerifyResult> {
-      const folders = await folderRepo.findAll();
-
-      // Verification uses the same fixed denominator as the subsequent scan.
-      let total = 0;
-      for (const folder of folders) {
-        if (signal?.cancelled) break;
-        if (!(await isAccessible(folder.path))) continue;
-        total += await countImageFiles(folder.path, signal);
-      }
-
-      let done = 0;
-      let lastProgressAt = 0;
-      const changedFolderIds: number[] = [];
-      const unchangedFolderIds: number[] = [];
-
-      for (const folder of folders) {
-        if (signal?.cancelled) break;
-        if (!(await isAccessible(folder.path))) {
-          unchangedFolderIds.push(folder.id);
-          continue;
-        }
-
-        const existing = await imageRepo.findSyncRowsByFolderId(folder.id);
-        const existingMap = new Map(
-          existing.map(
-            (e) =>
-              [
-                normalizePathKey(e.path),
-                { fileModifiedAt: e.fileModifiedAt, source: e.source },
-              ] as const,
-          ),
-        );
-
-        const result = await classifyFolderFiles(
-          folder.path,
-          existingMap,
-          signal,
-          () => {
-            done++;
-            const now = Date.now();
-            if (now - lastProgressAt >= 100) {
-              lastProgressAt = now;
-              onProgress?.(done, total);
-            }
-          },
-        );
-
-        done += result.newFiles.length + result.changedFiles.length;
-        onProgress?.(done, total);
-
-        // Same rule as the prune: a row the walk did not reach is only stale
-        // once its file answers ENOENT. An unreadable subdirectory otherwise
-        // marks the folder changed on every boot, and each of those reports
-        // costs a full rescan that cannot fix what a failed readdir hid.
-        let hasStaleRows = false;
-        await withConcurrency(
-          existing.filter(
-            (row) => !result.discoveredPaths.has(normalizePathKey(row.path)),
-          ),
-          STAT_CONCURRENCY,
-          async (row) => {
-            if (hasStaleRows) return;
-            if (await isConfirmedMissing(row.path)) hasStaleRows = true;
-          },
-          signal,
-        );
-        const hasChanges =
-          result.newFiles.length > 0 ||
-          result.changedFiles.length > 0 ||
-          hasStaleRows;
-
-        if (hasChanges) {
-          changedFolderIds.push(folder.id);
-        } else {
-          unchangedFolderIds.push(folder.id);
-        }
-      }
-
-      onProgress?.(done, total);
-      log.info(
-        `quickVerify: total=${folders.length} changed=${changedFolderIds.length} unchanged=${unchangedFolderIds.length}`,
-      );
-
-      return { changedFolderIds, unchangedFolderIds };
     },
   };
 }

@@ -109,18 +109,10 @@ declare global {
         ids: number[],
       ) => Promise<{ deleted: number; failed: number; deletedFromDb: number }>;
       listByIds: (ids: number[]) => Promise<ImageRow[]>;
-      quickVerify: () => Promise<{
-        changedFolderIds: number[];
-        unchangedFolderIds: number[];
-      }>;
-      onQuickVerifyProgress: (
-        cb: (data: { done: number; total: number }) => void,
-      ) => () => void;
       scan: (options?: {
         detectDuplicates?: boolean;
         folderIds?: number[];
         orderedFolderIds?: number[];
-        skipFolderIds?: number[];
         subPaths?: string[];
       }) => Promise<{ cancelled: boolean; skippedSubPaths?: string[] }>;
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;

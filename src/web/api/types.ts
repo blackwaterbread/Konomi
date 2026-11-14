@@ -110,15 +110,10 @@ export interface ImageApi {
     ids: number[],
   ): Promise<{ deleted: number; failed: number; deletedFromDb: number }>;
   listByIds(ids: number[]): Promise<ImageRow[]>;
-  quickVerify(): Promise<{
-    changedFolderIds: number[];
-    unchangedFolderIds: number[];
-  }>;
   scan(options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
     orderedFolderIds?: number[];
-    skipFolderIds?: number[];
     subPaths?: string[];
   }): Promise<{ cancelled: boolean; skippedSubPaths?: string[] }>;
   setFavorite(id: number, isFavorite: boolean): Promise<void>;
@@ -145,7 +140,6 @@ export interface ImageApi {
   onBatch(cb: (images: ImageRow[]) => void): () => void;
   onRemoved(cb: (ids: number[]) => void): () => void;
   onWatchDuplicate(cb: (item: FolderDuplicateGroup) => void): () => void;
-  onQuickVerifyProgress(cb: ProgressCallback): () => void;
   onHashProgress(cb: ProgressCallback): () => void;
   onAnalysisActive(
     cb: (data: { active: boolean; cancelled?: boolean }) => void,

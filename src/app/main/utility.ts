@@ -274,25 +274,17 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       const { ids } = payload as { ids: number[] };
       return imageService.listByIds(ids);
     }
-    case "image:quickVerify":
-      return backgroundTasks.track((signal) =>
-        scanService.quickVerify(signal, (done: number, total: number) => {
-          utilitySender.send("image:quickVerifyProgress", { done, total });
-        }),
-      );
     case "image:scan": {
       const {
         detectDuplicates = false,
         folderIds,
         orderedFolderIds,
-        skipFolderIds,
         subPaths,
       } = (payload as
         | {
             detectDuplicates?: boolean;
             folderIds?: number[];
             orderedFolderIds?: number[];
-            skipFolderIds?: number[];
             subPaths?: string[];
           }
         | undefined) ?? {};
@@ -304,7 +296,6 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           signal: scanCancelToken,
           folderIds,
           orderedFolderIds,
-          skipFolderIds,
           subPaths,
           detectDuplicates,
           onDuplicateGroup: detectDuplicates

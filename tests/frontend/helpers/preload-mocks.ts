@@ -213,11 +213,6 @@ export const preloadMocks = {
     onDupCheckProgress: imageDupCheckProgress.subscribe,
     onScanPhase: imageScanPhase.subscribe,
     onRescanMetadataProgress: imageRescanMetadataProgress.subscribe,
-    quickVerify: vi.fn().mockResolvedValue({
-      changedFolderIds: [],
-      unchangedFolderIds: [],
-    }),
-    onQuickVerifyProgress: vi.fn().mockReturnValue(() => {}),
     rescanMetadata: vi.fn().mockResolvedValue(0),
     rescanImageMetadata: vi.fn().mockResolvedValue(0),
   },
@@ -361,9 +356,6 @@ export function resetPreloadMocks(): void {
   preloadMocks.image.similarGroupForImage.mockReset().mockResolvedValue(null);
   preloadMocks.image.similarReasons.mockReset().mockResolvedValue([]);
   preloadMocks.image.cancelScan.mockReset().mockResolvedValue(undefined);
-  preloadMocks.image.quickVerify
-    .mockReset()
-    .mockResolvedValue({ changedFolderIds: [], unchangedFolderIds: [] });
   preloadMocks.image.rescanMetadata.mockReset().mockResolvedValue(0);
   preloadMocks.image.rescanImageMetadata.mockReset().mockResolvedValue(0);
 

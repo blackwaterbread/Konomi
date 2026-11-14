@@ -150,18 +150,11 @@ describe("scanService.scanAll with subPaths", () => {
 
   it("does not repeatedly parse unknown images but detects subsequent edits", async () => {
     const { scanService, readMeta, getDB } = await buildService();
-    const { folder, alpha, beta } = await createLibrary();
+    const { alpha } = await createLibrary();
     readMeta.mockResolvedValue(null);
     await scanService.scanAll({ detectDuplicates: false });
     readMeta.mockClear();
 
-    const openSpy = vi.spyOn(fs.promises, "opendir");
-    await expect(scanService.quickVerify()).resolves.toEqual({
-      changedFolderIds: [],
-      unchangedFolderIds: [folder.id],
-    });
-    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(2);
-    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(2);
     await scanService.scanAll({ detectDuplicates: false });
     expect(readMeta).not.toHaveBeenCalled();
 
@@ -169,10 +162,6 @@ describe("scanService.scanAll with subPaths", () => {
     const future = new Date(Date.now() + 10_000);
     fs.utimesSync(changedPath, future, future);
     readMeta.mockResolvedValue(META);
-    await expect(scanService.quickVerify()).resolves.toEqual({
-      changedFolderIds: [folder.id],
-      unchangedFolderIds: [],
-    });
     await scanService.scanAll({ detectDuplicates: false });
     expect(readMeta).toHaveBeenCalledExactlyOnceWith(changedPath);
     expect(
@@ -187,7 +176,7 @@ describe("scanService.scanAll with subPaths", () => {
     "retries failed metadata reads without advancing stored mtime (existing=%s)",
     async (existing) => {
       const { scanService, readMeta, getDB } = await buildService();
-      const { folder, alpha } = await createLibrary();
+      const { alpha } = await createLibrary();
       const failedPath = path.join(alpha, "a1.png");
       if (existing) await scanService.scanAll({ detectDuplicates: false });
       const before = await getDB().image.findUnique({
@@ -203,10 +192,6 @@ describe("scanService.scanAll with subPaths", () => {
       expect(
         await getDB().image.findUnique({ where: { path: failedPath } }),
       ).toEqual(before);
-      expect(await scanService.quickVerify()).toEqual({
-        changedFolderIds: [folder.id],
-        unchangedFolderIds: [],
-      });
 
       readMeta.mockReset().mockResolvedValue(META);
       await scanService.scanAll({ detectDuplicates: false });
@@ -235,22 +220,6 @@ describe("scanService.scanAll with subPaths", () => {
     expect(
       events.filter((e) => e.channel === "image:scanProgress").at(-1)?.data,
     ).toEqual({ done: 4, total: 4 });
-  });
-
-  it("quickVerify reports the complete total throughout verification", async () => {
-    const { scanService } = await buildService();
-    await createLibrary();
-    await scanService.scanAll({ detectDuplicates: false });
-    const progress = vi.fn();
-    await scanService.quickVerify(undefined, progress);
-    expect(progress).toHaveBeenCalledWith(4, 4);
-    expect(progress.mock.calls.some(([done]) => done > 0 && done < 4)).toBe(
-      true,
-    );
-    for (const [done, total] of progress.mock.calls) {
-      expect(total).toBe(4);
-      expect(done).toBeLessThanOrEqual(total);
-    }
   });
 
   it.each([false, true])(
@@ -490,44 +459,6 @@ describe("scanService.scanAll with subPaths", () => {
         path.join(alpha, "a2.png"),
       ].sort(),
     );
-  });
-
-  it("does not report a folder as changed because a directory would not open", async () => {
-    const { scanService } = await buildService();
-    const { folder, alpha, beta } = await createLibrary();
-
-    await scanService.scanAll({ folderIds: [folder.id] });
-
-    const realOpendir = fs.promises.opendir;
-    const opendirSpy = vi
-      .spyOn(fs.promises, "opendir")
-      .mockImplementation((async (dir: string, ...rest: unknown[]) => {
-        if (dir === alpha) {
-          throw Object.assign(new Error("EACCES: permission denied"), {
-            code: "EACCES",
-          });
-        }
-        return (realOpendir as (...args: unknown[]) => unknown)(dir, ...rest);
-      }) as typeof fs.promises.opendir);
-
-    try {
-      // Undiscovered but intact: a full rescan cannot fix what a failed
-      // readdir hid, so reporting it would buy a boot-time scan every time.
-      await expect(scanService.quickVerify()).resolves.toMatchObject({
-        changedFolderIds: [],
-        unchangedFolderIds: [folder.id],
-      });
-
-      // A file that is genuinely gone must still be caught, unreadable
-      // sibling directory or not.
-      fs.rmSync(path.join(beta, "b1.png"));
-      await expect(scanService.quickVerify()).resolves.toMatchObject({
-        changedFolderIds: [folder.id],
-        unchangedFolderIds: [],
-      });
-    } finally {
-      opendirSpy.mockRestore();
-    }
   });
 
   it("prunes rows of a subtree that no longer exists on disk", async () => {

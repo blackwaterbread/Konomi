@@ -130,7 +130,6 @@ export function useScanning({
     (options?: {
       detectDuplicates?: boolean;
       folderIds?: number[];
-      skipFolderIds?: number[];
       subPaths?: string[];
       refreshPage?: boolean;
       refreshSearchPresetStats?: boolean;
@@ -142,7 +141,6 @@ export function useScanning({
       const {
         detectDuplicates,
         folderIds,
-        skipFolderIds,
         subPaths,
         refreshPage = true,
         refreshSearchPresetStats = true,
@@ -174,7 +172,6 @@ export function useScanning({
           detectDuplicates,
           folderIds,
           orderedFolderIds,
-          skipFolderIds,
           subPaths,
         })
         .then((result) => {

@@ -90,27 +90,10 @@ contextBridge.exposeInMainWorld("image", {
   }) => ipcRenderer.invoke("image:listMatchingIds", query),
   bulkDelete: (ids: number[]) => ipcRenderer.invoke("image:bulkDelete", ids),
   listByIds: (ids: number[]) => ipcRenderer.invoke("image:listByIds", ids),
-  quickVerify: () =>
-    ipcRenderer.invoke("image:quickVerify") as Promise<{
-      changedFolderIds: number[];
-      unchangedFolderIds: number[];
-    }>,
-  onQuickVerifyProgress: (
-    cb: (data: { done: number; total: number }) => void,
-  ) => {
-    const handler = (
-      _: Electron.IpcRendererEvent,
-      data: { done: number; total: number },
-    ): void => cb(data);
-    ipcRenderer.on("image:quickVerifyProgress", handler);
-    return () =>
-      ipcRenderer.removeListener("image:quickVerifyProgress", handler);
-  },
   scan: (options?: {
     detectDuplicates?: boolean;
     folderIds?: number[];
     orderedFolderIds?: number[];
-    skipFolderIds?: number[];
     subPaths?: string[];
   }) => ipcRenderer.invoke("image:scan", options),
   setFavorite: (id: number, isFavorite: boolean) =>

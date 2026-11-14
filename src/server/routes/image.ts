@@ -68,7 +68,6 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
       detectDuplicates?: boolean;
       folderIds?: number[];
       orderedFolderIds?: number[];
-      skipFolderIds?: number[];
       subPaths?: string[];
     };
   }>("/api/images/scan", async (req) => {
@@ -76,7 +75,6 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
       detectDuplicates = false,
       folderIds,
       orderedFolderIds,
-      skipFolderIds,
       subPaths,
     } = req.body ?? {};
 
@@ -121,7 +119,6 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
           signal: cancelToken,
           folderIds,
           orderedFolderIds,
-          skipFolderIds,
           subPaths,
           detectDuplicates,
           onDuplicateGroup: detectDuplicates
@@ -155,14 +152,6 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     backgroundTasks.cancel();
     if (scanState.cancelToken) scanState.cancelToken.cancelled = true;
     return null;
-  });
-
-  app.post("/api/images/quick-verify", async () => {
-    return backgroundTasks.track((signal) =>
-      scanService.quickVerify(signal, (done, total) => {
-        sender.send("image:quickVerifyProgress", { done, total });
-      }),
-    );
   });
 
   // ── Favorites ────────────────────────────
