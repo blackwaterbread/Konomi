@@ -169,7 +169,7 @@ describe("bulk image upserts", () => {
     expect(await db.image.findMany()).toEqual(before);
   });
 
-  it("performs one bulk write for a scan batch instead of per-image upserts", async () => {
+  it("writes a scan batch as chunked bulk inserts in one transaction instead of per-image upserts", async () => {
     const { db, repo, row } = await setup();
     const original = db.$transaction.bind(db);
     const writes = vi.fn();
@@ -208,8 +208,10 @@ describe("bulk image upserts", () => {
     }) as typeof db.$transaction);
     await expect(repo.upsertBatch([])).resolves.toEqual([]);
     expect(writes).not.toHaveBeenCalled();
-    await repo.upsertBatch(Array.from({ length: 20 }, (_, i) => row(i)));
-    expect(writes).toHaveBeenCalledOnce();
+    // A full scan batch (scan-service BATCH_SIZE) spans several 32-row chunks.
+    await repo.upsertBatch(Array.from({ length: 100 }, (_, i) => row(i)));
+    expect(db.$transaction).toHaveBeenCalledOnce();
+    expect(writes).toHaveBeenCalledTimes(4);
     expect(upserts).not.toHaveBeenCalled();
   });
 });

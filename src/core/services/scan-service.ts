@@ -49,7 +49,7 @@ export type {
 const log = createLogger("scan-service");
 
 // ── Constants ──────────────────────────────────────────────────
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 100;
 const SYNC_SCAN_CONCURRENCY = 24;
 const SIZE_SCAN_CONCURRENCY = 32;
 const STAT_CONCURRENCY = 128;
