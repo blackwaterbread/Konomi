@@ -83,6 +83,8 @@ type ScanTarget = {
   /** Request-local duplicate pre-scan snapshot, released after this target syncs. */
   walkedPaths?: string[];
   existingRows?: ImageSyncRow[];
+  /** What this target added to the progress denominator before the sync. */
+  countedFiles?: number;
 };
 
 // ── Deps & options ─────────────────────────────────────────────
@@ -191,6 +193,27 @@ async function isAccessible(p: string): Promise<boolean> {
       }
     }
   }
+}
+
+/**
+ * What a target adds to the progress denominator before its sync starts.
+ *
+ * A whole-folder target takes the count its folder's last completed scan
+ * stored, so the scan walks the tree once instead of once to count and once
+ * to sync. The count is off by whatever changed since; the sync grows the
+ * total when `done` passes it and settles it to `done` at the end, so progress
+ * neither runs past 100% nor goes back. A partial target has no stored count
+ * of its own subtree, and a folder without a positive one — never scanned to
+ * the end, or empty last time — would give no usable denominator, so those
+ * are walked to count.
+ */
+async function countTargetFiles(
+  target: ScanTarget,
+  signal: CancelToken | undefined,
+): Promise<number> {
+  const stored = target.folder.lastScanFileCount;
+  if (!target.partial && stored !== null && stored > 0) return stored;
+  return countImageFiles(target.root, signal);
 }
 
 function buildUpsertData(
@@ -862,13 +885,15 @@ export function createScanService(deps: ScanServiceDeps) {
           progressState.total = result.totalFiles;
         }
 
-        // Publish a complete denominator before processing starts. Duplicate
-        // detection already counted its snapshot, so reuse that total.
+        // Publish the denominator before processing starts, composed per
+        // target (`countTargetFiles`). Duplicate detection already counted its
+        // snapshot, so reuse that total.
         if (!detectDuplicates) {
           for (const target of targets) {
             if (signal?.cancelled) break;
             if (target.missing) continue;
-            progressState.total += await countImageFiles(target.root, signal);
+            target.countedFiles = await countTargetFiles(target, signal);
+            progressState.total += target.countedFiles;
           }
         }
         options?.onPhase?.("syncing");
@@ -891,6 +916,12 @@ export function createScanService(deps: ScanServiceDeps) {
             // explicitly requested subtree: a full-folder scan skipping a
             // disconnected drive is routine and must not raise a notice.
             if (target.partial) lateSkippedSubPaths.push(target.root);
+            // Nothing this target added to the denominator will be walked now —
+            // and a stored count is added whether or not the root can be read.
+            progressState.total = Math.max(
+              progressState.done,
+              progressState.total - (target.countedFiles ?? 0),
+            );
             continue;
           }
 
@@ -968,9 +999,14 @@ export function createScanService(deps: ScanServiceDeps) {
       });
 
       try {
+        const target: ScanTarget = {
+          folder,
+          root: folder.path,
+          partial: false,
+        };
         const progressState: ScanProgressState = {
           done: 0,
-          total: await countImageFiles(folder.path, signal),
+          total: await countTargetFiles(target, signal),
           lastProgressAt: 0,
         };
         sender.send("image:scanProgress", {
@@ -979,12 +1015,14 @@ export function createScanService(deps: ScanServiceDeps) {
         });
 
         await syncFolder(
-          { folder, root: folder.path, partial: false },
+          target,
           signal,
           new Set(),
           progressState,
           (done, total) => sender.send("image:scanProgress", { done, total }),
         );
+        // A stored count can outlive deleted files; settle it like `scanAll`.
+        if (!signal?.cancelled) progressState.total = progressState.done;
         sender.send("image:scanProgress", {
           done: progressState.done,
           total: progressState.total,

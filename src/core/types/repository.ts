@@ -7,6 +7,11 @@ export type FolderEntity = {
   name: string;
   path: string;
   createdAt: Date;
+  /**
+   * Image files the last completed whole-folder scan walked; null until one
+   * has finished. The scan's progress denominator.
+   */
+  lastScanFileCount: number | null;
 };
 
 export type ImageEntity = {

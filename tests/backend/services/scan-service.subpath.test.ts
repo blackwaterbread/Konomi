@@ -113,7 +113,38 @@ describe("scanService.scanAll with subPaths", () => {
     return rows.map((r) => r.path).sort();
   }
 
-  it("counts before syncing and stats changed metadata only once", async () => {
+  async function storedFileCount(folderId: number) {
+    const { getDB } = await import("@core/lib/db");
+    const row = await getDB().folder.findUnique({ where: { id: folderId } });
+    return row?.lastScanFileCount;
+  }
+
+  type Progress = { done: number; total: number };
+
+  function progressOf(events: { channel: string; data: unknown }[]) {
+    return events
+      .filter((e) => e.channel === "image:scanProgress")
+      .map((e) => e.data as Progress);
+  }
+
+  /** Progress is throttled to 100 ms; step the clock so every file reports. */
+  function reportEveryFile() {
+    let clock = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => (clock += 1000));
+  }
+
+  /** Never past 100%, and neither `done` nor the fraction ever goes back. */
+  function expectMonotonic(progress: Progress[]) {
+    progress.forEach(({ done, total }, i) => {
+      expect(done).toBeLessThanOrEqual(total);
+      if (i === 0) return;
+      const prev = progress[i - 1];
+      expect(done).toBeGreaterThanOrEqual(prev.done);
+      expect(done * prev.total).toBeGreaterThanOrEqual(prev.done * total);
+    });
+  }
+
+  it("syncs in one walk against the stored count and stats changed metadata only once", async () => {
     const { scanService, readMeta, events } = await buildService();
     const { folder, root, alpha, beta } = await createLibrary();
     await scanService.scanAll({ detectDuplicates: false });
@@ -131,21 +162,174 @@ describe("scanService.scanAll with subPaths", () => {
     });
 
     expect(readMeta).toHaveBeenCalledExactlyOnceWith(changedPath);
-    // Root accessibility probe plus counting and syncing walks.
-    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(3);
-    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(2);
-    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(2);
+    // Root accessibility probe plus the syncing walk — the first scan stored
+    // the count, so nothing walks the tree just to count it.
+    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(2);
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    expect(openSpy.mock.calls.filter(([p]) => p === beta)).toHaveLength(1);
     expect(statSpy.mock.calls.filter(([p]) => p === changedPath)).toHaveLength(
       1,
     );
-    const progress = events.filter((e) => e.channel === "image:scanProgress");
-    expect(progress[0]?.data).toEqual({ done: 0, total: 4 });
-    expect(progress.at(-1)?.data).toEqual({ done: 4, total: 4 });
-    for (const event of progress) {
-      const { done, total } = event.data as { done: number; total: number };
+    const progress = progressOf(events);
+    expect(progress[0]).toEqual({ done: 0, total: 4 });
+    expect(progress.at(-1)).toEqual({ done: 4, total: 4 });
+    for (const { done, total } of progress) {
       expect(done).toBeLessThanOrEqual(total);
       expect(total).toBe(4);
     }
+  });
+
+  it("carries a stored count the folder has outgrown without done passing total", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, root, alpha } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    for (const name of ["n1.png", "n2.png", "n3.png"]) {
+      writePng(path.join(alpha, name));
+    }
+    events.length = 0;
+    reportEveryFile();
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+
+    await scanService.scanAll({
+      folderIds: [folder.id],
+      detectDuplicates: false,
+    });
+
+    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(2);
+    const progress = progressOf(events);
+    // Starts from the stale stored count and follows `done` past it.
+    expect(progress[0]).toEqual({ done: 0, total: 4 });
+    expect(progress.some(({ done }) => done > 4)).toBe(true);
+    expect(progress.at(-1)).toEqual({ done: 7, total: 7 });
+    expectMonotonic(progress);
+    expect(await storedFileCount(folder.id)).toBe(7);
+  });
+
+  it("settles a stored count that deleted files left too large only at the end", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, alpha, beta } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    fs.rmSync(path.join(alpha, "a2.png"));
+    fs.rmSync(path.join(beta, "b1.png"));
+    events.length = 0;
+    reportEveryFile();
+
+    await scanService.scanAll({
+      folderIds: [folder.id],
+      detectDuplicates: false,
+    });
+
+    const progress = progressOf(events);
+    expect(progress.slice(0, -1).every(({ total }) => total === 4)).toBe(true);
+    expect(progress.at(-1)).toEqual({ done: 2, total: 2 });
+    expectMonotonic(progress);
+  });
+
+  it("walks to count only the folders without a usable stored count", async () => {
+    const { scanService, events, getDB } = await buildService();
+    const { root, alpha } = await createLibrary();
+    // Scanned while empty, so it stores 0 — no denominator at all.
+    const emptiedRoot = path.join(ctx.userDataDir, "emptied");
+    fs.mkdirSync(emptiedRoot, { recursive: true });
+    const emptied = await getDB().folder.create({
+      data: { name: "emptied", path: emptiedRoot },
+    });
+    await scanService.scanAll({ detectDuplicates: false });
+    expect(await storedFileCount(emptied.id)).toBe(0);
+    // Never scanned, so it stores nothing.
+    const freshRoot = path.join(ctx.userDataDir, "fresh");
+    writePng(path.join(freshRoot, "f1.png"));
+    writePng(path.join(freshRoot, "f2.png"));
+    await getDB().folder.create({ data: { name: "fresh", path: freshRoot } });
+    writePng(path.join(emptiedRoot, "e1.png"));
+    writePng(path.join(alpha, "a3.png"));
+    events.length = 0;
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+
+    await scanService.scanAll({ detectDuplicates: false });
+
+    // library: its stored 4 (stale by one); fresh and emptied: counted, 2 + 1.
+    const progress = progressOf(events);
+    expect(progress[0]).toEqual({ done: 0, total: 7 });
+    expect(progress.at(-1)).toEqual({ done: 8, total: 8 });
+    expectMonotonic(progress);
+    expect(openSpy.mock.calls.filter(([p]) => p === root)).toHaveLength(2);
+    expect(
+      openSpy.mock.calls.filter(([p]) => p === freshRoot || p === emptiedRoot),
+    ).toHaveLength(6);
+  });
+
+  it("counts a subtree exactly and leaves the folder's stored count alone", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, alpha } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    writePng(path.join(alpha, "a3.png"));
+    events.length = 0;
+
+    await scanService.scanAll({
+      folderIds: [folder.id],
+      subPaths: [alpha],
+      detectDuplicates: false,
+    });
+
+    const progress = progressOf(events);
+    expect(progress[0]).toEqual({ done: 0, total: 3 });
+    expect(progress.every(({ total }) => total === 3)).toBe(true);
+    expect(progress.at(-1)).toEqual({ done: 3, total: 3 });
+    expect(await storedFileCount(folder.id)).toBe(4);
+  });
+
+  it("keeps the stored count when the scan is cancelled", async () => {
+    const { scanService, readMeta } = await buildService();
+    const { folder, alpha } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    writePng(path.join(alpha, "n1.png"));
+    writePng(path.join(alpha, "n2.png"));
+    const signal = { cancelled: false };
+    readMeta.mockImplementation(async () => {
+      signal.cancelled = true;
+      return META;
+    });
+
+    const result = await scanService.scanAll({
+      signal,
+      detectDuplicates: false,
+    });
+
+    // A walk stopped partway counted only what it reached; as the next
+    // denominator it would understate the folder.
+    expect(result.cancelled).toBe(true);
+    expect(await storedFileCount(folder.id)).toBe(4);
+  });
+
+  it("drops a skipped root's stored count from the denominator", async () => {
+    const { scanService, events, getDB } = await buildService();
+    const { root } = await createLibrary();
+    const otherRoot = path.join(ctx.userDataDir, "other");
+    writePng(path.join(otherRoot, "o1.png"));
+    writePng(path.join(otherRoot, "o2.png"));
+    await getDB().folder.create({ data: { name: "other", path: otherRoot } });
+    await scanService.scanAll({ detectDuplicates: false });
+    events.length = 0;
+    reportEveryFile();
+    const eacces = Object.assign(new Error("EACCES"), { code: "EACCES" });
+    const realOpendir = fs.promises.opendir;
+    vi.spyOn(fs.promises, "opendir").mockImplementation((async (
+      p: fs.PathLike,
+      ...rest: unknown[]
+    ) =>
+      path.resolve(String(p)) === path.resolve(root)
+        ? Promise.reject(eacces)
+        : (realOpendir as (...a: unknown[]) => unknown)(p, ...rest)) as never);
+
+    await scanService.scanAll({ detectDuplicates: false });
+
+    // library (stored 4) is skipped before `other` (stored 2) syncs.
+    const progress = progressOf(events);
+    expect(progress[0]).toEqual({ done: 0, total: 6 });
+    expect(progress.slice(1).every(({ total }) => total === 2)).toBe(true);
+    expect(progress.at(-1)).toEqual({ done: 2, total: 2 });
+    expectMonotonic(progress);
   });
 
   it("does not repeatedly parse unknown images but detects subsequent edits", async () => {
@@ -242,7 +426,7 @@ describe("scanService.scanAll with subPaths", () => {
     },
   );
 
-  it("scanOne reports a fixed total from the first progress event", async () => {
+  it("scanOne counts a folder without a stored count exactly from the first event", async () => {
     const { scanService, events } = await buildService();
     const { folder, alpha } = await createLibrary();
     const openSpy = vi.spyOn(fs.promises, "opendir");
@@ -256,6 +440,24 @@ describe("scanService.scanAll with subPaths", () => {
     expect(
       events.filter((e) => e.channel === "image:scanProgress").at(-1)?.data,
     ).toEqual({ done: 4, total: 4 });
+  });
+
+  it("scanOne starts from the stored count and settles it at the end", async () => {
+    const { scanService, events } = await buildService();
+    const { folder, alpha, beta } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    fs.rmSync(path.join(beta, "b1.png"));
+    events.length = 0;
+    reportEveryFile();
+    const openSpy = vi.spyOn(fs.promises, "opendir");
+
+    await scanService.scanOne(folder.id);
+
+    expect(openSpy.mock.calls.filter(([p]) => p === alpha)).toHaveLength(1);
+    const progress = progressOf(events);
+    expect(progress[0]).toEqual({ done: 0, total: 4 });
+    expect(progress.at(-1)).toEqual({ done: 3, total: 3 });
+    expectMonotonic(progress);
   });
 
   it.each([false, true])(
