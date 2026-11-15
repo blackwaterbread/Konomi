@@ -237,19 +237,49 @@ function collectSourceStatDeltas(
   }
 }
 
+/**
+ * Running per-key sums of search stat deltas, so mutations can be folded in as
+ * they happen instead of being held until they are applied. Feeding mutations
+ * in any number of calls gives the same deltas, in the same order, as feeding
+ * them all at once.
+ *
+ * Keys whose sum returns to zero stay in the map: a tag delta carries the
+ * spelling that first touched its key, and dropping a zero entry midway would
+ * let a later mutation seed it with a different one.
+ */
+export type StatDeltaAccumulator = Map<string, SearchStatDelta>;
+
+export function createStatDeltaAccumulator(): StatDeltaAccumulator {
+  return new Map();
+}
+
+export function accumulateStatMutation(
+  accumulator: StatDeltaAccumulator,
+  mutation: SearchStatMutationInput,
+): void {
+  if (mutation.before) {
+    collectSourceStatDeltas(mutation.before, -1, accumulator);
+  }
+  if (mutation.after) {
+    collectSourceStatDeltas(mutation.after, 1, accumulator);
+  }
+}
+
+/** The non-zero deltas folded so far. */
+export function getAccumulatedStatDeltas(
+  accumulator: StatDeltaAccumulator,
+): SearchStatDelta[] {
+  return Array.from(accumulator.values()).filter((delta) => delta.delta !== 0);
+}
+
 export function buildStatDeltasFromMutations(
   mutations: SearchStatMutationInput[],
 ): SearchStatDelta[] {
-  const deltaMap = new Map<string, SearchStatDelta>();
+  const accumulator = createStatDeltaAccumulator();
   for (const mutation of mutations) {
-    if (mutation.before) {
-      collectSourceStatDeltas(mutation.before, -1, deltaMap);
-    }
-    if (mutation.after) {
-      collectSourceStatDeltas(mutation.after, 1, deltaMap);
-    }
+    accumulateStatMutation(accumulator, mutation);
   }
-  return Array.from(deltaMap.values()).filter((delta) => delta.delta !== 0);
+  return getAccumulatedStatDeltas(accumulator);
 }
 
 // ── Tag suggestion helpers ─────────────────────────────────────
