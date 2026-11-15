@@ -22,7 +22,7 @@ interface BootstrapResult {
 
 let migrationPromise: Promise<void> | null = null;
 let initialFolderCountPromise: Promise<number | null> | null = null;
-let bootstrapPromise: Promise<BootstrapResult> | null = null;
+let bootstrapPromise: Promise<BootstrapResult | null> | null = null;
 const bootstrapResult: BootstrapResult = {
   folderCount: null,
   folders: null,
@@ -31,7 +31,8 @@ let bootstrapCompleted = false;
 
 function ensureMigrationsRun(): Promise<void> {
   if (!migrationPromise) {
-    migrationPromise = window.db.runMigrations().catch((error: unknown) => {
+    migrationPromise = window.db.runMigrations();
+    migrationPromise.catch((error: unknown) => {
       log.error("Database migration failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -40,35 +41,44 @@ function ensureMigrationsRun(): Promise<void> {
   return migrationPromise;
 }
 
+// Rejects when the migrations failed: folders are not read from a database
+// that is not up to date, and the app does not mount on one.
 function ensureInitialFolderCount(): Promise<number | null> {
   if (!initialFolderCountPromise) {
-    initialFolderCountPromise = ensureMigrationsRun()
-      .then(() => window.folder.list())
-      .then((folders) => {
-        bootstrapResult.folders = folders;
-        bootstrapResult.folderCount = folders.length;
-        return bootstrapResult.folderCount;
-      })
-      .catch((error: unknown) => {
-        log.warn("Failed to load initial folder count during bootstrap", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        bootstrapResult.folderCount = null;
-        return null;
-      });
+    initialFolderCountPromise = ensureMigrationsRun().then(() =>
+      window.folder
+        .list()
+        .then((folders) => {
+          bootstrapResult.folders = folders;
+          bootstrapResult.folderCount = folders.length;
+          return bootstrapResult.folderCount;
+        })
+        .catch((error: unknown) => {
+          log.warn("Failed to load initial folder count during bootstrap", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          bootstrapResult.folderCount = null;
+          return null;
+        }),
+    );
   }
 
   return initialFolderCountPromise;
 }
 
-function ensureBootstrapComplete(): Promise<BootstrapResult> {
+// Resolves to null when the migrations failed.
+function ensureBootstrapComplete(): Promise<BootstrapResult | null> {
   if (bootstrapCompleted) {
     return Promise.resolve(bootstrapResult);
   }
 
   if (!bootstrapPromise) {
     bootstrapPromise = (async () => {
-      await ensureInitialFolderCount();
+      try {
+        await ensureInitialFolderCount();
+      } catch {
+        return null;
+      }
       bootstrapCompleted = true;
       return bootstrapResult;
     })();
@@ -187,6 +197,7 @@ export function BootstrapApp() {
     bootstrapResult.folderCount,
   );
   const [migrating, setMigrating] = useState(false);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
   const [mountApp, setMountApp] = useState(bootstrapCompleted || skipSplash);
   const [renderSplash, setRenderSplash] = useState(
     !bootstrapCompleted && !skipSplash,
@@ -236,7 +247,11 @@ export function BootstrapApp() {
     }
 
     let cancelled = false;
+    let migrationsSettled = false;
     const offMigrationProgress = window.db.onMigrationProgress((data) => {
+      // Electron can deliver the reply before the progress pushed ahead of
+      // it; a push landing after the reply is stale.
+      if (migrationsSettled) return;
       if (data.total > 0 && data.done < data.total) {
         setMigrating(true);
         const migrationPercent = Math.min(
@@ -249,15 +264,33 @@ export function BootstrapApp() {
       }
     });
 
-    void ensureInitialFolderCount().then((count) => {
-      if (!cancelled) {
-        setFolderCount(count);
-        setProgressPercent((prev) => prev ?? 60);
-      }
-    });
+    void ensureMigrationsRun().then(
+      () => {
+        migrationsSettled = true;
+        if (!cancelled) setMigrating(false);
+      },
+      (error: unknown) => {
+        migrationsSettled = true;
+        if (!cancelled) {
+          setMigrationError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+    );
+
+    void ensureInitialFolderCount().then(
+      (count) => {
+        if (!cancelled) {
+          setFolderCount(count);
+          setProgressPercent((prev) => prev ?? 60);
+        }
+      },
+      () => undefined,
+    );
 
     void ensureBootstrapComplete().then((result) => {
-      if (cancelled) return;
+      if (cancelled || result === null) return;
 
       setFolderCount(result.folderCount);
 
@@ -286,6 +319,9 @@ export function BootstrapApp() {
   }, [clearSplashTimers, skipSplash]);
 
   const statusText = useMemo(() => {
+    if (migrationError !== null) {
+      return t("app.splash.status.migrationFailed");
+    }
     if (migrating) {
       return t("app.splash.status.updatingDatabase");
     }
@@ -296,9 +332,14 @@ export function BootstrapApp() {
       return t("app.splash.status.preparingOnboarding");
     }
     return t("app.splash.status.finalizing");
-  }, [folderCount, migrating, t]);
+  }, [folderCount, migrating, migrationError, t]);
 
   const detailText = useMemo(() => {
+    if (migrationError !== null) {
+      return t("app.splash.detail.migrationFailed", {
+        message: migrationError,
+      });
+    }
     if (migrating) {
       return t("app.splash.detail.updatingDatabase");
     }
@@ -309,7 +350,7 @@ export function BootstrapApp() {
       return t("app.splash.detail.preparingOnboarding");
     }
     return t("app.splash.detail.loadingLibraryState");
-  }, [folderCount, migrating, t]);
+  }, [folderCount, migrating, migrationError, t]);
 
   return (
     <>
@@ -326,6 +367,7 @@ export function BootstrapApp() {
           statusText={statusText}
           detailText={detailText}
           progressPercent={progressPercent}
+          failed={migrationError !== null}
         />
       )}
     </>

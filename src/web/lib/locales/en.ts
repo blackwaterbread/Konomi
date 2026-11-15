@@ -27,9 +27,11 @@ const en = {
         preparingOnboarding: "Preparing the start screen...",
         syncingLibrary: "Checking registered images...",
         finalizing: "Almost done.",
+        migrationFailed: "Couldn't update the database.",
       },
       detail: {
         updatingDatabase: "Updating the database to the latest version.",
+        migrationFailed: "Error: {{message}}",
         scanFolders: "Checking {{folderLabel}} {{done}}/{{total}}",
         scanImages: "Checking images {{done}}/{{total}}",
         checkingDuplicates: "Checking for duplicates {{done}}/{{total}}",

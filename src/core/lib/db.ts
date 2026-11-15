@@ -127,6 +127,7 @@ export async function runMigrations(
   if (dialect === "mysql") {
     await runMariadbMigrations(onProgress);
   } else {
+    ensureWalMode();
     runSqliteMigrations(onProgress);
   }
 }

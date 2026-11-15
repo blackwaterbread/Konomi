@@ -168,18 +168,25 @@ const duplicateService = createDuplicateService({
 });
 
 async function handleRequest(type: string, payload: unknown): Promise<unknown> {
-  // Cheap once warm: dbReady resolves synchronously after the first call
-  // initialized the SQLite clients. Blocks the very first request until
-  // PRAGMAs (notably reader's query_only=ON) are applied.
-  await dbReady();
+  if (type === "db:runMigrations") {
+    // Before dbReady(), which would apply pending migrations without progress.
+    await runMigrations((progress) => {
+      utilitySender.send("db:migrationProgress", progress);
+    });
+  }
+  // Shutdown must not be the request that applies (or retries) migrations.
+  if (type !== "system:shutdown") {
+    // Cheap once warm: dbReady resolves synchronously after the first call
+    // initialized the SQLite clients. Blocks the very first request until
+    // PRAGMAs (notably reader's query_only=ON) are applied.
+    await dbReady();
+    startBootTasks();
+  }
   const emitSearchStatsProgress = (done: number, total: number): void => {
     utilitySender.send("image:searchStatsProgress", { done, total });
   };
   switch (type) {
     case "db:runMigrations":
-      await runMigrations((progress) => {
-        utilitySender.send("db:migrationProgress", progress);
-      });
       return;
     case "folder:list":
       return folderService.list();
@@ -650,24 +657,32 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
   }
 }
 
-// Boot-time DB-touching tasks. All chained off dbReady() so they don't race
-// the SQLite client PRAGMA application (notably reader's query_only=ON).
-const ready = dbReady();
+// Boot-time DB-touching tasks. Started by the first request that gets the DB
+// ready — the renderer's db:runMigrations, or after a restart whichever request
+// comes first — never at module load: dbReady() there would apply pending
+// migrations without progress, and a failing one would crash-loop the process.
+let bootTasksStarted = false;
 
-ready
-  .then(() => categoryService.seedBuiltins())
-  .then(() => log.info("Seeded builtin categories"))
-  .catch((error) =>
-    log.errorWithStack("Failed to seed builtin categories", error),
-  );
+function startBootTasks(): void {
+  if (bootTasksStarted) return;
+  bootTasksStarted = true;
+  const ready = Promise.resolve();
 
-// Eager-load ignored duplicate paths so first request doesn't pay the cost
-ready
-  .then(() => duplicateService.ensureIgnoredLoaded())
-  .then(() => log.info("Loaded ignored duplicate paths"))
-  .catch((error) =>
-    log.errorWithStack("Failed to load ignored duplicate paths", error),
-  );
+  ready
+    .then(() => categoryService.seedBuiltins())
+    .then(() => log.info("Seeded builtin categories"))
+    .catch((error) =>
+      log.errorWithStack("Failed to seed builtin categories", error),
+    );
+
+  // Eager-load ignored duplicate paths so first request doesn't pay the cost
+  ready
+    .then(() => duplicateService.ensureIgnoredLoaded())
+    .then(() => log.info("Loaded ignored duplicate paths"))
+    .catch((error) =>
+      log.errorWithStack("Failed to load ignored duplicate paths", error),
+    );
+}
 
 process.parentPort.on("message", async (e: Electron.MessageEvent) => {
   const { id, type, payload } = e.data as {

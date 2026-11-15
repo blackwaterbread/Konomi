@@ -1,4 +1,4 @@
-import { Images, Loader2 } from "lucide-react";
+import { Images, Loader2, TriangleAlert } from "lucide-react";
 import splashImageUrl from "@/assets/images/splash.webp";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,8 @@ interface AppSplashProps {
   statusText: string;
   detailText: string;
   progressPercent?: number | null;
+  /** Startup stopped; the detail text carries the error instead of progress. */
+  failed?: boolean;
 }
 
 export function AppSplash({
@@ -15,6 +17,7 @@ export function AppSplash({
   statusText,
   detailText,
   progressPercent = null,
+  failed = false,
 }: AppSplashProps) {
   const { t } = useTranslation();
   const clampedProgress =
@@ -68,24 +71,35 @@ export function AppSplash({
           </div>
 
           <div className="mt-8 space-y-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-background/82 dark:bg-background/70">
-              {isIndeterminate ? (
-                <div className="h-full w-1/3 rounded-full bg-primary/90 animate-pulse" />
-              ) : (
-                <div
-                  className="h-full rounded-full bg-primary shadow-[0_0_18px_color-mix(in_oklab,var(--color-primary)_45%,transparent)] transition-[width] duration-300 ease-out"
-                  style={{ width: `${clampedProgress}%` }}
-                />
-              )}
-            </div>
+            {!failed && (
+              <div className="h-1.5 overflow-hidden rounded-full bg-background/82 dark:bg-background/70">
+                {isIndeterminate ? (
+                  <div className="h-full w-1/3 rounded-full bg-primary/90 animate-pulse" />
+                ) : (
+                  <div
+                    className="h-full rounded-full bg-primary shadow-[0_0_18px_color-mix(in_oklab,var(--color-primary)_45%,transparent)] transition-[width] duration-300 ease-out"
+                    style={{ width: `${clampedProgress}%` }}
+                  />
+                )}
+              </div>
+            )}
 
             <div className="flex items-center gap-3 rounded-2xl border border-border/65 bg-background/78 px-4 py-3 backdrop-blur-sm dark:border-border/60 dark:bg-background/58 dark:backdrop-blur-md">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              {failed ? (
+                <TriangleAlert className="h-4 w-4 shrink-0 text-destructive" />
+              ) : (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              )}
               <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                <p className="min-w-0 text-sm text-foreground/90">
+                <p
+                  className={cn(
+                    "min-w-0 text-sm text-foreground/90",
+                    failed && "break-words text-destructive",
+                  )}
+                >
                   {detailText}
                 </p>
-                {clampedProgress !== null && (
+                {!failed && clampedProgress !== null && (
                   <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
                     {Math.round(clampedProgress)}%
                   </span>
