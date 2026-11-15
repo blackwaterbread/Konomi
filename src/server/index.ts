@@ -97,7 +97,7 @@ async function main() {
   registerImageFileRoutes(app);
 
   // ── SPA static files ─────────────────────
-  const webDistDir = path.join(repoRoot, "src", "web", "dist");
+  const webDistDir = path.join(repoRoot, "out", "web");
   await app.register(fastifyStatic, {
     root: webDistDir,
     wildcard: false,

@@ -25,6 +25,7 @@ files:
   - '!prisma.config.ts'
   - '!prisma/schema/sqlite.prisma'
   - '!out/*.db'
+  - '!out/web/**'
   - '!resources/**'
   - '!node_modules/better-sqlite3/deps/**'
   - '!node_modules/better-sqlite3/src/**'

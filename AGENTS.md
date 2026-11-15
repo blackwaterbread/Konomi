@@ -21,7 +21,7 @@ bun run test:server    # Vitest server suite
 bun run dev:server   # Web server with --watch (bun)
 bun run dev:web      # Vite dev server for the web frontend
 bun run dev:web:all  # dev:server + dev:web together
-bun run build:web    # Build the web frontend (out/web; Docker copies it to src/web/dist)
+bun run build:web    # Build the web frontend into out/web (served by the web server)
 bun run db:generate:server  # Regenerate the MariaDB Prisma client
 bun run db:migrate:server   # Prisma migrate dev against MariaDB
 bun run db:push:server      # Prisma db push against MariaDB
@@ -533,7 +533,7 @@ Considered and not adopted:
 - Reuses `@konomi/core` services directly — same business logic as Electron utility process
 - DB: MariaDB/MySQL via `@prisma/adapter-mariadb` (not SQLite)
 - Push events delivered via WebSocket (`{ event, data }` JSON frames) instead of Electron IPC
-- Serves the web SPA from `src/web/dist` with an `index.html` fallback (`src/server/index.ts`). `bun run build:web` writes `out/web`; the Docker image copies it to `src/web/dist`. Outside Docker, use `bun run dev:web` (Vite on port 5174, proxying `/api` and `/ws` to port 3000) or copy `out/web` to `src/web/dist`
+- Serves the web SPA from `<repoRoot>/out/web` (the `bun run build:web` output; `repoRoot` is resolved from `src/server/index.ts`, not the cwd) with an `index.html` fallback for every unmatched request, unknown `/api/*` paths included. `@fastify/static` runs with `wildcard: false`, so its file routes are fixed at startup: restart the server after re-running `build:web`. The Docker image copies the build to the same path (`/app/out/web`); `src/app/electron-builder.yml` excludes `out/web/**` from the Electron installer. During development, `bun run dev:web` (Vite on port 5174) proxies `/api` and `/ws` to `localhost:3000`
 
 ### Key Files
 - `src/server/index.ts` — server entry, Fastify setup, WebSocket hub, route registration

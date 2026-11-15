@@ -127,7 +127,7 @@ WORKDIR /app
 COPY --from=builder /build/package.json ./
 COPY --from=builder /build/src/core/ ./src/core/
 COPY --from=builder /build/src/server/ ./src/server/
-COPY --from=builder /build/out/web/ ./src/web/dist/
+COPY --from=builder /build/out/web/ ./out/web/
 COPY --from=builder /build/src/web/package.json ./src/web/
 COPY --from=builder /build/src/app/package.json ./src/app/
 COPY --from=builder /build/prebuilds/ ./prebuilds/
