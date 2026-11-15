@@ -34,10 +34,10 @@ export type {
   NaiSubscriptionInfo,
   GenerateParams,
   AppInfo,
-} from "../../web/src/api/data-types";
+} from "../../web/api/data-types";
 
 /** @deprecated Use ImageMeta instead */
-export type { ImageMeta as NovelAIMeta } from "../../web/src/api/data-types";
+export type { ImageMeta as NovelAIMeta } from "../../web/api/data-types";
 
 // Re-export API interface types for Window declaration
 export type {
@@ -50,7 +50,7 @@ export type {
   CategoryApi,
   NaiApi,
   PromptBuilderApi,
-} from "../../web/src/api/types";
+} from "../../web/api/types";
 
 declare global {
   interface Window {
