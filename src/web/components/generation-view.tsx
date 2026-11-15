@@ -66,6 +66,7 @@ import novelAiLogomarkDark from "@/assets/images/novelai_logomark_dark.png";
 
 import { cn } from "@/lib/utils";
 import { imageUrl } from "@/lib/image-utils";
+import { resolveWildcardsInString } from "@/lib/token";
 import type {
   NaiConfig,
   GenerateParams,
@@ -769,13 +770,48 @@ function expandGroupRefsFromCategories(
         .flatMap((category) => category.groups)
         .find((groupItem) => groupItem.name === name);
       if (!group || group.tokens.length === 0) return "";
-      return applyWeightToTags(
-        group.tokens.map((token) => token.label),
-        weight,
-        expression,
+      return resolveWildcardsInString(
+        applyWeightToTags(
+          group.tokens.map((token) => token.label),
+          weight,
+          expression,
+        ),
       );
     },
   );
+}
+
+// Picks the template's wildcards before expanding group refs, so an option
+// can be a group ref and an inline override can hold a wildcard; each group's
+// own expansion gets a wildcard pass. The expanded text is never re-scanned,
+// so a literal `%` that ends up before a `{` stays literal.
+function resolveGenerationPrompts(current: {
+  prompt: string;
+  negativePrompt: string;
+  characterPrompts: CharacterPromptInput[];
+  categories: PromptCategory[];
+}) {
+  const resolve = (text: string) =>
+    expandGroupRefsFromCategories(
+      resolveWildcardsInString(text),
+      current.categories,
+    );
+  // Filtered on the resolved text: one that resolves to "" must not be sent,
+  // or the positions after it would shift.
+  const characters = current.characterPrompts
+    .map((c) => ({
+      prompt: resolve(c.prompt.trim()),
+      negativePrompt: resolve(c.negativePrompt.trim()),
+      position: c.position,
+    }))
+    .filter((c) => c.prompt.trim());
+  return {
+    prompt: resolve(current.prompt),
+    negativePrompt: resolve(current.negativePrompt),
+    characterPrompts: characters.map((c) => c.prompt),
+    characterNegativePrompts: characters.map((c) => c.negativePrompt),
+    characterPositions: characters.map((c) => c.position),
+  };
 }
 
 function RecentThumb({
@@ -5041,23 +5077,17 @@ export const GenerationView = memo(
     );
 
     const buildGenerateParamsKey = useCallback(
-      (current: typeof latestViewStateRef.current, resolvedSeed?: number) => {
-        const expandGroupRefs = (text: string) =>
-          expandGroupRefsFromCategories(text, current.categories);
-        const validCharacterPrompts = current.characterPrompts.filter((c) =>
-          c.prompt.trim(),
-        );
-
+      (
+        current: typeof latestViewStateRef.current,
+        prompts: ReturnType<typeof resolveGenerationPrompts>,
+        resolvedSeed?: number,
+      ) => {
         return JSON.stringify({
-          prompt: expandGroupRefs(current.prompt),
-          negativePrompt: expandGroupRefs(current.negativePrompt),
-          characterPrompts: validCharacterPrompts.map((c) =>
-            expandGroupRefs(c.prompt.trim()),
-          ),
-          characterNegativePrompts: validCharacterPrompts.map((c) =>
-            expandGroupRefs(c.negativePrompt.trim()),
-          ),
-          characterPositions: validCharacterPrompts.map((c) => c.position),
+          prompt: prompts.prompt,
+          negativePrompt: prompts.negativePrompt,
+          characterPrompts: prompts.characterPrompts,
+          characterNegativePrompts: prompts.characterNegativePrompts,
+          characterPositions: prompts.characterPositions,
           model: current.model,
           width: current.width,
           height: current.height,
@@ -5089,13 +5119,9 @@ export const GenerationView = memo(
         const current = latestViewStateRef.current;
         if (!current.prompt.trim()) return;
 
-        const expandGroupRefs = (text: string) =>
-          expandGroupRefsFromCategories(text, current.categories);
         const seed = resolveSeedForGeneration(current.seedInput);
-        const validCharacterPrompts = current.characterPrompts.filter((c) =>
-          c.prompt.trim(),
-        );
-        const paramsKey = buildGenerateParamsKey(current, seed);
+        const prompts = resolveGenerationPrompts(current);
+        const paramsKey = buildGenerateParamsKey(current, prompts, seed);
         if (!skipDuplicateCheck && paramsKey === lastParamsKeyRef.current) {
           setDupAlert(true);
           return;
@@ -5106,16 +5132,12 @@ export const GenerationView = memo(
         setError(null);
         try {
           const params: GenerateParams = {
-            prompt: expandGroupRefs(current.prompt),
-            negativePrompt: expandGroupRefs(current.negativePrompt),
-            ...(validCharacterPrompts.length > 0 && {
-              characterPrompts: validCharacterPrompts.map((c) =>
-                expandGroupRefs(c.prompt.trim()),
-              ),
-              characterNegativePrompts: validCharacterPrompts.map((c) =>
-                expandGroupRefs(c.negativePrompt.trim()),
-              ),
-              characterPositions: validCharacterPrompts.map((c) => c.position),
+            prompt: prompts.prompt,
+            negativePrompt: prompts.negativePrompt,
+            ...(prompts.characterPrompts.length > 0 && {
+              characterPrompts: prompts.characterPrompts,
+              characterNegativePrompts: prompts.characterNegativePrompts,
+              characterPositions: prompts.characterPositions,
             }),
             outputFolder: current.outputFolder,
             model: current.model,
@@ -5178,6 +5200,7 @@ export const GenerationView = memo(
               if (lastParamsKeyRef.current === paramsKey) {
                 lastParamsKeyRef.current = buildGenerateParamsKey(
                   current,
+                  prompts,
                   metaSeed.value,
                 );
               }
@@ -5212,8 +5235,6 @@ export const GenerationView = memo(
       if (!current.prompt.trim() || !current.apiKey || !current.outputFolder)
         return;
 
-      const expandGroupRefs = (text: string) =>
-        expandGroupRefsFromCategories(text, current.categories);
       const cancelToken = { cancelled: false };
       autoCancelRef.current = cancelToken;
       const fixedSeed =
@@ -5234,9 +5255,7 @@ export const GenerationView = memo(
 
         const overrideSeed = useRandomSeed ? createRandomSeed() : fixedSeed;
 
-        const validCharacterPrompts = current.characterPrompts.filter((c) =>
-          c.prompt.trim(),
-        );
+        const prompts = resolveGenerationPrompts(current);
 
         setAutoGenProgress({
           current: i + 1,
@@ -5248,16 +5267,12 @@ export const GenerationView = memo(
 
         try {
           const params: GenerateParams = {
-            prompt: expandGroupRefs(current.prompt),
-            negativePrompt: expandGroupRefs(current.negativePrompt),
-            ...(validCharacterPrompts.length > 0 && {
-              characterPrompts: validCharacterPrompts.map((c) =>
-                expandGroupRefs(c.prompt.trim()),
-              ),
-              characterNegativePrompts: validCharacterPrompts.map((c) =>
-                expandGroupRefs(c.negativePrompt.trim()),
-              ),
-              characterPositions: validCharacterPrompts.map((c) => c.position),
+            prompt: prompts.prompt,
+            negativePrompt: prompts.negativePrompt,
+            ...(prompts.characterPrompts.length > 0 && {
+              characterPrompts: prompts.characterPrompts,
+              characterNegativePrompts: prompts.characterNegativePrompts,
+              characterPositions: prompts.characterPositions,
             }),
             outputFolder: current.outputFolder,
             model: current.model,

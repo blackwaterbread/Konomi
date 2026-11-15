@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { parsePromptTokens, tokenToRawString } from "@/lib/token";
+import { describe, expect, it, vi } from "vitest";
+import {
+  parsePromptTokens,
+  resolveWildcardsInString,
+  tokenToRawString,
+} from "@/lib/token";
 
 describe("parsePromptTokens raw fidelity", () => {
   it("keeps the author's spacing and weight literal inside a weight block", () => {
@@ -40,5 +44,12 @@ describe("tokenToRawString", () => {
       "2.05::sometag::",
     );
     expect(tokenToRawString({ text: "sometag", weight: 1 })).toBe("sometag");
+  });
+});
+
+describe("resolveWildcardsInString", () => {
+  it("resolves a wildcard nested in the picked option", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    expect(resolveWildcardsInString("%{a|%{b|c}}, d")).toBe("c, d");
   });
 });

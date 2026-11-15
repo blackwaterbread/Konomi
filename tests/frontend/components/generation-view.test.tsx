@@ -693,6 +693,239 @@ describe("GenerationView", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("resolves wildcards in every prompt field and keeps the template as the last params", async () => {
+    const user = userEvent.setup();
+    const template = {
+      prompt: "1girl, %{red|blue} hair, @{time}, @{mood:calm|%{happy|sad}}",
+      negativePrompt: "%{lowres|blurry}",
+      aiChoice: true,
+      seedInput: "",
+      characterPrompts: [
+        {
+          prompt: "%{smile|frown}",
+          negativePrompt: "%{bad hands|extra digits}",
+          inputMode: "prompt",
+          position: "global",
+        },
+      ],
+    };
+    localStorage.setItem("konomi-last-gen-params", JSON.stringify(template));
+    preloadMocks.promptBuilder.listCategories.mockResolvedValue([
+      {
+        id: 1,
+        name: "Scene",
+        isBuiltin: false,
+        order: 0,
+        groups: [
+          {
+            id: 1,
+            name: "time",
+            categoryId: 1,
+            order: 0,
+            tokens: [
+              { id: 1, label: "%{day", order: 0, groupId: 1 },
+              { id: 2, label: "sunny|night}", order: 1, groupId: 1 },
+            ],
+          },
+        ],
+      },
+    ]);
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue(null);
+
+    renderGenerationView();
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(preloadMocks.nai.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "1girl, blue hair, night, calm, sad",
+          negativePrompt: "blurry",
+          characterPrompts: ["frown"],
+          characterNegativePrompts: ["extra digits"],
+        }),
+      ),
+    );
+    expect(
+      JSON.parse(localStorage.getItem("konomi-last-gen-params") ?? "{}"),
+    ).toMatchObject({
+      prompt: template.prompt,
+      negativePrompt: template.negativePrompt,
+      characterPrompts: [
+        expect.objectContaining({
+          prompt: "%{smile|frown}",
+          negativePrompt: "%{bad hands|extra digits}",
+        }),
+      ],
+    });
+  });
+
+  it("sends a literal % unchanged when group expansion puts it before a brace", async () => {
+    const user = userEvent.setup();
+    preloadMocks.promptBuilder.listCategories.mockResolvedValue([
+      {
+        id: 1,
+        name: "Quality",
+        isBuiltin: false,
+        order: 0,
+        groups: [
+          {
+            id: 1,
+            name: "brace",
+            categoryId: 1,
+            order: 0,
+            tokens: [{ id: 1, label: "{best}", order: 0, groupId: 1 }],
+          },
+        ],
+      },
+    ]);
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue(null);
+
+    renderGenerationView();
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    fireEvent.change(
+      screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+      {
+        target: { value: "%@{brace}, %@{brace#1.1k}" },
+      },
+    );
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(preloadMocks.nai.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "%{best}, %{{{best}}}" }),
+      ),
+    );
+  });
+
+  it("drops a character whose prompt resolves to nothing without shifting the next one", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "konomi-last-gen-params",
+      JSON.stringify({
+        prompt: "1girl",
+        negativePrompt: "",
+        aiChoice: true,
+        seedInput: "",
+        characterPrompts: [
+          {
+            prompt: "%{|}",
+            negativePrompt: "first negative",
+            inputMode: "prompt",
+            position: "E5",
+          },
+          {
+            prompt: "second",
+            negativePrompt: "second negative",
+            inputMode: "prompt",
+            position: "global",
+          },
+        ],
+      }),
+    );
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue(null);
+
+    renderGenerationView();
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(preloadMocks.nai.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characterPrompts: ["second"],
+          characterNegativePrompts: ["second negative"],
+          characterPositions: ["global"],
+        }),
+      ),
+    );
+  });
+
+  it("treats a resubmitted wildcard template as a duplicate only when the resolved request repeats", async () => {
+    const user = userEvent.setup();
+
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue({
+      source: "nai",
+      prompt: "1girl, red hair",
+      negativePrompt: "",
+      characterPrompts: [],
+      characterNegativePrompts: [],
+      characterPositions: [],
+      seed: "12345",
+      model: "nai-diffusion-4-5-full",
+      sampler: "k_euler_ancestral",
+      steps: 28,
+      cfgScale: 5,
+      cfgRescale: 0,
+      noiseSchedule: "karras",
+      varietyPlus: false,
+      width: 832,
+      height: 1216,
+      raw: {},
+    });
+
+    renderGenerationView();
+
+    fireEvent.change(
+      screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+      {
+        target: { value: "1girl, %{red|blue} hair" },
+      },
+    );
+
+    const seedInput = screen.getByPlaceholderText("-");
+    fireEvent.focus(seedInput);
+    fireEvent.change(seedInput, { target: { value: "12345" } });
+    fireEvent.blur(seedInput);
+
+    // Any extra pick (e.g. re-resolving when the key is rebuilt with the
+    // result's seed) falls back to "blue".
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    random.mockReturnValueOnce(0);
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(
+      await screen.findByRole("button", { name: "12345" }),
+    ).toBeInTheDocument();
+    expect(preloadMocks.nai.generate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ prompt: "1girl, red hair", seed: 12345 }),
+    );
+
+    random.mockReturnValueOnce(0);
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(
+      await screen.findByText("This configuration was already generated"),
+    ).toBeInTheDocument();
+    expect(preloadMocks.nai.generate).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(preloadMocks.nai.generate).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ prompt: "1girl, blue hair", seed: 12345 }),
+      ),
+    );
+    expect(
+      screen.queryByText("This configuration was already generated"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps auto-generate locked until the warning is acknowledged", async () => {
     const user = userEvent.setup();
 
@@ -922,6 +1155,70 @@ describe("GenerationView", () => {
           prompt: "fixed seed loop",
           seed: 12345,
         }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resolves wildcards independently for each auto-generate shot", async () => {
+    vi.useFakeTimers();
+
+    localStorage.setItem("konomi-auto-gen-policy-agreed", "true");
+    preloadMocks.nai.generate
+      .mockResolvedValueOnce("C:/output/generated-1.png")
+      .mockResolvedValueOnce("C:/output/generated-2.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue(null);
+
+    try {
+      renderGenerationView();
+
+      await act(async () => {
+        await flushMicrotasks();
+      });
+
+      fireEvent.change(
+        screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+        {
+          target: { value: "1girl, %{red|blue} hair" },
+        },
+      );
+
+      fireEvent.click(getAutoGenToggleButton());
+
+      const [countSlider] = screen.getAllByRole("slider");
+      fireEvent.change(countSlider, { target: { value: "2" } });
+      fireEvent.pointerUp(countSlider);
+
+      fireEvent.click(screen.getByRole("button", { name: "Fixed" }));
+
+      const seedInput = screen.getByPlaceholderText("-");
+      fireEvent.focus(seedInput);
+      fireEvent.change(seedInput, { target: { value: "12345" } });
+      fireEvent.blur(seedInput);
+
+      const random = vi.spyOn(Math, "random").mockReturnValue(0);
+      fireEvent.click(screen.getByTitle("Auto Generate"));
+
+      await act(async () => {
+        await flushMicrotasks();
+      });
+
+      expect(preloadMocks.nai.generate).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ prompt: "1girl, red hair" }),
+      );
+
+      random.mockReturnValue(0.99);
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+        await flushMicrotasks();
+      });
+
+      expect(preloadMocks.nai.generate).toHaveBeenCalledTimes(2);
+      expect(preloadMocks.nai.generate).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ prompt: "1girl, blue hair" }),
       );
     } finally {
       vi.useRealTimers();

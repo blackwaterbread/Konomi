@@ -342,7 +342,7 @@ Considered and not adopted:
 - `"생성 모드로 보내기"` imports `characterPositions` alongside character prompts
 
 ## Generation UX
-- **Duplicate generation block**: `lastParamsKeyRef` stores JSON of last submitted params; if same params re-submitted without `force`, shows `dupAlert` modal with "취소" / "그래도 생성" buttons
+- **Duplicate generation block**: `lastParamsKeyRef` stores JSON of last submitted params; if same params re-submitted without `force`, shows `dupAlert` modal with "취소" / "그래도 생성" buttons; the key holds the prompts as sent (wildcards picked, groups expanded)
 - **Recent image drag import**: `RecentThumb` is draggable via `text/x-konomi-path` dataTransfer; drop zone in generation-view handles `"path"` kind `DropItem` → reads metadata via `window.image.readNaiMeta`
 - `DropItem` type has three variants: `"file"`, `"image"`, `"path"`
 - **Seed control**: `seedMode: "random" | "fixed"` + `seedInput` state; seed button on result image shows copy/import dropdown
@@ -450,8 +450,9 @@ Considered and not adopted:
   - Context menu (readonly): "검색어에 태그 추가" / "생성모드에 태그 추가" via custom event
 - **WildcardChip** (`wildcard-chip.tsx`) — wildcard token editor; `%{opt1|opt2}` syntax
   - `WildcardToken = { kind: "wildcard", options: string[] }` in `src/web/lib/token.ts`
-  - Popover lists options as read-only rows, each with a delete button, plus an add-option input; the chip shows a static `Dices` icon and an options preview (or `token.resolved` when set)
-  - Sortable via dnd-kit. `resolveWildcardsInString(prompt)` in `src/web/lib/token.ts` would pick a random option per `%{...}`, but nothing in `src/` calls it: generation expands only `@{...}` group refs (`expandGroupRefsFromCategories`), so `%{...}` is not expanded before the request
+  - Popover lists options as read-only rows (delete button each) plus an add-option input; the chip shows a static `Dices` icon and the options preview (`token.resolved` would replace it, but nothing sets it)
+  - Sortable via dnd-kit. `resolveWildcardsInString` picks one random option per `%{...}` (split on `|` at brace depth 0, trimmed, empties dropped; the pick is resolved again; an unclosed `%{` stays literal)
+  - `generation-view.tsx` `resolveGenerationPrompts` runs on every Generate click and auto-generate shot: the template's wildcards first, then `@{...}` expansion, where each group's own expansion gets a wildcard pass; the expanded text is never re-scanned, so a literal `%` before `{` stays literal. A character whose prompt resolves to blank is dropped with its negative and position (core `nai-gen-service` would drop it but index `characterPositions` by the kept ones). `konomi-last-gen-params` keeps the template
 - **TokenContainer** — wraps chips with dnd-kit drag-and-drop reorder + multi-token clipboard copy
   - Copy clipboard: extracts `data-token-raw` from selection-intersecting chips, joins with `, `
 - **PromptInput** — raw-first prompt editor with optional Block mode chip editing

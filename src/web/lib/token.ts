@@ -307,7 +307,9 @@ export function resolveWildcardsInString(prompt: string): string {
       if (depth === 0) {
         const inner = prompt.slice(i + 2, j - 1);
         const opts = splitOptionsByPipe(inner);
-        result += opts[Math.floor(Math.random() * opts.length)] ?? "";
+        result += resolveWildcardsInString(
+          opts[Math.floor(Math.random() * opts.length)] ?? "",
+        );
         i = j;
       } else {
         result += prompt[i++];
