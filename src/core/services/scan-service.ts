@@ -635,7 +635,8 @@ export function createScanService(deps: ScanServiceDeps) {
     };
 
     const processFile = async (filePath: string): Promise<void> => {
-      discoveredPathSet.add(normalizePathKey(filePath));
+      const pathKey = normalizePathKey(filePath);
+      discoveredPathSet.add(pathKey);
       try {
         // Recheck the snapshot path before skipping or parsing it: a file may
         // have disappeared or changed while candidate hashes were calculated.
@@ -644,16 +645,16 @@ export function createScanService(deps: ScanServiceDeps) {
           stat = await fs.promises.stat(filePath);
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-            discoveredPathSet.delete(normalizePathKey(filePath));
+            discoveredPathSet.delete(pathKey);
           }
           return;
         }
-        if (duplicateIncomingPaths.has(normalizePathKey(filePath))) return;
+        if (duplicateIncomingPaths.has(pathKey)) return;
         if (deps.ignoredDuplicates) {
           if (await deps.ignoredDuplicates.isIgnored(filePath)) return;
         }
 
-        const existingRow = existingMap.get(normalizePathKey(filePath));
+        const existingRow = existingMap.get(pathKey);
         if (
           existingRow &&
           existingRow.fileModifiedAt.getTime() === stat.mtime.getTime()
