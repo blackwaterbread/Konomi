@@ -65,7 +65,7 @@ export { decodeWebpAlpha, decodeWebpRgb, resizeWebp } from "./lib/webp-alpha";
 export type { WebpResizeResult } from "./lib/webp-alpha";
 
 // File scanner
-export { walkImageFiles, scanImageFiles, countImageFiles, verifyImageFolder, withConcurrency } from "./lib/scanner";
+export { walkImageFiles, scanImageFiles, countImageFiles, withConcurrency } from "./lib/scanner";
 export type { CancelToken } from "./lib/scanner";
 
 // Logger
