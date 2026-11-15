@@ -246,6 +246,12 @@ function useHeaderProgress({
   isAnalyzing?: boolean;
 }) {
   const [scanProgress, setScanProgress] = useState<ProgressData | null>(null);
+  // Files processed once `done` has reached the total. The total starts from
+  // the count stored at the last scan, so a folder that has grown since keeps
+  // `done === total` from there on and has no denominator worth showing.
+  const [scanProcessedCount, setScanProcessedCount] = useState<number | null>(
+    null,
+  );
   const [scanPhase, setScanPhase] = useState<string | null>(null);
   const [scanningFolderNames, setScanningFolderNames] = useState<
     Map<number, string>
@@ -315,6 +321,7 @@ function useHeaderProgress({
       if (!scanningRef.current) return;
       const finished = data.done >= data.total;
       setScanProgress(finished ? null : data);
+      setScanProcessedCount(finished && data.done > 0 ? data.done : null);
       trackEta("scan", finished ? null : data);
     });
     const offScanPhase = window.image.onScanPhase(({ phase }) => {
@@ -362,6 +369,7 @@ function useHeaderProgress({
     });
     const offUtilityReset = window.appInfo.onUtilityReset(() => {
       setScanProgress(null);
+      setScanProcessedCount(null);
       setHashProgress(null);
       setSimilarityProgress(null);
       setSearchStatsProgress(null);
@@ -388,6 +396,7 @@ function useHeaderProgress({
   useEffect(() => {
     if (!scanning) {
       setScanProgress(null);
+      setScanProcessedCount(null);
       setScanPhase(null);
       setScanningFolderNames(new Map());
       trackEta("scan", null);
@@ -405,6 +414,7 @@ function useHeaderProgress({
 
   return {
     scanProgress,
+    scanProcessedCount,
     scanPhase,
     scanningFolderNames,
     hashProgress,
@@ -431,6 +441,7 @@ export const Header = memo(function Header({
   const { t } = useTranslation();
   const {
     scanProgress,
+    scanProcessedCount,
     scanPhase,
     scanningFolderNames,
     hashProgress,
@@ -537,6 +548,18 @@ export const Header = memo(function Header({
         }) + eta("searchStats")
       );
     }
+    if (scanProcessedCount != null) {
+      const names =
+        scanningFolderNames && scanningFolderNames.size > 0
+          ? Array.from(scanningFolderNames.values()).join(", ")
+          : null;
+      return names
+        ? t("header.progress.scanFoldersCount", {
+            names,
+            done: scanProcessedCount,
+          })
+        : t("header.progress.scanImagesCount", { done: scanProcessedCount });
+    }
     if (scanPhase) return t(`header.progress.phase.${scanPhase}`);
     return t("header.progress.working");
   }, [
@@ -544,6 +567,7 @@ export const Header = memo(function Header({
     cancelling,
     checkingDuplicates,
     scanProgress,
+    scanProcessedCount,
     scanningFolderNames,
     hasRescanProgress,
     rescanProgress,
@@ -604,10 +628,16 @@ export const Header = memo(function Header({
                 aria-label={statusText}
               >
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                {activeProgress && activeProgress.total > 0 && (
+                {activeProgress && activeProgress.total > 0 ? (
                   <span className="tabular-nums select-none">
                     {activeProgress.done}/{activeProgress.total}
                   </span>
+                ) : (
+                  scanProcessedCount != null && (
+                    <span className="tabular-nums select-none">
+                      {scanProcessedCount}
+                    </span>
+                  )
                 )}
               </button>
               {onCancelScan && (

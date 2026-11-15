@@ -88,6 +88,8 @@ const en = {
       checkingDuplicates: "Checking for duplicates...",
       scanFolders: "Scanning {{names}} {{done}}/{{total}}",
       scanImages: "Scanning images {{done}}/{{total}}",
+      scanFoldersCount: "Scanning {{names}} {{done}}",
+      scanImagesCount: "Scanning images {{done}}",
       rescan: "Rescanning metadata {{done}}/{{total}}",
       hashes: "Computing hashes {{done}}/{{total}}",
       similarity: "Computing similarity...",

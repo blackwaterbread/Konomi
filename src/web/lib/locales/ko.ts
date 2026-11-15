@@ -87,6 +87,8 @@ const ko = {
       checkingDuplicates: "중복 파일 확인 중...",
       scanFolders: "{{names}} 스캔 {{done}}/{{total}}",
       scanImages: "이미지 스캔 {{done}}/{{total}}",
+      scanFoldersCount: "{{names}} 스캔 {{done}}",
+      scanImagesCount: "이미지 스캔 {{done}}",
       rescan: "메타데이터 재스캔 {{done}}/{{total}}",
       hashes: "해시 계산 {{done}}/{{total}}",
       similarity: "유사도 계산 중...",
