@@ -17,7 +17,7 @@ files:
   - '!tmp/**'
   - '!database/**'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,README.dev.md,README.dev.ko.md,README.ko.md,CLAUDE.md,debug.ts}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,README.dev.md,README.dev.ko.md,README.ko.md,CLAUDE.md,AGENTS.md,debug.ts}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!tsconfig.json'
   - '!{docs/**,examples/**,example_datas/**,.claude/**,scripts/**}'

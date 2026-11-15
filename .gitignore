@@ -22,7 +22,6 @@ package-lock.json
 .eslintcache
 *.tsbuildinfo
 .claude
-CLAUDE.md
 docs
 examples
 example_datas
