@@ -1,3 +1,32 @@
+import type {
+  ImageMeta,
+  Folder,
+  FolderStats,
+  FolderDuplicateGroup,
+  FolderDuplicateGroupResolution,
+  ImageRow,
+  ImageBatchRow,
+  ImageListQuery,
+  ImageListResult,
+  ImageSearchPresetStats,
+  ImageTagSuggestQuery,
+  ImageTagSuggestion,
+  SimilarGroup,
+  SimilarityReasonItem,
+  Category,
+  PromptToken,
+  PromptTagSearchQuery,
+  PromptTagSearchResult,
+  PromptTagSuggestQuery,
+  PromptTagSuggestResult,
+  PromptGroup,
+  PromptCategory,
+  NaiConfig,
+  NaiSubscriptionInfo,
+  GenerateParams,
+  AppInfo,
+} from "../../web/api/data-types";
+
 // Re-export shared data types from the web frontend base
 export type {
   ImageMeta,
