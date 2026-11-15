@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   runMigrations: vi.fn(),
   dbReady: vi.fn(),
   disconnectDB: vi.fn(),
+  getDB: vi.fn(),
+  getReadDB: vi.fn(),
+  getRawDB: vi.fn(),
   seedBuiltins: vi.fn(),
   ensureIgnoredLoaded: vi.fn(),
   listFolders: vi.fn(),
@@ -18,11 +21,24 @@ vi.mock("@core/lib/db", () => ({
   runMigrations: mocks.runMigrations,
   dbReady: mocks.dbReady,
   disconnectDB: mocks.disconnectDB,
-  getDB: vi.fn(),
-  getReadDB: vi.fn(),
-  getRawDB: vi.fn(),
+  getDB: mocks.getDB,
+  getReadDB: mocks.getReadDB,
+  getRawDB: mocks.getRawDB,
   getDialect: () => "sqlite",
   insertIgnore: () => "INSERT OR IGNORE INTO",
+}));
+
+// phash.ts builds an eager worker pool on import; real workers would be
+// spawned on every module load here and fail to find their script.
+vi.mock("@core/lib/worker-pool", () => ({
+  WorkerPool: class {
+    run(): Promise<null> {
+      return Promise.resolve(null);
+    }
+    shutdown(): Promise<void> {
+      return Promise.resolve();
+    }
+  },
 }));
 
 vi.mock("@core/services/category-service", () => ({
@@ -85,6 +101,9 @@ describe("utility DB readiness", () => {
 
     expect(mocks.runMigrations).not.toHaveBeenCalled();
     expect(mocks.dbReady).not.toHaveBeenCalled();
+    expect(mocks.getDB).not.toHaveBeenCalled();
+    expect(mocks.getReadDB).not.toHaveBeenCalled();
+    expect(mocks.getRawDB).not.toHaveBeenCalled();
     expect(mocks.seedBuiltins).not.toHaveBeenCalled();
   });
 
