@@ -13,7 +13,11 @@ import {
   readPromptsDBSchemaVersion,
 } from "@core/lib/prompts-db";
 import { bridge } from "./bridge";
-import { isManagedImagePath, registerTransientPath } from "./lib/path-guard";
+import {
+  isManagedImagePath,
+  registerTransientPath,
+  warmManagedRootsCache,
+} from "./lib/path-guard";
 
 async function assertManagedImagePath(filePath: string): Promise<void> {
   if (await isManagedImagePath(filePath)) return;
@@ -165,9 +169,12 @@ export function registerIpcHandlers(): void {
   );
 
   // ── Utility process bridge handlers ────────────────────────────────────────
-  ipcMain.handle("db:runMigrations", () =>
-    bridge.request("db:runMigrations"),
-  );
+  ipcMain.handle("db:runMigrations", async () => {
+    await bridge.request("db:runMigrations");
+    // Not before: its folder:list would apply the migrations without the
+    // progress this request reports.
+    void warmManagedRootsCache();
+  });
   ipcMain.handle("folder:list", () => bridge.request("folder:list"));
   ipcMain.handle("folder:create", (_, name: string, path: string) =>
     bridge.request("folder:create", { name, path }),

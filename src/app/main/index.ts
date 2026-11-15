@@ -11,7 +11,6 @@ import {
   getImageContentType,
   isManagedImagePath,
   isSupportedImagePath,
-  warmManagedRootsCache,
 } from "./lib/path-guard";
 import { PROMPTS_DB_FILENAME } from "@core/lib/prompts-db";
 
@@ -311,9 +310,7 @@ app
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
 
-    return warmManagedRootsCache().finally(() => {
-      createWindow();
-    });
+    createWindow();
   })
   .catch((error) => {
     log.errorWithStack("App startup failed", error);
