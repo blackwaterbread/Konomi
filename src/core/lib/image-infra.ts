@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import os from "os";
 import { getDB, insertIgnore } from "./db";
 import { normalizePathKey } from "./path-key";
 import { WorkerPool } from "@core/lib/worker-pool";
@@ -38,7 +39,7 @@ export type ImageRow = {
 
 // ── Worker pool ───────────────────────────────────────────────
 
-const POOL_SIZE = 4;
+const POOL_SIZE = Math.max(4, Math.min(os.availableParallelism() - 1, 8));
 const WORKER_PATH = path.join(__dirname, "nai.worker.js");
 
 export const naiPool = new WorkerPool<ImageMeta | null | undefined>({
