@@ -65,7 +65,11 @@ describe("ipc db:runMigrations", () => {
 
     const reply = runMigrations();
     await flush();
-    expect(mocks.request).toHaveBeenCalledWith("db:runMigrations");
+    expect(mocks.request).toHaveBeenCalledWith(
+      "db:runMigrations",
+      undefined,
+      0,
+    );
     expect(mocks.warmManagedRootsCache).not.toHaveBeenCalled();
 
     migrations.resolve();

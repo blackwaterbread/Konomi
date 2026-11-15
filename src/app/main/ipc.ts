@@ -170,7 +170,9 @@ export function registerIpcHandlers(): void {
 
   // ── Utility process bridge handlers ────────────────────────────────────────
   ipcMain.handle("db:runMigrations", async () => {
-    await bridge.request("db:runMigrations");
+    // No timeout (0), even with KONOMI_BRIDGE_TIMEOUT_MS: the migrations run
+    // after the ack, and failing the request would not stop them.
+    await bridge.request("db:runMigrations", undefined, 0);
     // Not before: its folder:list would apply the migrations without the
     // progress this request reports.
     void warmManagedRootsCache();
