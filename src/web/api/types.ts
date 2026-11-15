@@ -16,6 +16,7 @@ import type {
   FolderDuplicateGroup,
   FolderDuplicateGroupResolution,
   ImageRow,
+  ImageBatchRow,
   ImageListQuery,
   ImageListResult,
   ImageSearchPresetStats,
@@ -137,7 +138,7 @@ export interface ImageApi {
   cancelScan(): Promise<void>;
 
   // Push event subscriptions
-  onBatch(cb: (images: ImageRow[]) => void): () => void;
+  onBatch(cb: (images: ImageBatchRow[]) => void): () => void;
   onRemoved(cb: (ids: number[]) => void): () => void;
   onWatchDuplicate(cb: (item: FolderDuplicateGroup) => void): () => void;
   onHashProgress(cb: ProgressCallback): () => void;

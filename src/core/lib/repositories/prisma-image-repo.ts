@@ -82,6 +82,9 @@ const IMAGE_UPSERT_COLUMNS = Object.keys(IMAGE_UPSERT_FIELDS) as Array<
   keyof ImageUpsertData
 >;
 const UPSERT_CHUNK_SIZE = 32; // 672 parameters, below SQLite's legacy 999 limit.
+// Enough to push each written row and tell it new from updated; the caller
+// already holds every column it wrote.
+type ImageUpsertResult = Pick<ImageEntity, "id" | "path" | "folderId">;
 
 type NormalizedQuery = {
   page: number;
@@ -601,7 +604,7 @@ export function createPrismaImageRepo(
       });
     },
 
-    async upsertBatch(rows: ImageUpsertData[]): Promise<ImageEntity[]> {
+    async upsertBatch(rows: ImageUpsertData[]): Promise<ImageUpsertResult[]> {
       if (rows.length === 0) return [];
       const db = write();
       const mysql = getDialect() === "mysql";
@@ -622,7 +625,7 @@ export function createPrismaImageRepo(
       // separate WAL reader cannot return the pre-upsert snapshot.
       const results = (await db.$transaction(
         async (tx) => {
-          const out: ImageEntity[] = [];
+          const out: ImageUpsertResult[] = [];
           for (
             let offset = 0;
             offset < rows.length;
@@ -635,9 +638,10 @@ export function createPrismaImageRepo(
                 IMAGE_UPSERT_COLUMNS.map((key) => row[key]),
               ),
             );
-            const saved = (await tx.image.findMany({
+            const saved = await tx.image.findMany({
               where: { path: { in: chunk.map((row) => row.path) } },
-            })) as ImageEntity[];
+              select: { id: true, path: true, folderId: true },
+            });
             const byPath = new Map(saved.map((row) => [row.path, row]));
             if (mysql) {
               // Match with the DB's collation, not JS lowercasing: MariaDB may
@@ -670,8 +674,8 @@ export function createPrismaImageRepo(
           return out;
         },
         { timeout: 60_000, maxWait: 10_000 },
-      )) as unknown as ImageEntity[];
-      return results.map(normalizeImageEntity);
+      )) as unknown as ImageUpsertResult[];
+      return results;
     },
 
     async upsertByPath(data: ImageUpsertData): Promise<ImageEntity> {

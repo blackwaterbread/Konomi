@@ -92,22 +92,38 @@ describe("bulk image upserts", () => {
   });
 
   it("round-trips metadata across chunks in input order and reads its own writes", async () => {
-    const { repo, row } = await setup();
+    const { db, repo, row } = await setup();
     const input = Array.from({ length: 70 }, (_, i) => row(70 - i));
     const result = await repo.upsertBatch(input);
     expect(result).toHaveLength(input.length);
-    result.forEach((saved, index) => {
-      expect(saved).toMatchObject(input[index]);
-      expect(saved.createdAt).toBeInstanceOf(Date);
-      expect(saved.isFavorite).toBe(false);
-      expect(saved.pHash).toBe("");
-    });
     expect(new Set(result.map((saved) => saved.id)).size).toBe(70);
+    const stored = new Map(
+      (
+        await db.image.findMany({
+          where: { id: { in: result.map((saved) => saved.id) } },
+        })
+      ).map((image) => [image.id, image]),
+    );
+    result.forEach((saved, index) => {
+      expect(saved).toEqual({
+        id: saved.id,
+        path: input[index].path,
+        folderId: input[index].folderId,
+      });
+      const image = stored.get(saved.id)!;
+      expect(image).toMatchObject(input[index]);
+      expect(image.createdAt).toBeInstanceOf(Date);
+      expect(image.isFavorite).toBe(false);
+      expect(image.pHash).toBe("");
+    });
   });
 
   it("updates metadata while preserving identity, favorites, hashes and categories", async () => {
     const { db, repo, row } = await setup();
     const [before] = await repo.upsertBatch([row(1)]);
+    const { createdAt } = await db.image.findUniqueOrThrow({
+      where: { id: before.id },
+    });
     await db.image.update({
       where: { id: before.id },
       data: { isFavorite: true, pHash: "hash" },
@@ -125,10 +141,12 @@ describe("bulk image upserts", () => {
       fileModifiedAt: new Date("2026-09-14T12:34:56.789Z"),
     };
     const [after, added] = await repo.upsertBatch([update, row(2)]);
-    expect(after).toMatchObject({
+    expect(after.id).toBe(before.id);
+    expect(
+      await db.image.findUniqueOrThrow({ where: { id: after.id } }),
+    ).toMatchObject({
       ...update,
-      id: before.id,
-      createdAt: before.createdAt,
+      createdAt,
       isFavorite: true,
       pHash: "hash",
     });
@@ -140,14 +158,15 @@ describe("bulk image upserts", () => {
 
   it("rolls back earlier chunks when a later foreign key fails", async () => {
     const { db, repo, row } = await setup();
-    const [before] = await repo.upsertBatch([row(0)]);
+    await repo.upsertBatch([row(0)]);
+    const before = await db.image.findMany();
     const input = Array.from({ length: 40 }, (_, i) => ({
       ...row(i),
       prompt: "changed",
     }));
     input[39].folderId = -1;
     await expect(repo.upsertBatch(input)).rejects.toThrow();
-    expect(await db.image.findMany()).toEqual([before]);
+    expect(await db.image.findMany()).toEqual(before);
   });
 
   it("performs one bulk write for a scan batch instead of per-image upserts", async () => {

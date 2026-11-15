@@ -82,6 +82,15 @@ export type ImageRow = {
   isNew?: boolean;
 };
 
+/**
+ * One row of an `image:batch` push. A scan sends exactly these fields; the
+ * metadata rescan and NAI generation send whole rows, which still fit.
+ */
+export type ImageBatchRow = Pick<
+  ImageRow,
+  "id" | "path" | "folderId" | "isNew"
+>;
+
 export type ImageSortBy = "recent" | "oldest" | "favorites" | "name";
 export type ImageBuiltinCategory = "favorites" | "random";
 

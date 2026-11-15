@@ -8,6 +8,7 @@ export type {
   FolderDuplicateGroup,
   FolderDuplicateGroupResolution,
   ImageRow,
+  ImageBatchRow,
   ImageSortBy,
   ImageBuiltinCategory,
   ImageListQuery,
@@ -118,7 +119,7 @@ declare global {
       setFavorite: (id: number, isFavorite: boolean) => Promise<void>;
       listIgnoredDuplicates: () => Promise<string[]>;
       clearIgnoredDuplicates: () => Promise<number>;
-      onBatch: (cb: (images: ImageRow[]) => void) => () => void;
+      onBatch: (cb: (images: ImageBatchRow[]) => void) => () => void;
       onRemoved: (cb: (ids: number[]) => void) => () => void;
       onWatchDuplicate: (
         cb: (item: FolderDuplicateGroup) => void,

@@ -172,6 +172,42 @@ describe("scanService.scanAll with subPaths", () => {
     });
   });
 
+  it("pushes each written row as id, path, folderId and whether it is new", async () => {
+    const { scanService, events, getDB } = await buildService();
+    const { folder, alpha } = await createLibrary();
+    await scanService.scanAll({ detectDuplicates: false });
+    const changedPath = path.join(alpha, "a1.png");
+    const future = new Date(Date.now() + 10_000);
+    fs.utimesSync(changedPath, future, future);
+    const addedPath = path.join(alpha, "a3.png");
+    writePng(addedPath);
+    events.length = 0;
+
+    await scanService.scanAll({ detectDuplicates: false });
+
+    const ids = new Map(
+      (await getDB().image.findMany()).map((row) => [row.path, row.id]),
+    );
+    const pushed = events
+      .filter((e) => e.channel === "image:batch")
+      .flatMap((e) => e.data as Array<{ path: string }>)
+      .sort((a, b) => a.path.localeCompare(b.path));
+    expect(pushed).toEqual([
+      {
+        id: ids.get(changedPath),
+        path: changedPath,
+        folderId: folder.id,
+        isNew: false,
+      },
+      {
+        id: ids.get(addedPath),
+        path: addedPath,
+        folderId: folder.id,
+        isNew: true,
+      },
+    ]);
+  });
+
   it.each([false, true])(
     "retries failed metadata reads without advancing stored mtime (existing=%s)",
     async (existing) => {

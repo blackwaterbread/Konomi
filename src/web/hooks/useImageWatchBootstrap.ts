@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
-import type { ImageRow } from "@preload/index.d";
+import type { ImageBatchRow } from "@preload/index.d";
 
 interface UseImageEventSubscriptionsOptions {
   scheduleSearchStatsRefresh: (delay?: number) => void;
@@ -134,7 +134,7 @@ export function useImageEventSubscriptions({
   );
 
   useEffect(() => {
-    const offBatch = window.image.onBatch((rows: ImageRow[]) => {
+    const offBatch = window.image.onBatch((rows: ImageBatchRow[]) => {
       if (rows.length === 0) return;
       if (rescanningRef.current) return;
       if (scanningRef.current) {
