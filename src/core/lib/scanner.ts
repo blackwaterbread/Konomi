@@ -8,6 +8,11 @@ export type CancelToken = { cancelled: boolean };
 
 const IMAGE_EXTS = new Set([".png", ".webp"]);
 
+// Directory entries fetched per readdir call (Node's default is 32). Each call
+// is one libuv threadpool round trip, so a large folder costs eight times fewer
+// of them. Only one directory is open per walk, so the buffer stays small.
+const OPENDIR_BUFFER_SIZE = 256;
+
 // OS / NAS / cloud-sync metadata directories. These are created automatically
 // next to user files (Synology's @eaDir contains thumbnails like
 // SYNOPHOTO_THUMB_*.png that would otherwise be picked up as user images and
@@ -76,7 +81,9 @@ export async function* walkImageFiles(
     const currentDir = stack.pop()!;
     let handle: fs.Dir | null = null;
     try {
-      handle = await fs.promises.opendir(currentDir);
+      handle = await fs.promises.opendir(currentDir, {
+        bufferSize: OPENDIR_BUFFER_SIZE,
+      });
       for await (const entry of handle) {
         if (signal?.cancelled) break;
         const fullPath = path.join(currentDir, entry.name);
