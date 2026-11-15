@@ -256,9 +256,11 @@ class UtilityBridge {
     this.log.info("Bound renderer webContents");
   }
 
-  // timeoutMs: per-request override. 0 또는 미지정 시 DEFAULT_REQUEST_TIMEOUT_MS
-  // (기본 0 = 무한). 평소엔 무한이지만 테스트/디버깅 시 유한값을 넘겨 빠르게
-  // 실패하게 만들 수 있음.
+  // timeoutMs: per-request override. 미지정(undefined)이면 requestTimeoutMs
+  // (KONOMI_BRIDGE_TIMEOUT_MS, 기본 0 = 무한), 명시적 0이면 그 값과 무관하게
+  // 이 요청만 무한 대기. `??`라서 0이 기본값으로 바뀌지 않는다 (`||`로 바꾸면
+  // db:runMigrations가 다시 timeout에 걸린다). 양수 override는 ack 전까지만
+  // 적용되고, ack 뒤에는 resetTimeout이 requestTimeoutMs로 다시 건다.
   request<T>(type: string, payload?: unknown, timeoutMs?: number): Promise<T> {
     return new Promise((resolve, reject) => {
       const child = this.child;
