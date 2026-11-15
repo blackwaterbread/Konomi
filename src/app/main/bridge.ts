@@ -143,6 +143,10 @@ class UtilityBridge {
         KONOMI_PREBUILDS_PATH: app.isPackaged
           ? join(process.resourcesPath, "app.asar.unpacked", "prebuilds")
           : join(app.getAppPath(), "prebuilds"),
+        // The scan's fs.stat / opendir calls run on libuv's pool (default 4).
+        // A value already set wins; an empty one counts as unset, since libuv
+        // would read it as a single thread.
+        UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "8",
       },
     });
     this.child = child;
