@@ -15,6 +15,7 @@ import {
   listImageSearchStatSourcesForFolder,
   decrementImageSearchStatsForRows,
   applyImageSearchStatsMutations,
+  applyImageSearchStatDeltas,
 } from "@core/lib/search-stats-store";
 import type { ImageEntity } from "@core/types/repository";
 import type { ImageListQuery } from "@core/types/image-query";
@@ -89,6 +90,7 @@ const promptBuilderService = createPromptBuilderService({ promptRepo });
 const naiGenService = createNaiGenService({ naiConfigRepo });
 const searchStatsAdapter = {
   applyMutations: applyImageSearchStatsMutations,
+  applyDeltas: applyImageSearchStatDeltas,
 };
 const ignoredDuplicatesAdapter = {
   ensureLoaded: ensureIgnoredDuplicatePathsLoaded,

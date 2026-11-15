@@ -10,6 +10,11 @@ import { parsePromptTokens } from "../lib/token";
 import { createLogger } from "../lib/logger";
 import { normalizePathKey } from "../lib/path-key";
 import {
+  accumulateStatMutation,
+  createStatDeltaAccumulator,
+  getAccumulatedStatDeltas,
+} from "../lib/search-stats";
+import {
   buildDuplicateGroupsFromBuckets,
   buildExistingSizeBuckets,
   buildIncomingSizeBuckets,
@@ -23,7 +28,6 @@ import type {
   FolderEntity,
   ImageUpsertData,
   ImageSyncRow,
-  SearchStatMutation,
 } from "../types/repository";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
 import type { FolderRepo } from "../lib/repositories/prisma-folder-repo";
@@ -556,7 +560,9 @@ export function createScanService(deps: ScanServiceDeps) {
     const discoveredPathSet = new Set<string>();
 
     const pending: ImageUpsertData[] = [];
-    const deferredStatMutations: SearchStatMutation[] = [];
+    // Applied once the folder is done, but folded as each batch is written so
+    // the folder's rows are not all held until then.
+    const statDeltas = createStatDeltaAccumulator();
 
     // Keep stat parallelism for unchanged libraries without allowing the same
     // number of expensive metadata reads and writes to run simultaneously.
@@ -590,7 +596,7 @@ export function createScanService(deps: ScanServiceDeps) {
           await imageRepo.findSearchStatSourcesByPaths(batchPaths);
         const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
         for (const row of batch) {
-          deferredStatMutations.push({
+          accumulateStatMutation(statDeltas, {
             before: beforeMap.get(row.path) ?? null,
             after: row,
           });
@@ -715,7 +721,7 @@ export function createScanService(deps: ScanServiceDeps) {
         if (deps.searchStats) {
           const statRows = await imageRepo.findSearchStatSourcesByIds(chunkIds);
           for (const row of statRows) {
-            deferredStatMutations.push({ before: row, after: null });
+            accumulateStatMutation(statDeltas, { before: row, after: null });
           }
         }
 
@@ -723,10 +729,10 @@ export function createScanService(deps: ScanServiceDeps) {
       }
     }
 
-    // Flush deferred search stat mutations
-    if (deps.searchStats && deferredStatMutations.length > 0) {
-      await deps.searchStats.applyMutations(
-        deferredStatMutations,
+    // Flush deferred search stat deltas
+    if (deps.searchStats && statDeltas.size > 0) {
+      await deps.searchStats.applyDeltas(
+        getAccumulatedStatDeltas(statDeltas),
         onSearchStatsProgress,
       );
     }

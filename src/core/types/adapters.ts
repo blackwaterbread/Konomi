@@ -8,10 +8,16 @@
 // re-export one of them.
 
 import type { SearchStatMutation } from "./repository";
+import type { SearchStatDelta } from "../lib/search-stats";
 
 export interface SearchStatsAdapter {
   applyMutations(
     mutations: SearchStatMutation[],
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void>;
+  /** Applies deltas already folded with `search-stats`' accumulator. */
+  applyDeltas(
+    deltas: SearchStatDelta[],
     onProgress?: (done: number, total: number) => void,
   ): Promise<void>;
 }

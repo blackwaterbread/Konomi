@@ -186,7 +186,7 @@ async function applySearchStatDeltasInTx(
   }
 }
 
-async function applyImageSearchStatDeltas(
+export async function applyImageSearchStatDeltas(
   deltas: SearchStatDelta[],
   onProgress?: SearchStatsProgressCallback,
 ): Promise<void> {

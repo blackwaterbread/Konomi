@@ -34,6 +34,7 @@ import {
 } from "@core/lib/image-infra";
 import {
   applyImageSearchStatsMutations,
+  applyImageSearchStatDeltas,
   decrementImageSearchStatsForRows,
   listImageSearchStatSourcesForFolder,
 } from "@core/lib/search-stats-store";
@@ -58,6 +59,7 @@ export function createServices(sender: EventSender) {
   // ── Adapters ─────────────────────────────
   const searchStatsAdapter = {
     applyMutations: applyImageSearchStatsMutations,
+    applyDeltas: applyImageSearchStatDeltas,
   };
   const ignoredDuplicatesAdapter = {
     ensureLoaded: ensureIgnoredDuplicatePathsLoaded,
