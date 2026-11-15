@@ -5163,9 +5163,10 @@ export const GenerationView = memo(
           });
           saveLastGenParams(getStoredSeedInput(current.seedInput));
           void window.image.readNaiMeta(filePath).then((meta) => {
-            if (meta?.seed != null) {
+            const metaSeed = parseSeedInputValue(meta?.seed ?? "");
+            if (metaSeed.kind === "valid") {
               setRecentSeeds((prev) => {
-                const next = new Map(prev).set(src, meta.seed!);
+                const next = new Map(prev).set(src, metaSeed.value);
                 if (next.size > MAX_RECENT) {
                   const excess = next.size - MAX_RECENT;
                   const it = next.keys();
@@ -5177,7 +5178,7 @@ export const GenerationView = memo(
               if (lastParamsKeyRef.current === paramsKey) {
                 lastParamsKeyRef.current = buildGenerateParamsKey(
                   current,
-                  meta.seed,
+                  metaSeed.value,
                 );
               }
             }
@@ -5304,9 +5305,10 @@ export const GenerationView = memo(
           });
           saveLastGenParams(getStoredSeedInput(current.seedInput));
           void window.image.readNaiMeta(filePath).then((meta) => {
-            if (meta?.seed != null) {
+            const metaSeed = parseSeedInputValue(meta?.seed ?? "");
+            if (metaSeed.kind === "valid") {
               setRecentSeeds((prev) => {
-                const next = new Map(prev).set(src, meta.seed!);
+                const next = new Map(prev).set(src, metaSeed.value);
                 if (next.size > MAX_RECENT) {
                   const excess = next.size - MAX_RECENT;
                   const it = next.keys();

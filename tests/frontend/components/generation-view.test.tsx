@@ -592,6 +592,107 @@ describe("GenerationView", () => {
     );
   });
 
+  it("requires confirmation when resubmitting a fixed seed after the result metadata is read", async () => {
+    const user = userEvent.setup();
+
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue({
+      source: "nai",
+      prompt: "fixed seed duplicate",
+      negativePrompt: "",
+      characterPrompts: [],
+      characterNegativePrompts: [],
+      characterPositions: [],
+      seed: "12345",
+      model: "nai-diffusion-4-5-full",
+      sampler: "k_euler_ancestral",
+      steps: 28,
+      cfgScale: 5,
+      cfgRescale: 0,
+      noiseSchedule: "karras",
+      varietyPlus: false,
+      width: 832,
+      height: 1216,
+      raw: {},
+    });
+
+    renderGenerationView();
+
+    fireEvent.change(
+      screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+      {
+        target: { value: "fixed seed duplicate" },
+      },
+    );
+
+    const seedInput = screen.getByPlaceholderText("-");
+    fireEvent.focus(seedInput);
+    fireEvent.change(seedInput, { target: { value: "12345" } });
+    fireEvent.blur(seedInput);
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(
+      await screen.findByRole("button", { name: "12345" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(
+      await screen.findByText("This configuration was already generated"),
+    ).toBeInTheDocument();
+    expect(preloadMocks.nai.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("generates again without confirmation for a random seed once the result metadata is read", async () => {
+    const user = userEvent.setup();
+
+    preloadMocks.nai.generate.mockResolvedValue("C:/output/generated.png");
+    preloadMocks.image.readNaiMeta.mockResolvedValue({
+      source: "nai",
+      prompt: "random seed resubmit",
+      negativePrompt: "",
+      characterPrompts: [],
+      characterNegativePrompts: [],
+      characterPositions: [],
+      seed: "12345",
+      model: "nai-diffusion-4-5-full",
+      sampler: "k_euler_ancestral",
+      steps: 28,
+      cfgScale: 5,
+      cfgRescale: 0,
+      noiseSchedule: "karras",
+      varietyPlus: false,
+      width: 832,
+      height: 1216,
+      raw: {},
+    });
+
+    renderGenerationView();
+
+    fireEvent.change(
+      screen.getByLabelText("1girl, beautiful, masterpiece, ..."),
+      {
+        target: { value: "random seed resubmit" },
+      },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(
+      await screen.findByRole("button", { name: "12345" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(preloadMocks.nai.generate).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      screen.queryByText("This configuration was already generated"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps auto-generate locked until the warning is acknowledged", async () => {
     const user = userEvent.setup();
 
