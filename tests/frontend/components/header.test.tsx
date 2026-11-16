@@ -179,6 +179,25 @@ describe("header scan progress", () => {
     expect(progressBar(container)).toHaveStyle({ width: "25%" });
   });
 
+  it("shows no processed count for a scan that settles on zero files", () => {
+    const { container, rerender } = render(
+      <Header activePanel="gallery" onPanelChange={vi.fn()} scanning />,
+    );
+    act(() => {
+      preloadEvents.image.scanPhase.emit({ phase: "syncing" });
+      preloadEvents.image.scanProgress.emit({ done: 0, total: 0 });
+    });
+    expect(
+      screen.getByText(i18n.t("header.progress.phase.syncing")),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+
+    rerender(
+      <Header activePanel="gallery" onPanelChange={vi.fn()} scanning={false} />,
+    );
+    expect(progressBar(container)).toBeNull();
+  });
+
   it("shows the processed count once done reaches the total, until the scan ends or a total is ahead again", () => {
     const { container, rerender } = render(
       <Header activePanel="gallery" onPanelChange={vi.fn()} scanning />,
