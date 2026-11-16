@@ -1,12 +1,12 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import Fastify from "fastify";
-import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import type { WebSocket } from "ws";
 import { createWebSocketSender } from "./sender";
 import { createServices, bootstrap, runInitialScan } from "./services";
 import { createDataRootWatcher } from "./lib/data-root-watcher";
+import { registerSpa } from "./lib/spa";
 import { registerFolderRoutes } from "./routes/folder";
 import { registerImageRoutes } from "./routes/image";
 import { registerCategoryRoutes } from "./routes/category";
@@ -100,15 +100,8 @@ async function main() {
   registerImageFileRoutes(app);
 
   // ── SPA static files ─────────────────────
-  const webDistDir = path.join(repoRoot, "out", "web");
-  await app.register(fastifyStatic, {
-    root: webDistDir,
-    wildcard: false,
-  });
   // SPA fallback: non-API routes → index.html
-  app.setNotFoundHandler((_req, reply) => {
-    reply.sendFile("index.html", webDistDir);
-  });
+  await registerSpa(app, path.join(repoRoot, "out", "web"));
 
   // ── Bootstrap ────────────────────────────
   await ensureDatabase();
