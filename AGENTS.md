@@ -95,11 +95,11 @@ Renderer → window.image.scan()
 - `src/core/lib/repositories/` — Prisma repo implementations; each exports a concrete type (`ImageRepo`, `FolderRepo`, `CategoryRepo`, `NaiConfigRepo`, `PromptRepo`)
 - `src/core/lib/db.ts` — Prisma client singleton; custom migration runner (reads `.sql` files from `KONOMI_MIGRATIONS_PATH`); uses `process.env.KONOMI_USER_DATA` (NOT `electron.app`)
 - `src/core/lib/image-infra.ts` — WorkerPool-backed metadata reader, file hashing, ignored duplicate path management
-- `src/core/lib/search-stats-store.ts` — Prisma (SQLite / MariaDB) implementation of search stat CRUD (ImageSearchStat table); `applyImageSearchStatsMutations` (builds deltas from before/after rows) and `applyImageSearchStatDeltas` (already-folded deltas) both apply in one transaction
-- `src/core/lib/search-stats.ts` — pure search-stat logic: token-text extraction, delta building, tag-suggestion helpers, and the delta accumulator (`createStatDeltaAccumulator` / `accumulateStatMutation` / `getAccumulatedStatDeltas`; `buildStatDeltasFromMutations` is built on it). The accumulator keeps keys whose sum returns to 0 so a tag keeps the first spelling that touched it
+- `src/core/lib/search-stats-store.ts` — Prisma (SQLite / MariaDB) implementation of search stat CRUD (ImageSearchStat table); `applyImageSearchStatsMutations` (builds deltas from before/after rows) and `applyImageSearchStatDeltas` (already-folded deltas) both apply in one transaction. On MariaDB the `utf8mb4_unicode_ci` primary key can make two keys that differ as JS strings one row (`pokémon` / `pokemon`): increments and the rebuild's tag INSERT add into it (`ON DUPLICATE KEY UPDATE count = ImageSearchStat.count + VALUES(count)`), and a decrement chunk adds every matching delta (a sum of per-delta `CASE` terms). The SQLite statements do not use either form
+- `src/core/lib/search-stats.ts` — pure search-stat logic: token-text extraction, delta building, tag-suggestion helpers, and the delta accumulator (`createStatDeltaAccumulator` / `accumulateStatMutation` / `getAccumulatedStatDeltas`; `buildStatDeltasFromMutations` is built on it). The accumulator keeps keys whose sum returns to 0 so a tag keeps the first spelling that touched it. A tag stat's `model` (its displayed spelling) is the spelling that created the row and stays while its count is above 0 (`COALESCE(NULLIF(model, ''), …)`); `rebuildImageSearchPresetStats`, which only runs while the tag table is empty, takes the first spelling it reads, so an incremental table and a rebuild agree on keys and counts but can differ on a tag's spelling. `extractTokenTexts` leaves out a tag longer than 700 UTF-16 units as written or lower-cased (`MAX_TAG_TEXT_LENGTH`, the MariaDB `VARCHAR(700)` of `key` and `model`) on both backends
 - `src/core/lib/phash.ts` — pHash computation orchestration, similarity cache DDL/CRUD, IDF encoding
 - `src/core/lib/prompts-db.ts` — bundled prompt-tag suggestion DB access (`prompts.db`)
-- `src/core/lib/worker-pool.ts` — Generic `WorkerPool<T>` (lazy/eager modes, idle timeout, typed results)
+- `src/core/lib/worker-pool.ts` — Generic `WorkerPool<T>` (lazy/eager modes, idle timeout for lazy pools only, typed results). A worker that dies — `error` (followed by `exit` on Node/Electron and Bun) or `exit` alone — is dropped whether busy or idle; its task resolves with the null result, and it is replaced only while work is queued, so an eager pool regrows on the next `run()`. A reply from a worker that no longer holds that task is ignored. No backoff: a worker that cannot boot costs one spawn per queued task, each resolving null
 - `src/core/lib/nai.worker.ts` — Worker Thread: calls `readImageMetaForScan` (`image-infra.naiPool`: lazy, 10 s idle timeout, up to `max(4, min(os.availableParallelism() - 1, 8))` workers — the same size expression as `phash.ts`'s eager `pHashPool`)
 - `src/core/lib/phash.worker.ts` — Worker Thread: computes pHash per image
 - `src/core/lib/konomi-image.ts` — Native addon wrapper: `computePHash`, `computeAllPairs`, `extractNaiLsb`, `resizePng`
@@ -117,7 +117,7 @@ Renderer → window.image.scan()
 - `src/core/lib/comfyui.ts` — ComfyUI PNG metadata: walks the API prompt graph in the `prompt` text chunk, falls back to `workflow` widget values
 - `src/core/lib/png-meta.ts` — shared PNG chunk/text helpers used by metadata readers
 - `src/core/lib/logger.ts` — logging utilities
-- `src/core/services/scan-service.ts` — `createScanService`: scan coordinator (`scanAll`, `scanOne`), duplicate detection. `syncFolder` writes changed files in batches of up to `BATCH_SIZE` (100) rows, one `upsertBatch` transaction each (32-row INSERT chunks inside), and pushes one `image:batch` per batch. Search-stat before/after pairs are folded into a delta accumulator per batch (and on stale-row deletion) and applied once when the folder finishes, in one transaction — also on a cancelled scan, for the rows it wrote. The progress denominator comes from `Folder.lastScanFileCount` per target, with a counting walk only where there is no usable count (see `image:scanProgress` under Push Events), so a boot scan walks each folder once
+- `src/core/services/scan-service.ts` — `createScanService`: scan coordinator (`scanAll`, `scanOne`), duplicate detection. `syncFolder` writes changed files in batches of up to `BATCH_SIZE` (100) rows, one `upsertBatch` transaction each (32-row INSERT chunks inside), and pushes one `image:batch` per batch. Search-stat before rows are read before each `upsertBatch`, and the before/after pairs are folded into a delta accumulator only once it commits — a mid-walk batch whose write fails is rolled back, skipped by `processFile` and retried by the next scan, with no stats; a stale-row chunk is folded once its `deleteByIds` resolves. The deltas are applied once per target, in one transaction, after the folder's steps: when it finishes, on a cancelled scan (for the rows it wrote), and when the final flush or a stale-row step throws (for what committed before it) — that error is then rethrown (an apply failure after it is only logged), Phase 4 is skipped and `scanAll` skips the remaining targets. The progress denominator comes from `Folder.lastScanFileCount` per target, with a counting walk only where there is no usable count (see `image:scanProgress` under Push Events), so a boot scan walks each folder once
 - `src/core/services/folder-service.ts` — `createFolderService`: CRUD, subfolder paths, stats
 - `src/core/services/category-service.ts` — `createCategoryService`: CRUD + `seedBuiltins`, `addImagesByPrompt`
 - `src/core/services/prompt-builder-service.ts` — `createPromptBuilderService`: prompt group/token CRUD + reorder + builtin seeding
@@ -132,7 +132,7 @@ Renderer → window.image.scan()
 
 ### Main process (`src/app/main/`)
 - `src/app/main/index.ts` — app entry, registers `konomi://` protocol, window bounds persistence, syncs `prompts.db` to userData before bridge start; creates the main window right after `bridge.start()` (it does not wait for the utility or the path-guard warm-up)
-- `src/app/main/bridge.ts` — UtilityBridge: request/response + push event forwarding; no request timeout by default (`KONOMI_BRIDGE_TIMEOUT_MS` sets a finite one, min 5s); auto-restarts utility process on unexpected exit
+- `src/app/main/bridge.ts` — UtilityBridge: request/response + push event forwarding; no request timeout by default (`KONOMI_BRIDGE_TIMEOUT_MS` sets a finite one, min 5s); `request`'s `timeoutMs` overrides it per request (`0` = none), and the timeout that applies restarts from the utility's ack; auto-restarts utility process on unexpected exit
 - `src/app/main/utility.ts` — Utility process entry: `handleRequest` switch, wires core services with Prisma repos, cancel token management. No DB work at module load; see [DB Migration](#db-migration) for the readiness order
 - `src/app/main/ipc.ts` — IPC handler registration (dialog/shell stay in main; DB/logic → bridge); `db:runMigrations` starts the path-guard warm-up (`warmManagedRootsCache`) only after the migrations succeed
 - `src/app/main/lib/path-guard.ts` — managed-root and transient-path authorization for `konomi://` protocol
@@ -253,8 +253,8 @@ Considered and not adopted:
 - **ImageSimilarityCacheMeta** — id, primedAt (nullable)
 
 ## Scan Cancel
-- `CancelToken = { cancelled: boolean }` (`scanner.ts`); the scan's `scanCancelToken` is module-level in `utility.ts`
-- `image:cancelScan` IPC sets `scanCancelToken.cancelled = true`
+- `CancelToken = { cancelled: boolean }` (`scanner.ts`); each running `image:scan` adds its own token to the module-level `scanCancelTokens` set in `utility.ts` — scans can overlap (`useScanning` dedupes only within one document; a reloaded window, or on macOS a window reopened from the dock, boot-scans while the old scan still runs)
+- `image:cancelScan` (and `system:shutdown`) cancels every token in `scanCancelTokens`; maintenance treats a scan as active while the set is non-empty, and a finished scan schedules analysis only if its own token was not cancelled
 - `withConcurrency` checks `signal?.cancelled` between tasks
 - `scanService.scanAll()` fires folder start/end push events `image:scanFolder { folderId, folderName?, active }`
 - Folder delete button disabled while `scanning` prop is true (sidebar.tsx)
@@ -336,7 +336,7 @@ Considered and not adopted:
 - Global mode: `use_coords: false`, centers `{ x: 0.5, y: 0.5 }` for all characters
 - Positioned mode: `use_coords: true`, centers from the `colMap` / `rowMap` grid (A1–E5) in `nai-gen-service.ts`
 - `colMap` columns A→E = `[0.1, 0.3, 0.5, 0.7, 0.9]`, `rowMap` rows 1→5 = same
-- `useCoords` = true only when at least one `characterPositions[i]` is a valid grid key (not `"global"`)
+- `useCoords` = true only when at least one character that is sent (non-blank prompt) has a valid grid key (not `"global"`); `nai-gen-service` drops a blank character together with its negative prompt and position, so a dropped character neither shifts the others' `centers` nor turns `useCoords` on
 - `characterPositions` parsed from `v4_prompt.use_coords` + `char_captions[i].centers[0]` in `nai.ts`
 - Reverse map: `colRevMap` + `rowRevMap` in `nai.ts`; `centerToPosition()` converts `{x,y}` → grid key
 - `"생성 모드로 보내기"` imports `characterPositions` alongside character prompts
@@ -346,6 +346,7 @@ Considered and not adopted:
 - **Recent image drag import**: `RecentThumb` is draggable via `text/x-konomi-path` dataTransfer; drop zone in generation-view handles `"path"` kind `DropItem` → reads metadata via `window.image.readNaiMeta`
 - `DropItem` type has three variants: `"file"`, `"image"`, `"path"`
 - **Seed control**: `seedMode: "random" | "fixed"` + `seedInput` state; seed button on result image shows copy/import dropdown
+- **Seed import / restore**: a seed is valid when `parseSeedInputValue` accepts it (digits only, `0..4294967295`). `handleImportMetadata` (gallery image, dropped file, recent-image drag) sets `seedInput` only from a valid metadata seed; an empty or invalid one keeps the current seed. The `konomi-last-gen-params` restore and save both go through `getStoredSeedInput` (invalid → `""`)
 - **Auto-generation mode**: `autoGenCount` (n shots), `autoGenDelay` (seconds between), `autoGenSeedMode`, `autoGenInfinite` (∞ loop); requires policy agreement (`autoGenPolicyAgreed`) before first run; `autoGenProgress` tracks `{ current, total | null }`
 - **Dimension swap button**: swaps width/height values in generation size inputs
 
@@ -414,7 +415,9 @@ Considered and not adopted:
 - Status text is `absolute left-full ml-3` within a `relative` parent div
 - Prevents flex layout shifts; `tabular-nums` for stable number widths
 - Cancel X button is shown with the status text whenever it is active (scan, duplicate check, analysis, metadata rescan, similarity or search-stat progress); it calls `onCancelScan`, and `image:cancelScan` stops every library task
-- Scan progress below the total: `scanImages` / `scanFolders` (`done/total`), progress bar, ETA. Once `done >= total` (a folder that outgrew its stored count keeps `done === total`) the header shows the processed count instead — `scanImagesCount` / `scanFoldersCount` in the wide layout, the bare number in the compact one — with no denominator, bar or ETA. It takes the phase label's slot, so rescan / hash / similarity / search-stat progress still win. Cleared by the next event below the total, when `scanning` turns false, and on utility reset
+- Until a phase or progress event arrives, a running scan's status reads `header.progress.phase.loadingLibrary` (the phase `scanAll` reports first) instead of `header.progress.working`; `cancelling` and `checkingDuplicates` still come first
+- Scan progress below the total: `scanImages` / `scanFolders` (`done/total`), progress bar, ETA. Once `done >= total` with `done > 0` (a folder that outgrew its stored count keeps `done === total`) the header shows the processed count instead — `scanImagesCount` / `scanFoldersCount` in the wide layout, the bare number in the compact one — with no denominator, bar or ETA; a `{ done: 0, total: 0 }` event shows no count. It takes the phase label's slot, so rescan / hash / similarity / search-stat progress still win. Cleared by the next event below the total, when `scanning` turns false, and on utility reset
+- When `scanning` turns false and the last event had `done >= total > 0` (on success, the settle event), the bar is drawn full for `SCAN_COMPLETE_BAR_MS` (300 ms) unless other progress owns it. It keys on `scanning`, not on the event, so a cancelled or failed scan that had already reached its total also gets it; a scan that stopped below its total clears at once. A utility reset during the scan, the next scan, and unmount prevent or clear it
 
 ## Image Detail (image-detail.tsx)
 - CSS `hidden` class to hide (not unmount) when closed — prevents DOM recreation on reopen; `animate-in fade-in-0 duration-150` on open
@@ -452,7 +455,7 @@ Considered and not adopted:
   - `WildcardToken = { kind: "wildcard", options: string[] }` in `src/web/lib/token.ts`
   - Popover lists options as read-only rows (delete button each) plus an add-option input; the chip shows a static `Dices` icon and the options preview (`token.resolved` would replace it, but nothing sets it)
   - Sortable via dnd-kit. `resolveWildcardsInString` picks one random option per `%{...}` (split on `|` at brace depth 0, trimmed, empties dropped; the pick is resolved again; an unclosed `%{` stays literal)
-  - `generation-view.tsx` `resolveGenerationPrompts` runs on every Generate click and auto-generate shot: the template's wildcards first, then `@{...}` expansion, where each group's own expansion gets a wildcard pass; the expanded text is never re-scanned, so a literal `%` before `{` stays literal. A character whose prompt resolves to blank is dropped with its negative and position (core `nai-gen-service` would drop it but index `characterPositions` by the kept ones). `konomi-last-gen-params` keeps the template
+  - `generation-view.tsx` `resolveGenerationPrompts` runs on every Generate click and auto-generate shot: the template's wildcards first, then `@{...}` expansion, where each group's own expansion gets a wildcard pass; the expanded text is never re-scanned, so a literal `%` before `{` stays literal. A character whose prompt resolves to blank is dropped with its negative and position; core `nai-gen-service` drops a blank character the same way. `konomi-last-gen-params` keeps the template
 - **TokenContainer** — wraps chips with dnd-kit drag-and-drop reorder + multi-token clipboard copy
   - Copy clipboard: extracts `data-token-raw` from selection-intersecting chips, joins with `, `
 - **PromptInput** — raw-first prompt editor with optional Block mode chip editing
@@ -490,7 +493,7 @@ Considered and not adopted:
 - `window.image.listByIds(...)` — rehydrates arbitrary image sets (e.g. similarity drawers)
 - `window.image.readMetaFromBuffer(...)` — metadata import from dropped file buffers without saving first
 - `window.nai.onGeneratePreview(...)` — streams intermediate preview data URLs during generation
-- `window.nai.validateApiKey(...)` — checks API key against NovelAI subscription endpoint before saving
+- `window.nai.validateApiKey(...)` — checks API key against NovelAI's subscription endpoint before saving (`GET https://image.novelai.net/user/subscription`, `SUBSCRIPTION_URL` in `nai-gen-service.ts`; `window.nai.getSubscription()` reads the same URL — `api.novelai.net` answers third-party `/user/*` calls with 400)
 - `window.promptBuilder.suggestTags(...)` — suggestions + bucketed usage stats from bundled prompt corpus
 
 ## Push Events (active)
@@ -512,7 +515,7 @@ Considered and not adopted:
 - `db:migrationProgress` — `{ done, total, migrationName }` — Electron utility only, during `db:runMigrations`
 - `utility:reset` — no payload — Electron main (`bridge.ts`) when the utility process exits
 - `app:updateAvailable` (`{ version, releaseUrl? }`), `app:updateProgress` (`{ percent, bytesPerSecond }`), `app:updateDownloaded` (`{ version }`) — Electron main (`lib/updater.ts`)
-- `image:scanActive` — `{ active }` — server only, from `setScanActive` (every scan path) and the hello frame; `{ active: false }` is the signal `browser-api` resolves a scan on
+- `image:scanActive` — `{ active, scanId }` — server only, from `setScanActive` (every scan path) and the hello frame. `scanId` names the running scan, or the last one while none runs: `setScanActive(true)` takes the next id, seeded from `Date.now()` so ids keep growing across a restart. The `/api/images/scan` reply carries the `scanId` to wait for (its own scan when `started`, the running one when `alreadyRunning`); `browser-api` resolves once the socket shows that scan finished — `{ active: false }` with that id or a later one, or `{ active: true }` with a later one — whichever of the reply and the frames arrives last, taking `cancelled` from that scan's `image:scanComplete`
 - `image:scanComplete` — `{ cancelled, error? }` — server only, after a `/api/images/scan` scan or a `data-root-watcher` scan
 - `image:rescanMetadataComplete` — `{ count }` — server only, when the fire-and-forget metadata rescan ends
 - `folder:listChanged` — `{ added, removed }` — server only, from `data-root-watcher` after it registers/removes folders
@@ -533,11 +536,12 @@ Considered and not adopted:
 - Reuses `@konomi/core` services directly — same business logic as Electron utility process
 - DB: MariaDB/MySQL via `@prisma/adapter-mariadb` (not SQLite)
 - Push events delivered via WebSocket (`{ event, data }` JSON frames) instead of Electron IPC
-- Serves the web SPA from `<repoRoot>/out/web` (the `bun run build:web` output; `repoRoot` is resolved from `src/server/index.ts`, not the cwd) with an `index.html` fallback for every unmatched request, unknown `/api/*` paths included. `@fastify/static` runs with `wildcard: false`, so its file routes are fixed at startup: restart the server after re-running `build:web`. The Docker image copies the build to the same path (`/app/out/web`); `src/app/electron-builder.yml` excludes `out/web/**` from the Electron installer. During development, `bun run dev:web` (Vite on port 5174) proxies `/api` and `/ws` to `localhost:3000`
+- Serves the web SPA from `<repoRoot>/out/web` (the `bun run build:web` output; `repoRoot` is resolved from `src/server/index.ts`, not the cwd) through `registerSpa` (`src/server/lib/spa.ts`): an unmatched request gets `index.html`, except under `/api` and `/ws` (the bare path, `/…` or `?…`), which get a JSON 404 `{ error: "Not found" }`. `@fastify/static` runs with `wildcard: false`, so its file routes are fixed at startup: restart the server after re-running `build:web`. The Docker image copies the build to the same path (`/app/out/web`); `src/app/electron-builder.yml` excludes `out/web/**` from the Electron installer. During development, `bun run dev:web` (Vite on port 5174) proxies `/api` and `/ws` to `localhost:3000`
 
 ### Key Files
 - `src/server/index.ts` — server entry, Fastify setup, WebSocket hub, route registration
-- `src/server/db.ts` — MariaDB PrismaClient singleton (`DATABASE_URL` env var, default `mysql://root:mariadb@127.0.0.1:3306/konomi`)
+- `src/server/db.ts` — MariaDB PrismaClient singleton (`DATABASE_URL` env var, default `mysql://root:mariadb@127.0.0.1:3306/konomi`). When the variable is unset the module writes the default back to `process.env.DATABASE_URL` at load, so core `runMigrations` (which reads the env) migrates the database `ensureDatabase` created
+- `src/server/lib/spa.ts` — `registerSpa(app, webDistDir)`: `@fastify/static` (`wildcard: false`) for the built SPA plus the not-found handler — `index.html` for client routes, JSON 404 under `/api` and `/ws`
 - `src/server/sender.ts` — `createWebSocketSender`: broadcasts push events to all connected WebSocket clients
 - `src/server/services.ts` — wires core services with Prisma repos + adapters; `bootstrap()` seeds builtins, loads ignored duplicate paths and reconciles folders with the directories under `KONOMI_DATA_ROOT` (removes vanished ones, auto-registers new ones); `runInitialScan()` runs the startup scan
 - `src/server/lib/data-root.ts` — `KONOMI_DATA_ROOT` scanning + path validation
