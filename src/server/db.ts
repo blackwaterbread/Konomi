@@ -5,8 +5,10 @@ import { createLogger } from "@core/lib/logger";
 
 const log = createLogger("web/db");
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ?? "mysql://root:mariadb@127.0.0.1:3306/konomi";
+// Written back to the env: core's runMigrations reads process.env.DATABASE_URL
+// and would otherwise skip migrating the default database this client uses.
+process.env.DATABASE_URL ??= "mysql://root:mariadb@127.0.0.1:3306/konomi";
+const DATABASE_URL = process.env.DATABASE_URL;
 
 let client: PrismaClient | null = null;
 
