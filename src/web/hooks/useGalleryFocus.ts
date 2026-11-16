@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface GalleryFocusState {
   focusIndex: number | null;
@@ -20,9 +26,11 @@ export function useGalleryFocus(imageCount: number) {
   const [focusIndex, setFocusIndexRaw] = useState<number | null>(null);
   const [columnCount, setColumnCount] = useState(4);
   const imageCountRef = useRef(imageCount);
-  imageCountRef.current = imageCount;
   const columnCountRef = useRef(columnCount);
-  columnCountRef.current = columnCount;
+  useLayoutEffect(() => {
+    imageCountRef.current = imageCount;
+    columnCountRef.current = columnCount;
+  }, [imageCount, columnCount]);
 
   // Reset focus when image list changes
   useEffect(() => {

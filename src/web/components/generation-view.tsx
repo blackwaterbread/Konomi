@@ -2658,6 +2658,7 @@ const ResultViewport = memo(function ResultViewport({
   const seedFirstActionRef = useRef<HTMLButtonElement | null>(null);
   const seedPrevFocusRef = useRef<HTMLElement | null>(null);
   const [sheetDragY, setSheetDragY] = useState(0);
+  const [sheetDragging, setSheetDragging] = useState(false);
   const sheetDragRef = useRef<{ startY: number; pointerId: number } | null>(
     null,
   );
@@ -2737,6 +2738,7 @@ const ResultViewport = memo(function ResultViewport({
 
   const handleSheetPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     sheetDragRef.current = { startY: e.clientY, pointerId: e.pointerId };
+    setSheetDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const handleSheetPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -2749,6 +2751,7 @@ const ResultViewport = memo(function ResultViewport({
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dy = Math.max(0, e.clientY - drag.startY);
     sheetDragRef.current = null;
+    setSheetDragging(false);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -2853,7 +2856,7 @@ const ResultViewport = memo(function ResultViewport({
                       className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border/60 bg-background shadow-[0_-8px_24px_rgba(0,0,0,0.25)] pb-safe"
                       style={{
                         transform: `translateY(${sheetDragY}px)`,
-                        transition: sheetDragRef.current
+                        transition: sheetDragging
                           ? "none"
                           : "transform 200ms ease-out",
                       }}

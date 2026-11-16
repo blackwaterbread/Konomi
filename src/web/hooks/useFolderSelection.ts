@@ -19,12 +19,10 @@ export function useFolderSelection() {
   // Distinguishes "first run, key absent" from "user has empty selection".
   // Auto-registered folders (Docker bootstrap) need a default-on selection;
   // we can't tell from an empty Set alone, so track key presence explicitly.
-  const initializedRef = useRef<boolean>(
-    localStorage.getItem(SELECTED_FOLDERS_STORAGE_KEY) !== null,
-  );
   const [initialized, setInitialized] = useState<boolean>(
-    initializedRef.current,
+    () => localStorage.getItem(SELECTED_FOLDERS_STORAGE_KEY) !== null,
   );
+  const initializedRef = useRef<boolean>(initialized);
 
   useEffect(() => {
     if (!initialized) return;
