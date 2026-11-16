@@ -6,7 +6,6 @@ database/
 out/
 dist/
 prebuilds/
-src/web/dist/
 src/web/node_modules/
 .vscode/
 .idea/
