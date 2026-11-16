@@ -1,10 +1,11 @@
 import React, { type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Sidebar, type SidebarHandle } from "@/components/sidebar";
 import type { Category, Folder } from "@preload/index.d";
 import { setElectronMode } from "../helpers/electron-mode";
+import { preloadMocks } from "../helpers/preload-mocks";
 
 const useDuplicateResolutionDialogMock = vi.fn();
 
@@ -471,5 +472,74 @@ describe("Sidebar", () => {
     expect(
       screen.getByRole("button", { name: "Delete Folder" }),
     ).toBeInTheDocument();
+  });
+
+  it("re-enables the Electron add-folder button once a pending submit settles", async () => {
+    setElectronMode(true);
+    const user = userEvent.setup();
+    let settleSubmit!: (folderId: number | null) => void;
+    const handleFolderAddWithDuplicateCheck = vi.fn(
+      () =>
+        new Promise<number | null>((resolve) => {
+          settleSubmit = resolve;
+        }),
+    );
+    useDuplicateResolutionDialogMock.mockReturnValue({
+      dialog: createDuplicateDialogModel(),
+      folderAddResolvedSeq: 0,
+      handleFolderAddWithDuplicateCheck,
+      handleFolderRescanWithDuplicateCheck: vi
+        .fn()
+        .mockResolvedValue(undefined),
+    });
+    let settleBrowse!: (path: string | null) => void;
+    preloadMocks.dialog.selectDirectory
+      .mockResolvedValueOnce("C:\\images\\first")
+      .mockImplementationOnce(
+        () =>
+          new Promise<string | null>((resolve) => {
+            settleBrowse = resolve;
+          }),
+      );
+
+    const { ref } = renderSidebar();
+
+    act(() => ref.current?.openFolderDialog());
+    let dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Browse" }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Add" })).toBeEnabled(),
+    );
+
+    // The native folder picker is not modal: a second Browse can still be
+    // open when the first folder is submitted, and fill the path afterwards.
+    await user.click(within(dialog).getByRole("button", { name: "Browse" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add" }));
+    expect(handleFolderAddWithDuplicateCheck).toHaveBeenCalledWith(
+      "first",
+      "C:\\images\\first",
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await act(async () => settleBrowse("C:\\images\\second"));
+
+    act(() => ref.current?.openFolderDialog());
+    dialog = await screen.findByRole("dialog");
+    await user.type(
+      within(dialog).getByPlaceholderText("Folder name"),
+      "second",
+    );
+    const addButton = within(dialog).getByRole("button", { name: "Add" });
+    expect(addButton).toBeDisabled();
+
+    await act(async () => settleSubmit(1));
+
+    await waitFor(() => expect(addButton).toBeEnabled());
+    await user.click(addButton);
+    expect(handleFolderAddWithDuplicateCheck).toHaveBeenLastCalledWith(
+      "second",
+      "C:\\images\\second",
+    );
   });
 });

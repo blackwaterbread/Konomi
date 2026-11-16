@@ -187,6 +187,7 @@ const ElectronFolderAddDialog = memo(function ElectronFolderAddDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const lastOpenRequestRef = useRef(0);
 
@@ -220,11 +221,13 @@ const ElectronFolderAddDialog = memo(function ElectronFolderAddDialog({
     const trimmedPath = path.trim();
     if (!trimmedName || !trimmedPath) return;
     submittingRef.current = true;
+    setSubmitting(true);
     setOpen(false);
     setName("");
     setPath("");
     onSubmit(trimmedName, trimmedPath).finally(() => {
       submittingRef.current = false;
+      setSubmitting(false);
     });
   }, [name, path, onSubmit]);
 
@@ -237,7 +240,7 @@ const ElectronFolderAddDialog = memo(function ElectronFolderAddDialog({
     setOpen(next);
   }, []);
 
-  const canSubmit = !!name.trim() && !!path.trim() && !submittingRef.current;
+  const canSubmit = !!name.trim() && !!path.trim() && !submitting;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
