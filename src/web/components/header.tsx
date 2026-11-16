@@ -207,6 +207,7 @@ type ProgressData = { done: number; total: number };
 
 const ETA_MIN_ELAPSED_MS = 2000;
 const ETA_MIN_RATIO = 0.03;
+const SCAN_COMPLETE_BAR_MS = 300;
 
 type EtaEntry = { startTime: number; startDone: number };
 
@@ -252,6 +253,11 @@ function useHeaderProgress({
   const [scanProcessedCount, setScanProcessedCount] = useState<number | null>(
     null,
   );
+  // A successful scan's last event settles on `done === total`, which hides
+  // the bar, and `scanning` turns false right after it: keep the bar full for
+  // a moment so it does not vanish short of 100%.
+  const [scanCompleteBar, setScanCompleteBar] = useState(false);
+  const scanReachedTotalRef = useRef(false);
   const [scanPhase, setScanPhase] = useState<string | null>(null);
   const [scanningFolderNames, setScanningFolderNames] = useState<
     Map<number, string>
@@ -320,8 +326,10 @@ function useHeaderProgress({
     const offScanProgress = window.image.onScanProgress((data) => {
       if (!scanningRef.current) return;
       const finished = data.done >= data.total;
+      const reachedTotal = finished && data.done > 0;
+      scanReachedTotalRef.current = reachedTotal;
       setScanProgress(finished ? null : data);
-      setScanProcessedCount(finished && data.done > 0 ? data.done : null);
+      setScanProcessedCount(reachedTotal ? data.done : null);
       trackEta("scan", finished ? null : data);
     });
     const offScanPhase = window.image.onScanPhase(({ phase }) => {
@@ -368,6 +376,7 @@ function useHeaderProgress({
       trackEta("rescan", data);
     });
     const offUtilityReset = window.appInfo.onUtilityReset(() => {
+      scanReachedTotalRef.current = false;
       setScanProgress(null);
       setScanProcessedCount(null);
       setHashProgress(null);
@@ -404,6 +413,20 @@ function useHeaderProgress({
   }, [scanning]);
 
   useEffect(() => {
+    if (scanning || !scanReachedTotalRef.current) return;
+    scanReachedTotalRef.current = false;
+    setScanCompleteBar(true);
+    const timer = setTimeout(
+      () => setScanCompleteBar(false),
+      SCAN_COMPLETE_BAR_MS,
+    );
+    return () => {
+      clearTimeout(timer);
+      setScanCompleteBar(false);
+    };
+  }, [scanning]);
+
+  useEffect(() => {
     if (!isAnalyzing) {
       setHashProgress(null);
       setSimilarityProgress(null);
@@ -415,6 +438,7 @@ function useHeaderProgress({
   return {
     scanProgress,
     scanProcessedCount,
+    scanCompleteBar,
     scanPhase,
     scanningFolderNames,
     hashProgress,
@@ -442,6 +466,7 @@ export const Header = memo(function Header({
   const {
     scanProgress,
     scanProcessedCount,
+    scanCompleteBar,
     scanPhase,
     scanningFolderNames,
     hashProgress,
@@ -470,6 +495,12 @@ export const Header = memo(function Header({
     hashProgress ??
     (hasSimilarityProgress ? similarityProgress : null) ??
     (hasSearchStatsProgress ? searchStatsProgress : null);
+  const barRatio =
+    activeProgress && activeProgress.total > 0
+      ? activeProgress.done / activeProgress.total
+      : scanCompleteBar
+        ? 1
+        : null;
 
   const statusActive =
     scanning ||
@@ -586,12 +617,12 @@ export const Header = memo(function Header({
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {activeProgress && activeProgress.total > 0 && (
+      {barRatio != null && (
         <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-border z-10">
           <div
             className="h-full bg-primary transition-all duration-150"
             style={{
-              width: `${(activeProgress.done / activeProgress.total) * 100}%`,
+              width: `${barRatio * 100}%`,
             }}
           />
         </div>

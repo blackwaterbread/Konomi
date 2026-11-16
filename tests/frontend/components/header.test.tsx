@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { Header } from "@/components/header";
 import i18n from "@/lib/i18n";
-import { preloadEvents } from "../helpers/preload-mocks";
+import { preloadEvents, preloadMocks } from "../helpers/preload-mocks";
 
 describe("header cancellation", () => {
   it.each(["analysis", "duplicates", "metadata", "searchStats", "similarity"])(
@@ -68,6 +68,9 @@ describe("header cancellation", () => {
 describe("header scan progress", () => {
   const progressBar = (container: HTMLElement) =>
     container.querySelector("[style*='width']");
+  const header = (scanning: boolean) => (
+    <Header activePanel="gallery" onPanelChange={vi.fn()} scanning={scanning} />
+  );
 
   it("labels a scan with its first phase until the scan reports one", () => {
     render(<Header activePanel="gallery" onPanelChange={vi.fn()} scanning />);
@@ -84,6 +87,96 @@ describe("header scan progress", () => {
     expect(
       screen.getByText(i18n.t("header.progress.phase.scanningFiles")),
     ).toBeInTheDocument();
+  });
+
+  it("fills the bar when a scan ends on its settled total, then clears it", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 78, total: 100 });
+    });
+    expect(progressBar(container)).toHaveStyle({ width: "78%" });
+
+    // The stored count was too large: the scan settles on `total = done`, and
+    // `scanning` turns false right after that last event.
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 80, total: 80 });
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toHaveStyle({ width: "100%" });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(progressBar(container)).toBeNull();
+
+    // A scan that stops below its total (cancelled) clears at once.
+    rerender(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 40, total: 100 });
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toBeNull();
+
+    // The next scan does not inherit a full bar.
+    rerender(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 5, total: 5 });
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toHaveStyle({ width: "100%" });
+    rerender(header(true));
+    expect(progressBar(container)).toBeNull();
+  });
+
+  it("does not fill the bar when a utility reset ends a scan that had reached its total", () => {
+    let utilityReset = () => {};
+    preloadMocks.appInfo.onUtilityReset.mockImplementation((cb: () => void) => {
+      utilityReset = cb;
+      return () => {};
+    });
+    const { container, rerender } = render(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 5, total: 5 });
+    });
+    act(() => {
+      utilityReset();
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toBeNull();
+  });
+
+  it("does not fill the bar again for a later scan that ends before any progress", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 5, total: 5 });
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toHaveStyle({ width: "100%" });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(progressBar(container)).toBeNull();
+
+    // Cancelled while loading the library: no progress event at all.
+    rerender(header(true));
+    rerender(header(false));
+    expect(progressBar(container)).toBeNull();
+  });
+
+  it("lets other progress take the bar while a finished scan's bar is full", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(header(true));
+    act(() => {
+      preloadEvents.image.scanProgress.emit({ done: 5, total: 5 });
+    });
+    rerender(header(false));
+    expect(progressBar(container)).toHaveStyle({ width: "100%" });
+
+    act(() => {
+      preloadEvents.image.searchStatsProgress.emit({ done: 1, total: 4 });
+    });
+    expect(progressBar(container)).toHaveStyle({ width: "25%" });
   });
 
   it("shows the processed count once done reaches the total, until the scan ends or a total is ahead again", () => {
