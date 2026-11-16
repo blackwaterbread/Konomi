@@ -8,6 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { Header } from "@/components/header";
+import i18n from "@/lib/i18n";
 import { preloadEvents } from "../helpers/preload-mocks";
 
 describe("header cancellation", () => {
@@ -67,6 +68,23 @@ describe("header cancellation", () => {
 describe("header scan progress", () => {
   const progressBar = (container: HTMLElement) =>
     container.querySelector("[style*='width']");
+
+  it("labels a scan with its first phase until the scan reports one", () => {
+    render(<Header activePanel="gallery" onPanelChange={vi.fn()} scanning />);
+    expect(
+      screen.getByText(i18n.t("header.progress.phase.loadingLibrary")),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(i18n.t("header.progress.working")),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      preloadEvents.image.scanPhase.emit({ phase: "scanningFiles" });
+    });
+    expect(
+      screen.getByText(i18n.t("header.progress.phase.scanningFiles")),
+    ).toBeInTheDocument();
+  });
 
   it("shows the processed count once done reaches the total, until the scan ends or a total is ahead again", () => {
     const { container, rerender } = render(

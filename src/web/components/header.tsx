@@ -561,10 +561,13 @@ export const Header = memo(function Header({
         : t("header.progress.scanImagesCount", { done: scanProcessedCount });
     }
     if (scanPhase) return t(`header.progress.phase.${scanPhase}`);
+    // A scan reports `loadingLibrary` first; label it so until that arrives.
+    if (scanning) return t("header.progress.phase.loadingLibrary");
     return t("header.progress.working");
   }, [
     statusActive,
     cancelling,
+    scanning,
     checkingDuplicates,
     scanProgress,
     scanProcessedCount,
