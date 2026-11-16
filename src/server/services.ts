@@ -105,6 +105,13 @@ export function createServices(sender: EventSender) {
   // overwritten by a fresh, un-cancelled token.
   const scanState: {
     active: boolean;
+    /**
+     * Id of the running scan, or of the last one while none runs. Every scan
+     * takes the next id in `setScanActive(true)`; with one scan at a time, an
+     * active id n means every scan before n has finished. `browser-api`
+     * matches its POST reply against the `image:scanActive` stream with it.
+     */
+    scanId: number;
     cancelToken: CancelToken | null;
     shuttingDown: boolean;
     /**
@@ -116,6 +123,10 @@ export function createServices(sender: EventSender) {
     inFlight: Promise<void> | null;
   } = {
     active: false,
+    // Seeded from the clock so ids keep growing across a restart: a client
+    // still waiting on a scan of the previous process sees a newer id in the
+    // hello frame and stops waiting.
+    scanId: Date.now(),
     cancelToken: null,
     shuttingDown: false,
     inFlight: null,
@@ -129,7 +140,8 @@ export function createServices(sender: EventSender) {
   // endpoint, initial scan, data-root-watcher) routes through here.
   const setScanActive = (active: boolean): void => {
     scanState.active = active;
-    sender.send("image:scanActive", { active });
+    if (active) scanState.scanId += 1;
+    sender.send("image:scanActive", { active, scanId: scanState.scanId });
   };
 
   const backgroundTasks = createBackgroundTasks();

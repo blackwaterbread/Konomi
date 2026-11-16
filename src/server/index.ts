@@ -66,7 +66,10 @@ async function main() {
       socket.send(
         JSON.stringify({
           event: "image:scanActive",
-          data: { active: services.scanState.active },
+          data: {
+            active: services.scanState.active,
+            scanId: services.scanState.scanId,
+          },
         }),
       );
       socket.send(

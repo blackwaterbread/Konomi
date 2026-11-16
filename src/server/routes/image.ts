@@ -95,10 +95,14 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     // `busySubPaths`, not `skippedSubPaths`: the subtree is perfectly readable,
     // it just lost a race for the scan lock, and the two render as different
     // messages.
+    // `scanId` names the scan the caller should wait for — the running one
+    // here, its own one below — since this reply and the scan's WebSocket
+    // events are not ordered against each other.
     if (scanState.active) {
       return {
         started: false,
         alreadyRunning: true,
+        scanId: scanState.scanId,
         busySubPaths: subPaths && subPaths.length > 0 ? subPaths : undefined,
       };
     }
@@ -107,6 +111,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
     const cancelToken = { cancelled: false };
     scanState.cancelToken = cancelToken;
     setScanActive(true);
+    const scanId = scanState.scanId;
 
     // Fire-and-forget: run the scan in the background and return immediately
     // so the HTTP connection is released right away. Long scans on large /
@@ -144,7 +149,7 @@ export function registerImageRoutes(app: FastifyInstance, services: Services) {
       }
     })();
 
-    return { started: true };
+    return { started: true, scanId };
   });
 
   app.post("/api/images/scan/cancel", async () => {

@@ -82,11 +82,15 @@ export function connectWebSocket(): WebSocket {
 // The server runs scans fire-and-forget: POST /api/images/scan returns
 // immediately ({ started } or { alreadyRunning }) so the HTTP connection is
 // released right away (no reverse-proxy read-timeout on multi-minute scans).
-// The actual result arrives over the WebSocket. We resolve when the scan goes
-// inactive — `image:scanActive { active: false }`, which the server also
-// re-sends as a hello frame on (re)connect, so a completion lost during a
+// The actual result arrives over the WebSocket, and the reply and the socket
+// are not ordered against each other. Every `image:scanActive` carries a scan
+// id (one scan at a time, ids growing: active id n means every scan before n
+// has finished), and the reply's `scanId` names the scan to wait for — the one
+// it started or the one already running. We resolve once the socket has shown
+// that scan finished and the reply is in, in either order. The server re-sends
+// the state as a hello frame on (re)connect, so a completion lost during a
 // socket drop still resolves us. `image:scanComplete` carries the cancelled
-// flag.
+// flag; it comes right before its scan's `image:scanActive { active: false }`.
 function scanAndWait(
   options?: {
     detectDuplicates?: boolean;
@@ -96,40 +100,49 @@ function scanAndWait(
   },
 ): Promise<{ cancelled: boolean }> {
   return new Promise((resolve, reject) => {
-    let cancelled = false;
-    let posted = false;
-    let sawInactive = false;
+    let waitFor: number | null = null;
+    let finishedThrough = -Infinity;
+    let lastCancelled = false;
+    const cancelledById = new Map<number, boolean>();
     let settled = false;
 
     const cleanup = () => {
       offComplete();
       offActive();
     };
-    const resolveDone = () => {
-      if (settled) return;
+    const resolveIfDone = () => {
+      if (settled || waitFor === null || finishedThrough < waitFor) return;
       settled = true;
       cleanup();
-      resolve({ cancelled });
+      resolve({ cancelled: cancelledById.get(waitFor) ?? false });
     };
 
     const offComplete = onEvent("image:scanComplete", (d: { cancelled?: boolean }) => {
-      cancelled = d?.cancelled ?? false;
+      lastCancelled = d?.cancelled ?? false;
     });
-    const offActive = onEvent("image:scanActive", (d: { active?: boolean }) => {
-      if (d?.active !== false) return;
-      sawInactive = true;
-      if (posted) resolveDone();
-    });
+    const offActive = onEvent(
+      "image:scanActive",
+      (d: { active?: boolean; scanId?: number }) => {
+        if (typeof d?.scanId !== "number") return;
+        if (d.active === false) cancelledById.set(d.scanId, lastCancelled);
+        lastCancelled = false;
+        finishedThrough = Math.max(
+          finishedThrough,
+          d.active === false ? d.scanId : d.scanId - 1,
+        );
+        resolveIfDone();
+      },
+    );
 
     // Listeners are attached BEFORE the request so a fast scan's completion
     // can't slip through the gap.
     rpc<{
       started?: boolean;
       alreadyRunning?: boolean;
+      scanId?: number;
       busySubPaths?: string[];
     }>("/api/images/scan", options ?? {})
       .then((res) => {
-        posted = true;
         // Subtrees the server refused because another scan holds the lock.
         // Delivered in the response rather than broadcast, because the
         // rejection belongs to this request alone; replay it locally so the
@@ -140,14 +153,8 @@ function scanAndWait(
             reason: "busy",
           });
         }
-        if (res?.started) {
-          // Our own fresh scan just started: any inactive seen before now
-          // belonged to a prior scan — wait for the next transition.
-          sawInactive = false;
-        } else if (sawInactive) {
-          // Attached to an already-running scan that finished in the gap.
-          resolveDone();
-        }
+        waitFor = res?.scanId ?? null;
+        resolveIfDone();
       })
       .catch((err) => {
         if (settled) return;
