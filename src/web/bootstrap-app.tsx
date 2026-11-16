@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast, Toaster, useSonner } from "sonner";
 import { useTranslation } from "react-i18next";
 import App from "./App";
@@ -183,16 +190,15 @@ export function BootstrapApp() {
   // App mounts straight away when skipping the splash, and its useAppAppearance
   // owns ongoing theme management — but apply the stored theme once here,
   // synchronously before the first paint, to avoid a flash of the wrong theme.
-  const themeAppliedRef = useRef(false);
-  if (skipSplash && !themeAppliedRef.current) {
-    themeAppliedRef.current = true;
+  useLayoutEffect(() => {
+    if (!skipSplash) return;
     const isDark =
       storedSettings.theme === "auto"
         ? window.matchMedia("(prefers-color-scheme: dark)").matches
         : storedSettings.theme === "dark";
     document.documentElement.dataset.theme = isDark ? "dark" : "white";
     document.documentElement.classList.toggle("dark", isDark);
-  }
+  }, [skipSplash, storedSettings.theme]);
   const [folderCount, setFolderCount] = useState<number | null>(
     bootstrapResult.folderCount,
   );
