@@ -203,6 +203,92 @@ describe("GenerationView", () => {
     expect(screen.getByDisplayValue("768")).toHaveValue(768);
   });
 
+  it.each(["4294967296", "12abc"])(
+    "keeps the current seed when the imported metadata seed %s is not a valid seed",
+    async (metaSeed) => {
+      const user = userEvent.setup();
+      localStorage.setItem(
+        "konomi-last-gen-params",
+        JSON.stringify({
+          prompt: "",
+          negativePrompt: "",
+          characterPrompts: [],
+          aiChoice: true,
+          seedInput: "777",
+        }),
+      );
+      localStorage.setItem(
+        "konomi-import-checks",
+        JSON.stringify({
+          prompt: true,
+          negativePrompt: false,
+          characters: false,
+          charactersAppend: false,
+          settings: false,
+          seed: true,
+        }),
+      );
+      preloadMocks.image.readNaiMeta.mockResolvedValueOnce({
+        source: "webui",
+        prompt: "imported prompt",
+        negativePrompt: "",
+        characterPrompts: [],
+        characterNegativePrompts: [],
+        characterPositions: [],
+        seed: metaSeed,
+        model: "",
+        sampler: "",
+        steps: 0,
+        cfgScale: 0,
+        cfgRescale: 0,
+        noiseSchedule: "",
+        varietyPlus: false,
+        width: 0,
+        height: 0,
+        raw: {},
+      });
+
+      const { ref } = renderGenerationView();
+      expect(screen.getByPlaceholderText("-")).toHaveValue("777");
+
+      act(() => {
+        ref.current?.importImage(
+          createGalleryImage({
+            path: "C:\\imports\\bad-seed.png",
+            src: "konomi://local/C%3A%2Fimports%2Fbad-seed.png",
+          }),
+        );
+      });
+      await user.click(
+        await screen.findByRole("button", { name: "Import Metadata" }),
+      );
+      await waitFor(() =>
+        expect(screen.queryByText("Image Actions")).not.toBeInTheDocument(),
+      );
+
+      // The rest of the import still applies.
+      expect(screen.getByDisplayValue("imported prompt")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("-")).toHaveValue("777");
+    },
+  );
+
+  it("starts with an empty seed when the stored last params hold an invalid seed", () => {
+    localStorage.setItem(
+      "konomi-last-gen-params",
+      JSON.stringify({
+        prompt: "",
+        negativePrompt: "",
+        characterPrompts: [],
+        aiChoice: true,
+        seedInput: "4294967296",
+      }),
+    );
+
+    renderGenerationView();
+
+    expect(screen.getByPlaceholderText("-")).toHaveValue("");
+  });
+
   it("refreshes expanded advanced draft controls on repeated metadata imports", async () => {
     const user = userEvent.setup();
     const firstImport = createGalleryImage({

@@ -4483,8 +4483,8 @@ export const GenerationView = memo(
     const [noiseSchedule, setNoiseSchedule] = useState(
       () => loadNaiGenSettings().noiseSchedule,
     );
-    const [seedInput, setSeedInput] = useState(
-      () => loadLastGenParams()?.seedInput ?? "",
+    const [seedInput, setSeedInput] = useState(() =>
+      getStoredSeedInput(loadLastGenParams()?.seedInput ?? ""),
     );
 
     // Reference states
@@ -5564,7 +5564,11 @@ export const GenerationView = memo(
           if (meta.width) setWidth(meta.width);
           if (meta.height) setHeight(meta.height);
         }
-        if (importChecks.seed && meta.seed) setSeedInput(String(meta.seed));
+        if (importChecks.seed) {
+          const importedSeed = parseSeedInputValue(meta.seed ?? "");
+          if (importedSeed.kind === "valid")
+            setSeedInput(String(importedSeed.value));
+        }
 
         if (
           (importChecks.characters || importChecks.charactersAppend) &&
