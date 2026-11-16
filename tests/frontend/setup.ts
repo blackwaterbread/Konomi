@@ -69,15 +69,27 @@ Object.defineProperty(navigator, "clipboard", {
 });
 
 class MockResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(): void {
+    // no-op
+  }
+  unobserve(): void {
+    // no-op
+  }
+  disconnect(): void {
+    // no-op
+  }
 }
 
 class MockIntersectionObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(): void {
+    // no-op
+  }
+  unobserve(): void {
+    // no-op
+  }
+  disconnect(): void {
+    // no-op
+  }
 }
 
 vi.stubGlobal("ResizeObserver", MockResizeObserver);
