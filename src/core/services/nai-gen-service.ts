@@ -48,6 +48,10 @@ export interface GenerateParams {
   preciseRef?: PreciseRef;
 }
 
+// NovelAI serves the user routes for third-party clients from the image host;
+// api.novelai.net answers them with 400 "update to the image URL".
+const SUBSCRIPTION_URL = "https://image.novelai.net/user/subscription";
+
 const TIER_NAMES: Record<number, string> = {
   1: "Tablet",
   2: "Scroll",
@@ -86,7 +90,7 @@ export function createNaiGenService(deps: NaiGenServiceDeps) {
       anlas?: number;
       error?: string;
     }> {
-      const res = await fetch("https://api.novelai.net/user/subscription", {
+      const res = await fetch(SUBSCRIPTION_URL, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
@@ -117,7 +121,7 @@ export function createNaiGenService(deps: NaiGenServiceDeps) {
     }> {
       const config = await naiConfigRepo.get();
       if (!config.apiKey) throw new Error("API 키가 설정되지 않았습니다");
-      const res = await fetch("https://api.novelai.net/user/subscription", {
+      const res = await fetch(SUBSCRIPTION_URL, {
         headers: { Authorization: `Bearer ${config.apiKey}` },
       });
       if (!res.ok) {

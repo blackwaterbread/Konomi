@@ -134,9 +134,38 @@ describe("nai-gen", () => {
       anlas: 0,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.novelai.net/user/subscription",
+      "https://image.novelai.net/user/subscription",
       {
         headers: { Authorization: "Bearer token-123" },
+      },
+    );
+  });
+
+  it("reads the subscription of the stored API key from the image host", async () => {
+    const service = await createService();
+    await service.updateConfig({ apiKey: "stored-key" });
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tier: 3,
+        trainingStepsLeft: {
+          fixedTrainingStepsLeft: 9000,
+          purchasedTrainingSteps: 25,
+        },
+      }),
+    });
+
+    await expect(service.getSubscriptionInfo()).resolves.toEqual({
+      tier: "Opus",
+      anlas: 9025,
+      fixedAnlas: 9000,
+      purchasedAnlas: 25,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://image.novelai.net/user/subscription",
+      {
+        headers: { Authorization: "Bearer stored-key" },
       },
     );
   });
