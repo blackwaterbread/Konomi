@@ -77,7 +77,7 @@ model ImageSearchStat {
   key       String   @db.VarChar(700)
   width     Int?
   height    Int?
-  model     String?  @db.VarChar(500)
+  model     String?  @db.VarChar(700)
   count     Int      @default(0)
   updatedAt DateTime @default(now())
 

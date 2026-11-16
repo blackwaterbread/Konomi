@@ -3,6 +3,7 @@ import {
   accumulateStatMutation,
   buildStatDeltasFromMutations,
   createStatDeltaAccumulator,
+  extractTokenTexts,
   getAccumulatedStatDeltas,
 } from "@core/lib/search-stats";
 import type { SearchStatMutationInput } from "@core/lib/search-stats";
@@ -117,5 +118,21 @@ describe("search stat delta accumulator", () => {
     for (let batchSize = 1; batchSize <= mutations.length; batchSize++) {
       expect(accumulateInBatches(mutations, batchSize)).toEqual(expected);
     }
+  });
+});
+
+describe("search stat token texts", () => {
+  it("leaves out tags longer than a stat key or spelling can hold", () => {
+    const atLimit = "a".repeat(700);
+    const tooLong = "b".repeat(701);
+    // 400 characters as written, 800 once lower-cased into the key.
+    const longOnceLowered = "İ".repeat(400);
+    const raw = JSON.stringify([
+      { text: `${atLimit}, ${tooLong}`, weight: 1 },
+      { text: longOnceLowered, weight: 1 },
+      { text: "smile", weight: 1 },
+    ]);
+
+    expect(extractTokenTexts(raw)).toEqual([atLimit, "smile"]);
   });
 });

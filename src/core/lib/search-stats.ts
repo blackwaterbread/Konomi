@@ -26,6 +26,10 @@ const TOKEN_TEXT_FIELDS = [
 
 const MAX_TAG_SUGGEST_LIMIT = 24;
 const MIN_TAG_CONTAINS_QUERY_LENGTH = 3;
+// ImageSearchStat keeps a tag as `model` (as written) and `key` (lower-cased),
+// both VARCHAR(700) on MariaDB, where a longer value fails the whole write.
+// `length` counts UTF-16 units, never fewer than MariaDB's characters.
+const MAX_TAG_TEXT_LENGTH = 700;
 
 // ── Token text extraction ──────────────────────────────────────
 
@@ -148,7 +152,11 @@ export function extractTokenTexts(raw: string): string[] {
       if (!item || typeof item !== "object") continue;
       const text = (item as { text?: unknown }).text;
       if (typeof text !== "string") continue;
-      const normalized = normalizeTagSuggestionCandidates(text);
+      const normalized = normalizeTagSuggestionCandidates(text).filter(
+        (tag) =>
+          tag.length <= MAX_TAG_TEXT_LENGTH &&
+          tag.toLowerCase().length <= MAX_TAG_TEXT_LENGTH,
+      );
       if (normalized.length === 0) continue;
       texts.push(...normalized);
     }
