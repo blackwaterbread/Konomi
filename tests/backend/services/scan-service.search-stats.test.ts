@@ -7,6 +7,7 @@ import {
 } from "../helpers/test-db";
 import type { CancelToken } from "@core/lib/scanner";
 import type { ImageRepo } from "@core/lib/repositories/prisma-image-repo";
+import type { SearchStatsAdapter } from "@core/types/adapters";
 import type { ImageMeta } from "@core/types/image-meta";
 
 vi.mock("worker_threads", () => {
@@ -73,6 +74,7 @@ function writeImage(filePath: string, content: string, mtime?: Date) {
 
 async function setup(
   wrapImageRepo: (repo: ImageRepo) => ImageRepo = (repo) => repo,
+  applyDeltas?: SearchStatsAdapter["applyDeltas"],
 ) {
   const { getDB } = await import("@core/lib/db");
   const { createPrismaImageRepo } =
@@ -90,7 +92,7 @@ async function setup(
     readMeta,
     searchStats: {
       applyMutations: store.applyImageSearchStatsMutations,
-      applyDeltas: store.applyImageSearchStatDeltas,
+      applyDeltas: applyDeltas ?? store.applyImageSearchStatDeltas,
     },
   });
   const readStats = () =>
@@ -212,6 +214,99 @@ describe("scanService search stats", () => {
     failing = false;
     await scanService.scanAll({ detectDuplicates: false });
     expect(await getDB().image.count()).toBe(250);
+    expect(await readStats()).toEqual(await rebuiltStats());
+  });
+
+  it("applies the stats of the batches already written when the last write fails", async () => {
+    let upsertCalls = 0;
+    const { getDB, scanService, readStats, rebuiltStats } = await setup(
+      (repo) => ({
+        ...repo,
+        upsertBatch: async (rows) => {
+          // Two full batches during the walk, then the final flush of 50.
+          if (++upsertCalls === 3) throw new Error("database is locked");
+          return repo.upsertBatch(rows);
+        },
+      }),
+    );
+    const root = path.join(ctx.userDataDir, "library");
+    for (let i = 0; i < 250; i++) {
+      writeImage(path.join(root, `f${i}.png`), VARIANTS[i % 4]);
+    }
+    await getDB().folder.create({ data: { name: "library", path: root } });
+
+    await expect(
+      scanService.scanAll({ detectDuplicates: false }),
+    ).rejects.toThrow("database is locked");
+
+    expect(await getDB().image.count()).toBe(200);
+    expect(await readStats()).toEqual(await rebuiltStats());
+  });
+
+  it("rejects with the write failure, not a stats failure that follows it", async () => {
+    let upsertCalls = 0;
+    const { getDB, scanService } = await setup(
+      (repo) => ({
+        ...repo,
+        upsertBatch: async (rows) => {
+          if (++upsertCalls === 3) throw new Error("final write failed");
+          return repo.upsertBatch(rows);
+        },
+      }),
+      async () => {
+        throw new Error("stats apply failed");
+      },
+    );
+    const root = path.join(ctx.userDataDir, "library");
+    for (let i = 0; i < 250; i++) {
+      writeImage(path.join(root, `f${i}.png`), VARIANTS[i % 4]);
+    }
+    await getDB().folder.create({ data: { name: "library", path: root } });
+
+    await expect(
+      scanService.scanAll({ detectDuplicates: false }),
+    ).rejects.toThrow("final write failed");
+
+    // With nothing else failing, the stats failure is the scan's error.
+    await expect(
+      scanService.scanAll({ detectDuplicates: false }),
+    ).rejects.toThrow("stats apply failed");
+  });
+
+  it("folds stale rows only once they are deleted", async () => {
+    let failDelete = false;
+    const { getDB, scanService, readStats, rebuiltStats } = await setup(
+      (repo) => ({
+        ...repo,
+        deleteByIds: async (ids) => {
+          if (failDelete) throw new Error("database is locked");
+          return repo.deleteByIds(ids);
+        },
+      }),
+    );
+    const root = path.join(ctx.userDataDir, "library");
+    for (let i = 0; i < 30; i++) {
+      writeImage(path.join(root, `f${i}.png`), VARIANTS[i % 4]);
+    }
+    await getDB().folder.create({ data: { name: "library", path: root } });
+    await scanService.scanAll({ detectDuplicates: false });
+
+    for (let i = 0; i < 10; i++) fs.rmSync(path.join(root, `f${i}.png`));
+    for (let i = 30; i < 40; i++) {
+      writeImage(path.join(root, `f${i}.png`), VARIANTS[(i + 1) % 4]);
+    }
+    failDelete = true;
+    await expect(
+      scanService.scanAll({ detectDuplicates: false }),
+    ).rejects.toThrow("database is locked");
+
+    // The new files are in, the stale rows are still there.
+    expect(await getDB().image.count()).toBe(40);
+    expect(await readStats()).toEqual(await rebuiltStats());
+
+    failDelete = false;
+    await scanService.scanAll({ detectDuplicates: false });
+    expect(await getDB().image.count()).toBe(30);
     expect(await readStats()).toEqual(await rebuiltStats());
   });
 });

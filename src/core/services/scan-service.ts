@@ -699,73 +699,95 @@ export function createScanService(deps: ScanServiceDeps) {
       }
     };
 
-    // Scanning is skipped for a missing subtree: there is nothing to walk,
-    // so `discoveredPathSet` stays empty and every row under it is pruned.
-    if (!missing) {
-      // Check and process each file in one pass. Unchanged files stop after
-      // stat; changed files reuse that stat immediately for the upsert.
-      await withConcurrency(
-        target.walkedPaths ?? walkImageFiles(root, signal),
-        STAT_CONCURRENCY,
-        processFile,
-        signal,
-      );
+    let walkCompleted = false;
+    let stepFailed = false;
+    let stepError: unknown;
+    try {
+      // Scanning is skipped for a missing subtree: there is nothing to walk,
+      // so `discoveredPathSet` stays empty and every row under it is pruned.
+      if (!missing) {
+        // Check and process each file in one pass. Unchanged files stop after
+        // stat; changed files reuse that stat immediately for the upsert.
+        await withConcurrency(
+          target.walkedPaths ?? walkImageFiles(root, signal),
+          STAT_CONCURRENCY,
+          processFile,
+          signal,
+        );
 
-      await flushBatch();
-    }
+        await flushBatch();
+      }
 
-    // A cancelled walk stopped partway, so `discoveredPathSet` holds only the
-    // files reached before the stop and cannot support a statement about the
-    // subtree as a whole. Phase 3 re-verifies each row it is about to delete,
-    // but Phase 4 has no such check and a count taken here would understate
-    // the folder — and neither has any work worth doing on a cancelled scan.
-    const walkCompleted = !signal?.cancelled;
+      // A cancelled walk stopped partway, so `discoveredPathSet` holds only the
+      // files reached before the stop and cannot support a statement about the
+      // subtree as a whole. Phase 3 re-verifies each row it is about to delete,
+      // but Phase 4 has no such check and a count taken here would understate
+      // the folder — and neither has any work worth doing on a cancelled scan.
+      walkCompleted = !signal?.cancelled;
 
-    // Phase 3: prune stale DB rows.
-    //
-    // Absence from the walk is not proof the file is gone. A cancelled walk
-    // stops partway, a narrowed one never looks outside its subtree, and
-    // `walkImageFiles` swallows a directory it cannot open — every one of those
-    // reads as "missing" while the file sits on disk. Only an ENOENT on the
-    // row's own path justifies deleting it, the same rule `resolveScanTargets`
-    // applies before pruning a whole subtree.
-    const staleRows: (typeof existing)[number][] = [];
-    if (walkCompleted) {
-      await withConcurrency(
-        existing.filter(
-          (row) => !discoveredPathSet.has(normalizePathKey(row.path)),
-        ),
-        STAT_CONCURRENCY,
-        async (row) => {
-          if (await isConfirmedMissing(row.path)) staleRows.push(row);
-        },
-        signal,
-      );
-    }
-    if (staleRows.length > 0) {
-      for (let i = 0; i < staleRows.length; i += 400) {
-        const chunk = staleRows.slice(i, i + 400);
-        const chunkIds = chunk.map((row) => row.id);
-        deletedIds.push(...chunkIds);
+      // Phase 3: prune stale DB rows.
+      //
+      // Absence from the walk is not proof the file is gone. A cancelled walk
+      // stops partway, a narrowed one never looks outside its subtree, and
+      // `walkImageFiles` swallows a directory it cannot open — every one of those
+      // reads as "missing" while the file sits on disk. Only an ENOENT on the
+      // row's own path justifies deleting it, the same rule `resolveScanTargets`
+      // applies before pruning a whole subtree.
+      const staleRows: (typeof existing)[number][] = [];
+      if (walkCompleted) {
+        await withConcurrency(
+          existing.filter(
+            (row) => !discoveredPathSet.has(normalizePathKey(row.path)),
+          ),
+          STAT_CONCURRENCY,
+          async (row) => {
+            if (await isConfirmedMissing(row.path)) staleRows.push(row);
+          },
+          signal,
+        );
+      }
+      if (staleRows.length > 0) {
+        for (let i = 0; i < staleRows.length; i += 400) {
+          const chunk = staleRows.slice(i, i + 400);
+          const chunkIds = chunk.map((row) => row.id);
 
-        if (deps.searchStats) {
-          const statRows = await imageRepo.findSearchStatSourcesByIds(chunkIds);
+          let statRows: SearchStatSource[] = [];
+          if (deps.searchStats) {
+            statRows = await imageRepo.findSearchStatSourcesByIds(chunkIds);
+          }
+
+          await imageRepo.deleteByIds(chunkIds);
+          deletedIds.push(...chunkIds);
+          // Folded once the rows are gone, like a written batch.
           for (const row of statRows) {
             accumulateStatMutation(statDeltas, { before: row, after: null });
           }
         }
+      }
+    } catch (err) {
+      stepFailed = true;
+      stepError = err;
+    }
 
-        await imageRepo.deleteByIds(chunkIds);
+    // Applied even when a step above threw: what was folded is committed —
+    // batches written before the failure, stale rows already deleted — and a
+    // later scan finds those rows unchanged and never folds them again.
+    if (deps.searchStats && statDeltas.size > 0) {
+      try {
+        await deps.searchStats.applyDeltas(
+          getAccumulatedStatDeltas(statDeltas),
+          onSearchStatsProgress,
+        );
+      } catch (err) {
+        // After a failed step, that step's error is the one to report.
+        if (!stepFailed) throw err;
+        log.errorWithStack(
+          `search stats not applied after a failed sync of ${root}`,
+          err,
+        );
       }
     }
-
-    // Flush deferred search stat deltas
-    if (deps.searchStats && statDeltas.size > 0) {
-      await deps.searchStats.applyDeltas(
-        getAccumulatedStatDeltas(statDeltas),
-        onSearchStatsProgress,
-      );
-    }
+    if (stepFailed) throw stepError;
 
     // Phase 4: update folder scan fingerprint. A partial scan only saw one
     // subtree, so its file count would understate the folder — leave the
