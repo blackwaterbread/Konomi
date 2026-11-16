@@ -20,6 +20,7 @@ type PendingRequest = {
   reject: (reason: unknown) => void;
   type: string;
   startedAt: number;
+  timeoutMs: number;
   timeout: ReturnType<typeof setTimeout> | null;
 };
 
@@ -238,7 +239,7 @@ class UtilityBridge {
   private resetTimeout(pending: PendingRequest, id: number): void {
     if (!pending.timeout) return; // timeoutMs was 0 — no timeout to reset
     clearTimeout(pending.timeout);
-    const effectiveTimeout = this.requestTimeoutMs;
+    const effectiveTimeout = pending.timeoutMs;
     pending.timeout = setTimeout(() => {
       if (!this.pending.has(id)) return;
       this.pending.delete(id);
@@ -263,8 +264,8 @@ class UtilityBridge {
   // timeoutMs: per-request override. 미지정(undefined)이면 requestTimeoutMs
   // (KONOMI_BRIDGE_TIMEOUT_MS, 기본 0 = 무한), 명시적 0이면 그 값과 무관하게
   // 이 요청만 무한 대기. `??`라서 0이 기본값으로 바뀌지 않는다 (`||`로 바꾸면
-  // db:runMigrations가 다시 timeout에 걸린다). 양수 override는 ack 전까지만
-  // 적용되고, ack 뒤에는 resetTimeout이 requestTimeoutMs로 다시 건다.
+  // db:runMigrations가 다시 timeout에 걸린다). ack가 오면 resetTimeout이 이
+  // 요청의 값(양수 override 포함)을 ack 시점부터 다시 건다.
   request<T>(type: string, payload?: unknown, timeoutMs?: number): Promise<T> {
     return new Promise((resolve, reject) => {
       const child = this.child;
@@ -301,6 +302,7 @@ class UtilityBridge {
         reject,
         type,
         startedAt: Date.now(),
+        timeoutMs: effectiveTimeout,
         timeout,
       });
       this.log.debug("Sending request to utility", { id, type });

@@ -111,6 +111,24 @@ describe("UtilityBridge request timeouts", () => {
     expect(String(reply.error)).toContain("timed out after 5000ms");
   });
 
+  it.each(["5000", "0"])(
+    "restarts a positive per-request timeout from the ack (KONOMI_BRIDGE_TIMEOUT_MS=%s)",
+    async (timeoutEnv) => {
+      const { bridge, child } = await startBridge(timeoutEnv);
+      const reply = track(bridge.request("folder:list", undefined, 20_000));
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      child.emit("message", { id: child.posted[0].id, ack: true });
+      await vi.advanceTimersByTimeAsync(19_999);
+      expect(reply.settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(String(reply.error)).toContain(
+        "timed out after 20000ms: folder:list",
+      );
+    },
+  );
+
   it("never times out a request sent with an explicit 0, and still resolves on its reply", async () => {
     const { bridge, child } = await startBridge("5000");
     const reply = track(bridge.request("db:runMigrations", undefined, 0));
