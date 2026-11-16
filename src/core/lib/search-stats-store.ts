@@ -159,6 +159,13 @@ async function applySearchStatDeltasInTx(
     const whenClauses = chunk
       .map(() => "WHEN kind = ? AND `key` = ? THEN count + ?")
       .join(" ");
+    // Under MariaDB's utf8mb4_unicode_ci two keys of one chunk can name the
+    // same row (`NAI` / `nai`), and a CASE applies only its first match.
+    const countSql = mysql
+      ? `count + ${chunk
+          .map(() => "CASE WHEN kind = ? AND `key` = ? THEN ? ELSE 0 END")
+          .join(" + ")}`
+      : `CASE ${whenClauses} ELSE count END`;
     const whereClauses = chunk.map(() => "(kind = ? AND `key` = ?)").join(" OR ");
     const updateParams: unknown[] = [];
     for (const delta of chunk) {
@@ -170,7 +177,7 @@ async function applySearchStatDeltasInTx(
     }
     await tx.$executeRawUnsafe(
       `UPDATE ImageSearchStat
-         SET count = CASE ${whenClauses} ELSE count END,
+         SET count = ${countSql},
              updatedAt = CURRENT_TIMESTAMP
          WHERE ${whereClauses}`,
       ...updateParams,
@@ -412,6 +419,13 @@ export async function rebuildImageSearchPresetStats(
     }
   }
 
+  // Tag keys are distinct as JS strings, but MariaDB's utf8mb4_unicode_ci key
+  // can still equate two of them (`pokémon` / `pokemon`): sum those into the
+  // first one's row instead of failing halfway through the rebuild.
+  const tagConflictSql =
+    getDialect() === "mysql"
+      ? " ON DUPLICATE KEY UPDATE count = ImageSearchStat.count + VALUES(count)"
+      : "";
   for (let i = 0; i < tagRows.length; i += BATCH_SIZE) {
     if (signal?.cancelled) return;
     const batch = tagRows.slice(i, i + BATCH_SIZE);
@@ -424,7 +438,7 @@ export async function rebuildImageSearchPresetStats(
     if (placeholders.length > 0) {
       await db.$executeRawUnsafe(
         `INSERT INTO ImageSearchStat (kind, \`key\`, width, height, model, count, updatedAt)
-         VALUES ${placeholders.join(", ")}`,
+         VALUES ${placeholders.join(", ")}${tagConflictSql}`,
         ...params,
       );
     }
