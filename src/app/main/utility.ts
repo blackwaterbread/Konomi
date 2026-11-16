@@ -58,7 +58,9 @@ import {
 } from "@core/lib/db";
 import Database from "better-sqlite3";
 
-let scanCancelToken: CancelToken | null = null;
+// One per running `image:scan`. Scans can overlap: the renderer dedupes only
+// its own, and a reloaded or reopened window boot-scans while the old one runs.
+const scanCancelTokens = new Set<CancelToken>();
 const log = createLogger("main/utility");
 
 // ── Repository & Service initialization ─────────────────────
@@ -116,15 +118,14 @@ const utilitySender = {
   },
 };
 
-let scanInFlight = false;
-
 const backgroundTasks = createBackgroundTasks();
 const maintenanceService = createMaintenanceService({
   computeAllHashes,
   sender: utilitySender,
-  isScanActive: () => scanInFlight,
+  isScanActive: () => scanCancelTokens.size > 0,
   isCancellationPending: () =>
-    !!scanCancelToken?.cancelled || backgroundTasks.isCancelling(),
+    [...scanCancelTokens].some((token) => token.cancelled) ||
+    backgroundTasks.isCancelling(),
 });
 
 // Maintenance auto-trigger: any time scan-service / watcher / other emitters
@@ -298,11 +299,11 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           }
         | undefined) ?? {};
       maintenanceService.resumeAnalysis();
-      scanCancelToken = { cancelled: false };
-      scanInFlight = true;
+      const signal: CancelToken = { cancelled: false };
+      scanCancelTokens.add(signal);
       try {
         const result = await scanService.scanAll({
-          signal: scanCancelToken,
+          signal,
           folderIds,
           orderedFolderIds,
           subPaths,
@@ -315,20 +316,19 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
           onSearchStatsProgress: emitSearchStatsProgress,
           onPhase: (phase) => utilitySender.send("image:scanPhase", { phase }),
         });
-        if (!scanCancelToken?.cancelled) {
+        if (!signal.cancelled) {
           maintenanceService.scheduleAnalysis(0);
         }
         return result;
       } finally {
-        scanCancelToken = null;
-        scanInFlight = false;
+        scanCancelTokens.delete(signal);
       }
     }
     case "image:cancelScan":
       // The header X stops every library task, including queued analysis.
       maintenanceService.cancelAnalysis();
       backgroundTasks.cancel();
-      if (scanCancelToken) scanCancelToken.cancelled = true;
+      for (const token of scanCancelTokens) token.cancelled = true;
       return null;
     case "image:setFavorite": {
       const { id, isFavorite } = payload as { id: number; isFavorite: boolean };
@@ -634,7 +634,7 @@ async function handleRequest(type: string, payload: unknown): Promise<unknown> {
       // done so the bridge can proceed with child.kill().
       log.info("Shutdown requested");
       maintenanceService.requestShutdown();
-      if (scanCancelToken) scanCancelToken.cancelled = true;
+      for (const token of scanCancelTokens) token.cancelled = true;
       try {
         await maintenanceService.flush();
       } catch (err) {

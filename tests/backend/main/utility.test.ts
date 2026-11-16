@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   seedBuiltins: vi.fn(),
   ensureIgnoredLoaded: vi.fn(),
   listFolders: vi.fn(),
+  scanAll: vi.fn(),
+  computeAllHashes: vi.fn(),
   posted: [] as Message[],
   handler: null as MessageHandler | null,
 }));
@@ -55,6 +57,15 @@ vi.mock("@core/services/folder-service", () => ({
   createFolderService: () => ({ list: mocks.listFolders }),
 }));
 
+vi.mock("@core/services/scan-service", () => ({
+  createScanService: () => ({ scanAll: mocks.scanAll }),
+}));
+
+vi.mock("@core/lib/phash", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@core/lib/phash")>()),
+  computeAllHashes: mocks.computeAllHashes,
+}));
+
 let nextId = 1;
 
 /** Loads a fresh utility module, as a newly (re)started utility process. */
@@ -93,6 +104,8 @@ beforeEach(() => {
   mocks.seedBuiltins.mockReset().mockResolvedValue(undefined);
   mocks.ensureIgnoredLoaded.mockReset().mockResolvedValue(undefined);
   mocks.listFolders.mockReset().mockResolvedValue([]);
+  mocks.scanAll.mockReset();
+  mocks.computeAllHashes.mockReset().mockResolvedValue(0);
 });
 
 describe("utility DB readiness", () => {
@@ -167,5 +180,100 @@ describe("utility DB readiness", () => {
     expect(mocks.dbReady).not.toHaveBeenCalled();
     expect(mocks.runMigrations).not.toHaveBeenCalled();
     expect(mocks.disconnectDB).toHaveBeenCalledTimes(1);
+  });
+});
+
+type RunningScan = {
+  signal: { cancelled: boolean };
+  finish: () => void;
+  reply: Promise<void>;
+};
+
+/** Sends an `image:scan` whose scanAll stays pending until `finish()`. */
+async function startScan(): Promise<RunningScan> {
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let signal!: { cancelled: boolean };
+  mocks.scanAll.mockImplementationOnce(
+    async (options: { signal: { cancelled: boolean } }) => {
+      signal = options.signal;
+      await finished;
+      return [];
+    },
+  );
+  const reply = mocks.handler!({ data: { id: nextId++, type: "image:scan" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return { signal, finish, reply };
+}
+
+describe("utility overlapping scans", () => {
+  it.each(["image:cancelScan", "system:shutdown"])(
+    "%s reaches every scan still running",
+    async (type) => {
+      await startUtility();
+      const first = await startScan();
+      const second = await startScan();
+
+      await request(type);
+
+      expect(first.signal.cancelled).toBe(true);
+      expect(second.signal.cancelled).toBe(true);
+      first.finish();
+      second.finish();
+      await Promise.all([first.reply, second.reply]);
+    },
+  );
+
+  it("keeps an earlier scan cancellable after a later one finishes", async () => {
+    await startUtility();
+    const first = await startScan();
+    const second = await startScan();
+    second.finish();
+    await second.reply;
+
+    await request("image:cancelScan");
+
+    expect(first.signal.cancelled).toBe(true);
+    first.finish();
+    await first.reply;
+  });
+
+  it("holds analysis back until the last running scan ends", async () => {
+    await startUtility();
+    const first = await startScan();
+    const second = await startScan();
+
+    second.finish();
+    await second.reply;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.computeAllHashes).not.toHaveBeenCalled();
+
+    first.finish();
+    await first.reply;
+    await vi.waitFor(() =>
+      expect(mocks.computeAllHashes).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("schedules analysis after a scan that finishes while a cancelled one drains", async () => {
+    await startUtility();
+    const cancelled = await startScan();
+    await request("image:cancelScan");
+    const fresh = await startScan();
+
+    fresh.finish();
+    await fresh.reply;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.computeAllHashes).not.toHaveBeenCalled();
+    cancelled.finish();
+    await cancelled.reply;
+
+    // Deferred while the cancelled scan was still running: re-checked every 1 s.
+    await vi.waitFor(
+      () => expect(mocks.computeAllHashes).toHaveBeenCalledTimes(1),
+      { timeout: 3_000 },
+    );
   });
 });
