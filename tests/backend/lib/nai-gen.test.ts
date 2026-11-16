@@ -251,4 +251,61 @@ describe("nai-gen", () => {
       legacy_uc: false,
     });
   });
+
+  it("drops a blank character together with its negative prompt and position", async () => {
+    const service = await createService();
+    sdkState.streamChunks.push({
+      event_type: "final",
+      image: Buffer.from("final-image").toString("base64"),
+    });
+    await service.updateConfig({ apiKey: "secret-api-key" });
+
+    await service.generate({
+      prompt: "masterpiece",
+      characterPrompts: ["  ", "alice", "bob"],
+      characterNegativePrompts: ["bad blank", "bad alice", "bad bob"],
+      characterPositions: ["A1", "E5", "global"],
+      outputFolder: path.join(ctx.userDataDir, "generated"),
+      model: "nai-diffusion-4-5-curated",
+    });
+
+    const parameters = sdkState.requests.at(-1)?.parameters as {
+      use_coords?: boolean;
+      v4_prompt?: { caption: { char_captions: unknown[] } };
+      v4_negative_prompt?: { caption: { char_captions: unknown[] } };
+    };
+    expect(parameters.use_coords).toBe(true);
+    expect(parameters.v4_prompt?.caption.char_captions).toEqual([
+      { char_caption: "alice", centers: [{ x: 0.9, y: 0.9 }] },
+      { char_caption: "bob", centers: [{ x: 0.5, y: 0.5 }] },
+    ]);
+    expect(parameters.v4_negative_prompt?.caption.char_captions).toEqual([
+      { char_caption: "bad alice", centers: [{ x: 0.9, y: 0.9 }] },
+      { char_caption: "bad bob", centers: [{ x: 0.5, y: 0.5 }] },
+    ]);
+  });
+
+  it("does not turn on coordinates for the position of a dropped character", async () => {
+    const service = await createService();
+    sdkState.streamChunks.push({
+      event_type: "final",
+      image: Buffer.from("final-image").toString("base64"),
+    });
+    await service.updateConfig({ apiKey: "secret-api-key" });
+
+    await service.generate({
+      prompt: "masterpiece",
+      characterPrompts: ["", "alice"],
+      characterPositions: ["A1", "global"],
+      outputFolder: path.join(ctx.userDataDir, "generated"),
+      model: "nai-diffusion-4-5-curated",
+    });
+
+    const parameters = sdkState.requests.at(-1)?.parameters as {
+      use_coords?: boolean;
+      v4_prompt?: { use_coords: boolean };
+    };
+    expect(parameters.use_coords).toBe(false);
+    expect(parameters.v4_prompt?.use_coords).toBe(false);
+  });
 });

@@ -162,6 +162,7 @@ export function createNaiGenService(deps: NaiGenServiceDeps) {
           prompt: prompt.trim(),
           negativePrompt:
             params.characterNegativePrompts?.[index]?.trim() ?? "",
+          position: params.characterPositions?.[index] ?? "global",
         }))
         .filter((c) => c.prompt);
 
@@ -183,17 +184,14 @@ export function createNaiGenService(deps: NaiGenServiceDeps) {
         "4": 0.7,
         "5": 0.9,
       };
-      const centers = chars.map((_, i) => {
-        const posKey = params.characterPositions?.[i] ?? "global";
+      const centers = chars.map(({ position: posKey }) => {
         if (posKey === "global" || posKey.length < 2)
           return { x: 0.5, y: 0.5 };
         return { x: colMap[posKey[0]] ?? 0.5, y: rowMap[posKey[1]] ?? 0.5 };
       });
       const useCoords =
         hasV4Characters &&
-        (params.characterPositions ?? []).some(
-          (p) => p !== "global" && p.length >= 2,
-        );
+        chars.some((c) => c.position !== "global" && c.position.length >= 2);
 
       const origGenerateStream =
         client.apiClient.image.generateStream.bind(
