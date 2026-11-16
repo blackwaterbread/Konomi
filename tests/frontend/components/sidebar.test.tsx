@@ -64,6 +64,7 @@ vi.mock("@/components/ui/context-menu", () => ({
   ),
   ContextMenuItemPrimitive: ({
     children,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pulled out so it is not spread onto the DOM <button>
     asChild,
     onSelect,
     ...props

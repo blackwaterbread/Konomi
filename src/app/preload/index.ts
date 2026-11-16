@@ -435,6 +435,5 @@ contextBridge.exposeInMainWorld("folder", {
   stats: (id: number) => ipcRenderer.invoke("folder:stats", id),
   size: (id: number) => ipcRenderer.invoke("folder:size", id),
   // Web-only event; Electron does not auto-detect new mounts.
-  onListChanged: (_cb: (data: { added: number; removed: number }) => void) =>
-    () => {},
+  onListChanged: () => () => {},
 });

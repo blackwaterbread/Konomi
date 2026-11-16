@@ -13,7 +13,6 @@
 import { createRequire } from "module";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
