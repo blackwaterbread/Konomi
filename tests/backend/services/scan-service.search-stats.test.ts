@@ -6,6 +6,7 @@ import {
   type IsolatedDbTestContext,
 } from "../helpers/test-db";
 import type { CancelToken } from "@core/lib/scanner";
+import type { ImageRepo } from "@core/lib/repositories/prisma-image-repo";
 import type { ImageMeta } from "@core/types/image-meta";
 
 vi.mock("worker_threads", () => {
@@ -70,7 +71,9 @@ function writeImage(filePath: string, content: string, mtime?: Date) {
   if (mtime) fs.utimesSync(filePath, mtime, mtime);
 }
 
-async function setup() {
+async function setup(
+  wrapImageRepo: (repo: ImageRepo) => ImageRepo = (repo) => repo,
+) {
   const { getDB } = await import("@core/lib/db");
   const { createPrismaImageRepo } =
     await import("@core/lib/repositories/prisma-image-repo");
@@ -81,7 +84,7 @@ async function setup() {
 
   const readMeta = vi.fn(async (filePath: string) => metaFromFile(filePath));
   const scanService = createScanService({
-    imageRepo: createPrismaImageRepo(getDB),
+    imageRepo: wrapImageRepo(createPrismaImageRepo(getDB)),
     folderRepo: createPrismaFolderRepo(getDB),
     sender: { send: () => {} },
     readMeta,
@@ -168,6 +171,47 @@ describe("scanService search stats", () => {
     const written = await getDB().image.count();
     expect(written).toBeGreaterThan(100);
     expect(written).toBeLessThan(300);
+    expect(await readStats()).toEqual(await rebuiltStats());
+  });
+
+  it("applies no stats for a batch whose write failed and writes it on the next scan", async () => {
+    let upsertCalls = 0;
+    let failedRows = 0;
+    let failing = true;
+    const { getDB, scanService, readStats, rebuiltStats } = await setup(
+      (repo) => ({
+        ...repo,
+        upsertBatch: async (rows) => {
+          if (failing && ++upsertCalls === 2) {
+            failedRows = rows.length;
+            throw new Error("database is locked");
+          }
+          return repo.upsertBatch(rows);
+        },
+      }),
+    );
+    const root = path.join(ctx.userDataDir, "library");
+    for (let i = 0; i < 250; i++) {
+      writeImage(path.join(root, `f${i}.png`), VARIANTS[i % 4]);
+    }
+    const folder = await getDB().folder.create({
+      data: { name: "library", path: root },
+    });
+
+    const result = await scanService.scanAll({ detectDuplicates: false });
+
+    expect(result.cancelled).toBe(false);
+    expect(failedRows).toBeGreaterThan(0);
+    expect(await getDB().image.count()).toBe(250 - failedRows);
+    expect(await readStats()).toEqual(await rebuiltStats());
+    // The count is what the walk found, so it is still the next denominator.
+    await expect(
+      getDB().folder.findUnique({ where: { id: folder.id } }),
+    ).resolves.toMatchObject({ lastScanFileCount: 250 });
+
+    failing = false;
+    await scanService.scanAll({ detectDuplicates: false });
+    expect(await getDB().image.count()).toBe(250);
     expect(await readStats()).toEqual(await rebuiltStats());
   });
 });

@@ -28,6 +28,7 @@ import type {
   FolderEntity,
   ImageUpsertData,
   ImageSyncRow,
+  SearchStatSource,
 } from "../types/repository";
 import type { ImageRepo } from "../lib/repositories/prisma-image-repo";
 import type { FolderRepo } from "../lib/repositories/prisma-folder-repo";
@@ -613,11 +614,18 @@ export function createScanService(deps: ScanServiceDeps) {
       const batch = pending.splice(0);
 
       // Collect search stat "before" snapshots
+      let beforeMap: Map<string, SearchStatSource> | null = null;
       if (deps.searchStats) {
         const batchPaths = batch.map((row) => row.path);
         const beforeRows =
           await imageRepo.findSearchStatSourcesByPaths(batchPaths);
-        const beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
+        beforeMap = new Map(beforeRows.map((row) => [row.path, row]));
+      }
+
+      const images = await imageRepo.upsertBatch(batch);
+      // Folded only once the batch is committed: a failed upsert rolls its
+      // rows back, and `processFile` swallows the error so the walk goes on.
+      if (beforeMap) {
         for (const row of batch) {
           accumulateStatMutation(statDeltas, {
             before: beforeMap.get(row.path) ?? null,
@@ -625,8 +633,6 @@ export function createScanService(deps: ScanServiceDeps) {
           });
         }
       }
-
-      const images = await imageRepo.upsertBatch(batch);
       const annotated = images.map((img) => ({
         ...img,
         isNew: !existingMap.has(normalizePathKey(img.path)),
