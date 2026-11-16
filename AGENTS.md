@@ -535,6 +535,8 @@ Considered and not adopted:
 - Fastify + WebSocket server for self-hosted deployments (NAS, home server)
 - Reuses `@konomi/core` services directly — same business logic as Electron utility process
 - DB: MariaDB/MySQL via `@prisma/adapter-mariadb` (not SQLite)
+- Server-only runtime packages (`fastify`, `@fastify/*`, `mariadb`, `@prisma/adapter-mariadb`) are declared in `src/server/package.json`. The root `dependencies` list only what the Electron app loads: electron-builder packs everything reachable from them into `app.asar`, and electron-vite externalizes them.
+  bun hoists workspace dependencies into the root `node_modules` (pinned by `bunfig.toml`, `linker = "hoisted"`), also in Docker's root `bun install --production`; that is where the server and core's dynamic `import("mariadb")` (`src/core/lib/db.ts`) find them. Do not declare `mariadb` in `src/core/package.json` (core's dependencies are packed).
 - Push events delivered via WebSocket (`{ event, data }` JSON frames) instead of Electron IPC
 - Serves the web SPA from `<repoRoot>/out/web` (the `bun run build:web` output; `repoRoot` is resolved from `src/server/index.ts`, not the cwd) through `registerSpa` (`src/server/lib/spa.ts`): an unmatched request gets `index.html`, except under `/api` and `/ws` (the bare path, `/…` or `?…`), which get a JSON 404 `{ error: "Not found" }`. `@fastify/static` runs with `wildcard: false`, so its file routes are fixed at startup: restart the server after re-running `build:web`. The Docker image copies the build to the same path (`/app/out/web`); `src/app/electron-builder.yml` excludes `out/web/**` from the Electron installer. During development, `bun run dev:web` (Vite on port 5174) proxies `/api` and `/ws` to `localhost:3000`
 

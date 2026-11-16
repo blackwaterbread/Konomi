@@ -1,0 +1,3 @@
+# Server packages live in src/server/package.json; core and Docker resolve them from the hoisted root node_modules.
+[install]
+linker = "hoisted"

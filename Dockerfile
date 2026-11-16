@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-COPY package.json bun.lock ./
+COPY package.json bun.lock bunfig.toml ./
 COPY src/core/package.json src/core/
 COPY src/server/package.json src/server/
 COPY src/web/package.json src/web/

@@ -19,7 +19,7 @@ files:
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,README.dev.md,README.dev.ko.md,README.ko.md,CLAUDE.md,AGENTS.md,debug.ts}'
   - '!{BUILDING.md,PREBUILD.md,Dockerfile,.dockerignore,docker-compose.yml,vitest.*.ts}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml,bunfig.toml}'
   - '!tsconfig.json'
   - '!{docs/**,examples/**,example_datas/**,.claude/**,scripts/**,tests/**,docker/**}'
   - '!**/*.tsbuildinfo'
