@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => {
     static created: FakeWorker[] = [];
     readonly inbox: Task[] = [];
     terminated = false;
+    private exited = false;
     private readonly listeners = new Map<string, Listener[]>();
 
     constructor() {
@@ -34,8 +35,11 @@ const fake = vi.hoisted(() => {
       this.inbox.push(task);
     }
 
+    // Like a real thread, a terminated one reports `exit` later, not inside
+    // the call.
     terminate(): Promise<number> {
       this.terminated = true;
+      void Promise.resolve().then(() => this.emitExit(1));
       return Promise.resolve(1);
     }
 
@@ -46,12 +50,32 @@ const fake = vi.hoisted(() => {
     finish(): void {
       const task = this.inbox.shift();
       if (!task) throw new Error("worker has no task");
+      this.reply(task);
+    }
+
+    /** Answers `task` whether or not the worker still holds it. */
+    reply(task: Task): void {
       this.emit("message", { id: task.id, result: `done:${task.filePath}` });
     }
 
+    /** Uncaught error in the thread (or a failed boot): `error`, then `exit`. */
     crash(): void {
       this.inbox.length = 0;
       this.emit("error", new Error("worker crashed"));
+      void Promise.resolve().then(() => this.emitExit(1));
+    }
+
+    /** The thread stops without an `error` (e.g. `process.exit` inside it). */
+    exit(code: number): void {
+      this.inbox.length = 0;
+      this.terminated = true;
+      this.emitExit(code);
+    }
+
+    private emitExit(code: number): void {
+      if (this.exited) return;
+      this.exited = true;
+      this.emit("exit", code);
     }
 
     private emit(event: string, value: unknown): void {
@@ -173,6 +197,96 @@ describe("WorkerPool (lazy)", () => {
     ]);
     expect(workers()).toHaveLength(3);
   });
+
+  it("settles the task of a worker that exits without an error and replaces it", async () => {
+    const pool = createPool(1);
+    const a = pool.run("a.png");
+    const b = pool.run("b.png");
+
+    workers()[0].exit(1);
+    expect(workers()).toHaveLength(2);
+    expect(workers()[1].task).toBe("b.png");
+    await expect(a).resolves.toBeNull();
+
+    workers()[1].finish();
+    await expect(b).resolves.toBe("done:b.png");
+    expect(live()).toHaveLength(1);
+  });
+
+  it("does not replace a worker it retired when that worker's exit arrives", async () => {
+    vi.useFakeTimers();
+    const pool = createPool(1, { idleTimeoutMs: 1000 });
+    const a = pool.run("a.png");
+    workers()[0].finish();
+    await a;
+    vi.advanceTimersByTime(1000);
+
+    const b = pool.run("b.png");
+    const c = pool.run("c.png");
+    await Promise.resolve(); // the retired worker's `exit`
+    expect(workers()).toHaveLength(2);
+    expect(live()).toHaveLength(1);
+
+    finishAll();
+    await expect(Promise.all([b, c])).resolves.toEqual([
+      "done:b.png",
+      "done:c.png",
+    ]);
+  });
+
+  it("ignores a reply that arrives after its worker was dropped", async () => {
+    const pool = createPool(1);
+    const a = pool.run("a.png");
+    const [task] = workers()[0].inbox;
+    workers()[0].crash();
+    workers()[0].reply(task);
+    await expect(a).resolves.toBeNull();
+
+    const b = pool.run("b.png");
+    expect(workers()).toHaveLength(2);
+    expect(workers()[1].task).toBe("b.png");
+    workers()[1].finish();
+    await expect(b).resolves.toBe("done:b.png");
+  });
+
+  it("stops counting a crashed task as running work", async () => {
+    vi.useFakeTimers();
+    const pool = createPool(1, { idleTimeoutMs: 1000 });
+    const a = pool.run("a.png");
+    workers()[0].crash();
+    await expect(a).resolves.toBeNull();
+
+    const b = pool.run("b.png");
+    expect(workers()[1].task).toBe("b.png");
+    workers()[1].finish();
+    await expect(b).resolves.toBe("done:b.png");
+
+    vi.advanceTimersByTime(1000);
+    expect(live()).toHaveLength(0);
+  });
+
+  it("times the idle timeout from when the last running task finishes", async () => {
+    vi.useFakeTimers();
+    const pool = createPool(2, { idleTimeoutMs: 1000 });
+    const results = ["a.png", "b.png", "c.png"].map((file) => pool.run(file));
+    expect(runningTasks()).toEqual(["a.png", "b.png"]);
+    workers()[0].finish();
+    workers()[0].finish();
+
+    // One worker idle while the other still runs: not yet inactivity.
+    vi.advanceTimersByTime(500);
+    expect(live()).toHaveLength(2);
+    expect(workers()[1].task).toBe("b.png");
+
+    workers()[1].finish();
+    vi.advanceTimersByTime(999);
+    expect(live()).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(live()).toHaveLength(0);
+    await expect(Promise.all(results)).resolves.toEqual(
+      ["a.png", "b.png", "c.png"].map((file) => `done:${file}`),
+    );
+  });
 });
 
 describe("WorkerPool (eager)", () => {
@@ -194,5 +308,48 @@ describe("WorkerPool (eager)", () => {
       "done:c.png",
     ]);
     expect(workers()).toHaveLength(2);
+  });
+
+  it("drops a worker that fails before its first task and regrows under load", async () => {
+    const pool = createPool(2, { eager: true });
+    workers()[0].crash();
+    // Not replaced while nothing waits: a worker that cannot boot would
+    // otherwise respawn forever.
+    await Promise.resolve();
+    expect(workers()).toHaveLength(2);
+
+    const results = ["a.png", "b.png", "c.png"].map((file) => pool.run(file));
+    expect(workers()[1].task).toBe("a.png");
+    expect(workers()[2].task).toBe("b.png");
+    expect(live()).toHaveLength(2);
+
+    finishAll();
+    await expect(Promise.all(results)).resolves.toEqual([
+      "done:a.png",
+      "done:b.png",
+      "done:c.png",
+    ]);
+  });
+
+  it("still runs work after every worker has died idle", async () => {
+    const pool = createPool(1, { eager: true });
+    workers()[0].crash();
+
+    const a = pool.run("a.png");
+    expect(workers()).toHaveLength(2);
+    expect(workers()[1].task).toBe("a.png");
+    workers()[1].finish();
+    await expect(a).resolves.toBe("done:a.png");
+  });
+
+  it("ignores the idle timeout", async () => {
+    vi.useFakeTimers();
+    const pool = createPool(2, { eager: true, idleTimeoutMs: 1000 });
+    const a = pool.run("a.png");
+    workers()[0].finish();
+    await expect(a).resolves.toBe("done:a.png");
+
+    vi.advanceTimersByTime(5000);
+    expect(live()).toHaveLength(2);
   });
 });

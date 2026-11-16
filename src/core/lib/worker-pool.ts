@@ -14,7 +14,8 @@ export type WorkerPoolOptions<T> = {
   /** Absolute path to the worker JS file */
   workerPath: string;
   /**
-   * When true, all workers are spawned immediately in the constructor.
+   * When true, all workers are spawned immediately in the constructor; one
+   * that dies is replaced when work next arrives.
    * When false (default), workers are created lazily as tasks arrive.
    */
   eager?: boolean;
@@ -51,7 +52,7 @@ export class WorkerPool<T> {
     this.maxSize = options.size;
     this.workerPath = options.workerPath;
     this.isEager = options.eager ?? false;
-    this.idleTimeoutMs = options.idleTimeoutMs ?? 0;
+    this.idleTimeoutMs = this.isEager ? 0 : (options.idleTimeoutMs ?? 0);
     this.extractResult = options.extractResult;
     // Pre-compute the "failure" result so error handlers don't need the extractor
     this.nullResult = options.extractResult({});
@@ -71,28 +72,44 @@ export class WorkerPool<T> {
     const w = new Worker(this.workerPath);
     w.on("message", (msg: Record<string, unknown>) => {
       const id = msg.id as number;
+      // A reply for a task this worker no longer holds — it was already
+      // settled when the worker was dropped — must not return it to `idle`.
+      if (this.workerTask.get(w) !== id) return;
       this.activeCount--;
       this.workerTask.delete(w);
       this.callbacks.get(id)?.(this.extractResult(msg));
       this.callbacks.delete(id);
       this.dispatch(w);
     });
-    w.on("error", () => {
-      this.activeCount--;
-      const id = this.workerTask.get(w);
-      this.workerTask.delete(w);
-      if (id !== undefined) {
-        this.callbacks.get(id)?.(this.nullResult);
-        this.callbacks.delete(id);
-      }
-      w.terminate().catch(() => {});
-      if (this.queue.length > 0) {
-        this.addWorker();
-        this.flush();
-      }
-    });
+    // A thread can also stop without an `error` (`process.exit` inside it).
+    // `error` is followed by `exit`; the second one finds nothing to remove.
+    w.on("error", () => this.removeWorker(w));
+    w.on("exit", () => this.removeWorker(w));
     this.idle.push(w);
     this.flush();
+  }
+
+  /**
+   * Drops a worker that died, busy or idle — one that fails to boot dies
+   * before it ever had a task, still sitting in `idle`. A worker the pool
+   * retired itself is already in neither list.
+   */
+  private removeWorker(w: Worker): void {
+    const idleIndex = this.idle.indexOf(w);
+    const id = this.workerTask.get(w);
+    if (idleIndex === -1 && id === undefined) return;
+    if (idleIndex !== -1) this.idle.splice(idleIndex, 1);
+    if (id !== undefined) {
+      this.activeCount--;
+      this.workerTask.delete(w);
+      this.callbacks.get(id)?.(this.nullResult);
+      this.callbacks.delete(id);
+    }
+    w.terminate().catch(() => {});
+    if (this.queue.length > 0) {
+      this.addWorker();
+      this.flush();
+    }
   }
 
   private dispatch(w: Worker): void {
@@ -138,12 +155,9 @@ export class WorkerPool<T> {
     return new Promise((resolve) => {
       this.queue.push({ filePath, resolve });
       this.cancelIdleShutdown();
-      if (this.isEager) {
-        this.flush();
-      } else {
-        this.ensureWorkers();
-        this.flush();
-      }
+      // An eager pool is full unless workers died, so this only replaces them.
+      this.ensureWorkers();
+      this.flush();
     });
   }
 
