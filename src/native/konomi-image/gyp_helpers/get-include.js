@@ -1,4 +1,5 @@
 "use strict";
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS script run by node-gyp (`node gyp_helpers/...`)
 const path = require("path");
 const pngRoot = process.env.LIBPNG_ROOT || "";
 const jpegRoot = process.env.LIBJPEG_ROOT || "";
