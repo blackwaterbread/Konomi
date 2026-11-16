@@ -364,7 +364,7 @@ describe("useGalleryController", () => {
     expect(result.current.imageGalleryState.pendingRemovedCount).toBe(0);
 
     act(() => {
-      result.current.galleryCommands.onClearSearch();
+      result.current.handleSearchChange("");
     });
     act(() => {
       flushAllFrames();

@@ -18,7 +18,7 @@ export type GroupRefToken = {
 export type WildcardToken = {
   kind: "wildcard";
   options: string[]; // raw token strings, e.g. ["red hair", "1.2::blue hair::"]
-  resolved?: string; // last resolved value (set by resolveWildcardsInString callers for display)
+  resolved?: string; // read by WildcardChip (chip label, popover "last selected"); nothing sets it
 };
 
 export type AnyToken = PromptToken | GroupRefToken | WildcardToken;

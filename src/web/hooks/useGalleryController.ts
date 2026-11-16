@@ -223,10 +223,6 @@ export function useGalleryController({
     [galleryPage, queueGalleryBlockingAction, setGalleryPage],
   );
 
-  const handleClearSearch = useCallback(() => {
-    handleSearchChange("");
-  }, [handleSearchChange]);
-
   const handleLoadAllSelectableIds = useCallback(async () => {
     try {
       return await window.image.listMatchingIds(listBaseQuery);
@@ -296,10 +292,9 @@ export function useGalleryController({
   const galleryCommands = useMemo(
     () => ({
       onSortChange: setSortBy,
-      onClearSearch: handleClearSearch,
       onLoadAllSelectableIds: handleLoadAllSelectableIds,
     }),
-    [handleClearSearch, handleLoadAllSelectableIds],
+    [handleLoadAllSelectableIds],
   );
 
   return {
